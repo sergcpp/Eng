@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="Ren::StrongRef&lt;*&gt;">
+    <DisplayString Condition="storage_ != nullptr">{{ [{storage_->data_[index_].ctrl_->strong_refs} strong refs], [{storage_->data_[index_].ctrl_->weak_refs} weak refs] }}</DisplayString>
+	<DisplayString Condition="storage_ == nullptr">empty</DisplayString>
+    <Expand>
+      <Item Name="[storage]" ExcludeView="simple">storage_</Item>
+      <Item Name="[index]" ExcludeView="simple">index_</Item>
+      <Item Name="[ptr]" ExcludeView="simple">&amp;storage_->data_[index_]</Item>
+    </Expand>
+  </Type>
+  <Type Name="Ren::WeakRef&lt;*&gt;">
+    <DisplayString Condition="storage_ != nullptr">{{ [{storage_->data_[index_].ctrl_->strong_refs} strong refs], [{storage_->data_[index_].ctrl_->weak_refs} weak refs] }}</DisplayString>
+	<DisplayString Condition="storage_ == nullptr">empty</DisplayString>
+    <Expand>
+      <Item Name="[storage]" ExcludeView="simple">storage_</Item>
+      <Item Name="[index]" ExcludeView="simple">index_</Item>
+      <Item Name="[ptr]" ExcludeView="simple">&amp;storage_->data_[index_]</Item>
+    </Expand>
+  </Type>
+  <Type Name="Ren::BasicString&lt;*&gt;" Priority="MediumLow">
+    <DisplayString>{{ str={str_,na}, len={len_} }}</DisplayString>
+  </Type>
+  <Type Name="Ren::SparseArray&lt;*&gt;">
+    <DisplayString>{{ size={size_}, capacity={capacity_} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">size_</Item>
+      <Item Name="[capacity]" ExcludeView="simple">capacity_</Item>
+      <CustomListItems ExcludeView="simple">
+        <Variable Name="i" InitialValue="0" />
+        <!--<Size>capacity_</Size>-->
+        <Loop>
+          <Break Condition="i == capacity_" />
+          <If Condition="(ctrl_[i / 8] &amp; (1u &lt;&lt; (i % 8))) != 0">
+            <Item Name="[{i}]">data_[i],na</Item>
+          </If>
+          <Exec>i += 1</Exec>
+        </Loop>
+      </CustomListItems>
+    </Expand>
+  </Type>
+  <Type Name="Ren::SparseArray&lt;*&gt;::SparseArrayIterator">
+    <DisplayString>{{ {container_->data_[index_]} }}</DisplayString>
+	<Expand>
+      <Item Name="[index]" ExcludeView="simple">index_</Item>
+      <Item Name="[ptr]" ExcludeView="simple">&amp;container_->data_[index_]</Item>
+    </Expand>
+  </Type>
+  <Type Name="Ren::SparseArray&lt;*&gt;::SparseArrayConstIterator">
+    <DisplayString>{{ {container_->data_[index_]} }}</DisplayString>
+	<Expand>
+      <Item Name="[index]" ExcludeView="simple">index_</Item>
+      <Item Name="[ptr]" ExcludeView="simple">&amp;container_->data_[index_]</Item>
+    </Expand>
+  </Type>
+  <Type Name="Ren::RingBuffer&lt;*&gt;">
+    <DisplayString>{{ size={head_ - tail_}, capacity={capacity_} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">head_ - tail_</Item>
+      <Item Name="[capacity]" ExcludeView="simple">capacity_</Item>
+      <IndexListItems>
+        <Size>head_ - tail_</Size>
+        <ValueNode>buf_[(tail_ + $i) % capacity_]</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+  <Type Name="Ren::RingBuffer&lt;*&gt;::iterator">
+    <DisplayString>{{ {container_->buf_[index_ &amp; (container_->capacity_ - 1)]} }}</DisplayString>
+    <Expand>
+      <Item Name="[index]" ExcludeView="simple">index_ &amp; (container_->capacity_ - 1)</Item>
+      <Item Name="[ptr]" ExcludeView="simple">&amp;container_->buf_[index_]</Item>
+    </Expand>
+  </Type>
+  <Type Name="Ren::SmallVectorImpl&lt;*&gt;">
+    <DisplayString>{{ size={end_ - begin_}, capacity={capacity_ &amp; CapacityMask} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">end_ - begin_</Item>
+      <Item Name="[capacity]" ExcludeView="simple">capacity_ &amp; CapacityMask</Item>
+      <ArrayItems>
+        <Size>end_ - begin_</Size>
+        <ValuePointer>begin_</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="Ren::Fixed&lt;*&gt;">
+    <DisplayString>{{ {float(value_) / One} }}</DisplayString>
+  </Type>
+  <Type Name="Ren::Span&lt;*&gt;">
+	<DisplayString>{{ size={size_} }}</DisplayString>
+	<Expand>
+		<Item Name="[size]" ExcludeView="simple">size_</Item>
+		<ArrayItems>
+			<Size>size_</Size>
+			<ValuePointer>p_data_</ValuePointer>
+		</ArrayItems>
+	</Expand>
+  </Type>
+</AutoVisualizer>

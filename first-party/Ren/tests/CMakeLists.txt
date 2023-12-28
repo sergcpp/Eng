@@ -1,0 +1,59 @@
+cmake_minimum_required(VERSION 3.1)
+project(test_Ren)
+
+set(SDL_STATIC ON)
+
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Android")
+
+    IF(WIN32)
+        IF(SDL_STATIC)
+            if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+                set(LIBS winmm imm32 version)
+            elseif (${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
+                set(LIBS winmm imm32 version)
+            endif()
+        ELSE(SDL_STATIC)
+            if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+                set(LIBS opengl32)
+            elseif (${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
+                set(LIBS opengl32)
+            endif()
+        ENDIF(SDL_STATIC)
+    ELSE(WIN32)
+        set(LIBS X11 dl pthread GL c)
+    ENDIF(WIN32)
+endif()
+
+set(SOURCE_FILES main.cpp
+                 membuf.h
+                 test_anim.cpp
+                 test_buffer.cpp
+                 test_common.h
+                 test_hashmap.cpp
+                 test_mat.cpp
+                 test_material.cpp
+                 test_mesh.cpp
+                 test_span.cpp
+                 test_sparse_array.cpp
+                 test_storage.cpp
+                 test_string.cpp
+                 test_texture.cpp
+                 test_utils.cpp
+                 test_vec.cpp
+                 )
+
+if(${RENDERER} STREQUAL "VK")
+    set(SOURCE_FILES ${SOURCE_FILES}
+                     test_programVK.cpp)
+elseif(${RENDERER} STREQUAL "GL")
+    set(SOURCE_FILES ${SOURCE_FILES}
+                     test_programGL.cpp)
+elseif(${RENDERER} STREQUAL "SW")
+    set(SOURCE_FILES ${SOURCE_FILES}
+                     test_programSW.cpp)
+elseif(${RENDERER} STREQUAL "VK")
+
+endif()
+
+add_executable(test_Ren ${SOURCE_FILES})
+target_link_libraries(test_Ren ${LIBS} Ren)
