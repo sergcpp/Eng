@@ -124,8 +124,8 @@ namespace SceneManagerInternal {
 // TODO: remove this!
 #include "../renderer/shaders/Renderer_GL_Defines.inl"
 
-Eng::SceneManager::SceneManager(Ren::Context& ren_ctx, Eng::ShaderLoader& sh, Snd::Context& snd_ctx,
-	Sys::ThreadPool& threads, const path_config_t& paths)
+Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Snd::Context *snd_ctx,
+								Sys::ThreadPool& threads, const path_config_t& paths)
 	: ren_ctx_(ren_ctx), sh_(sh), snd_ctx_(snd_ctx), threads_(threads), paths_(paths),
 	cam_(Ren::Vec3f{ 0.0f, 0.0f, 1.0f }, Ren::Vec3f{ 0.0f, 0.0f, 0.0f }, Ren::Vec3f{ 0.0f, 1.0f, 0.0f }),
 	mp_alloc_(32, 512) {
@@ -248,8 +248,10 @@ Eng::SceneManager::SceneManager(Ren::Context& ren_ctx, Eng::ShaderLoader& sh, Sn
 		io_pending_tex_[i].buf.reset(new TextureUpdateFileBuf(ren_ctx_.api_ctx()));
 	}
 
-	const float pos[] = { 0.0f, 0.0f, 0.0f };
-	amb_sound_.Init(1.0f, pos);
+	if (snd_ctx_) {
+		const float pos[] = { 0.0f, 0.0f, 0.0f };
+		amb_sound_.Init(1.0f, pos);
+	}
 
 	for (auto& range : scene_data_.mat_update_ranges) {
 		range = std::make_pair(std::numeric_limits<uint32_t>::max(), 0);
@@ -764,8 +766,10 @@ void Eng::SceneManager::SetupView(const Ren::Vec3f& origin, const Ren::Vec3f& ta
 	last_cam_pos_ = origin;
 	last_cam_time_s_ = cur_time_s;
 
-	const Ren::Vec3f fwd_up[2] = { cam_.fwd(), cam_.up() };
-	snd_ctx_.SetupListener(ValuePtr(origin), ValuePtr(velocity), ValuePtr(fwd_up[0]));
+	if (snd_ctx_) {
+		const Ren::Vec3f fwd_up[2] = { cam_.fwd(), cam_.up() };
+		snd_ctx_->SetupListener(ValuePtr(origin), ValuePtr(velocity), ValuePtr(fwd_up[0]));
+	}
 }
 
 void Eng::SceneManager::PostloadDrawable(const JsObjectP& js_comp_obj, void* comp, Ren::Vec3f obj_bbox[2]) {
