@@ -19,6 +19,8 @@
 //#define TEX_VERBOSE_LOGGING
 #endif
 
+#define COUNT_OF(x) ((sizeof(x) / sizeof(0 [x])) / ((size_t)(!(sizeof(x) % sizeof(0 [x])))))
+
 namespace Ren {
 const uint32_t g_gl_formats[] = {
     0xffffffff,                  // Undefined
@@ -1333,3 +1335,5 @@ void Ren::GLUnbindTextureUnits(const int start, const int count) {
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+
+#undef COUNT_OF
