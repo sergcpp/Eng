@@ -77,8 +77,6 @@ set(SOURCE_FILES Anim.h
                  SparseArray.h
                  Storage.h
                  String.h
-                 TaskExecutor.h
-                 TaskExecutor.cpp
                  Texture.h
                  Texture.cpp
                  TextureAtlas.h
