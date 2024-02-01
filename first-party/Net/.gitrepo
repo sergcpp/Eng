@@ -6,6 +6,7 @@
 [subrepo]
 	remote = Net
 	branch = master
-	commit = 
+	commit = 482cbc1676c6e73c1dc4b3c62426dfce9ba101e3
 	method = merge
 	cmdver = 0.4.6
+	parent = 24916f37f0c12a4301bc0d8e1d176ea23f023150
