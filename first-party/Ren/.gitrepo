@@ -6,6 +6,7 @@
 [subrepo]
 	remote = Ren
 	branch = master
-	commit = 
+	commit = 84eb4fcdf60763b91f45646e5d9aaef68bae646c
 	method = merge
 	cmdver = 0.4.6
+	parent = 2336f40b8da61616c6ec276eb23a167889c13a10
