@@ -287,6 +287,13 @@ void test_preprocessor() {
         require(preprocessor.Process() == expected);
         require(preprocessor.error().empty());
     }
+    { // simple #if #elif #else #endif (2)
+        static const char source[] = "#if( 0 )\none\n#elif( 1 )\ntwo\n#else\nthree\n#endif";
+        static const char expected[] = "two\n";
+        glslx::Preprocessor preprocessor(source);
+        require(preprocessor.Process() == expected);
+        require(preprocessor.error().empty());
+    }
     { // more complex #elif case
         static const char source[] = "#if 0\n"
                                      "    one\n"

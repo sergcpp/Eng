@@ -678,15 +678,16 @@ bool glslx::Preprocessor::ProcessInclude() {
 
 bool glslx::Preprocessor::ProcessIf() {
     token_t curr_token = GetNextToken();
-    if (!expect(eTokenType::Space, curr_token.type)) {
-        return false;
+    if (curr_token.type == eTokenType::Space) {
+        curr_token = GetNextToken();
     }
 
     std::vector<token_t> expression_tokens;
-    while ((curr_token = GetNextToken()).type != eTokenType::Newline) {
+    while (curr_token.type != eTokenType::Newline) {
         if (curr_token.type != eTokenType::Space) {
             expression_tokens.push_back(std::move(curr_token));
         }
+        curr_token = GetNextToken();
     }
 
     if (curr_token.type != eTokenType::Space && curr_token.type != eTokenType::Newline) {
@@ -785,15 +786,16 @@ bool glslx::Preprocessor::ProcessElif() {
     }
 
     token_t curr_token = GetNextToken();
-    if (!expect(eTokenType::Space, curr_token.type)) {
-        return false;
+    if (curr_token.type == eTokenType::Space) {
+        curr_token = GetNextToken();
     }
 
     std::vector<token_t> expression_tokens;
-    while ((curr_token = GetNextToken()).type != eTokenType::Newline) {
+    while (curr_token.type != eTokenType::Newline) {
         if (curr_token.type != eTokenType::Space) {
             expression_tokens.push_back(std::move(curr_token));
         }
+        curr_token = GetNextToken();
     }
 
     if (!expect(eTokenType::Newline, curr_token.type)) {
