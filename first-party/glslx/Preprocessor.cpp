@@ -612,8 +612,7 @@ bool glslx::Preprocessor::RemoveMacroDefinition(const std::string &macro_name) {
     auto it = std::find_if(cbegin(macros_), cend(macros_),
                            [&macro_name](const macro_desc_t &macro) { return macro.name == macro_name; });
     if (it == cend(macros_)) {
-        error_ = "Undefined macro " + std::to_string(source_line_);
-        return false;
+        return true;
     }
 
     macros_.erase(it);

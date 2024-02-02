@@ -373,6 +373,18 @@ void test_preprocessor() {
         require(preprocessor.Process() == expected);
         require(preprocessor.error().empty());
     }
+    { // #ifndef + #undef
+        static const char source[] = "#define FOO\n"
+                                     "#undef FOO\n"
+                                     "#ifndef FOO\n"
+                                     "    one\n"
+                                     "#endif\n"
+                                     "#undef FOO";
+        static const char expected[] = "    one\n\n";
+        glslx::Preprocessor preprocessor(source);
+        require(preprocessor.Process() == expected);
+        require(preprocessor.error().empty());
+    }
     { // include directive with guards
         static const char source_main[] = R"(
 			#define FOO
