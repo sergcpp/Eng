@@ -169,6 +169,18 @@ void test_preprocessor() {
         require(preprocessor.Process() == expected);
         require(preprocessor.error().empty());
     }
+    { // function-like macro (8)
+        static const char source[] = "#define ADD(X, Y) X + Y\n"
+                                     "void main() {\n"
+                                     "    return ADD(ADD(2, 1), 3);\n"
+                                     "}";
+        static const char expected[] = "void main() {\n"
+                                       "    return 2 + 1 + 3;\n"
+                                       "}";
+        glslx::Preprocessor preprocessor(source);
+        require(preprocessor.Process() == expected);
+        require(preprocessor.error().empty());
+    }
     { // stringify
         static const char source[] = "#define FOO(Name) #Name\n"
                                      " FOO(Text)";

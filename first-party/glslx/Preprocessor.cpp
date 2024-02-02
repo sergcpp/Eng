@@ -137,7 +137,7 @@ std::string glslx::Preprocessor::Process() {
             const auto ctx_it =
                 std::find_if(cbegin(context_stack_), cend(context_stack_),
                              [&curr_token](const std::string &name) { return name == curr_token.raw_view; });
-            if (macro_it != cend(macros_) && ctx_it == cend(context_stack_)) {
+            if (macro_it != cend(macros_) /*&& ctx_it == cend(context_stack_)*/) {
                 const std::vector<token_t> expanded =
                     ExpandMacroDefinition(*macro_it, curr_token, std::bind(&Preprocessor::GetNextToken, this));
                 if (expanded.empty() && !error_.empty()) {
@@ -689,7 +689,8 @@ bool glslx::Preprocessor::ProcessIf() {
         }
     }
 
-    if (!expect(eTokenType::Newline, curr_token.type)) {
+    if (curr_token.type != eTokenType::Space && curr_token.type != eTokenType::Newline) {
+        error_ = "Unexpected token at " + std::to_string(source_line_);
         return false;
     }
 
@@ -716,7 +717,8 @@ bool glslx::Preprocessor::ProcessIfdef() {
     const std::string macro_identifier = curr_token.raw_view;
 
     curr_token = GetNextToken();
-    if (!expect(eTokenType::Newline, curr_token.type)) {
+    if (curr_token.type != eTokenType::Space && curr_token.type != eTokenType::Newline) {
+        error_ = "Unexpected token at " + std::to_string(source_line_);
         return false;
     }
 
@@ -746,7 +748,8 @@ bool glslx::Preprocessor::ProcessIfndef() {
     const std::string macro_identifier = curr_token.raw_view;
 
     curr_token = GetNextToken();
-    if (!expect(eTokenType::Newline, curr_token.type)) {
+    if (curr_token.type != eTokenType::Space && curr_token.type != eTokenType::Newline) {
+        error_ = "Unexpected token at " + std::to_string(source_line_);
         return false;
     }
 
@@ -873,14 +876,13 @@ glslx::Preprocessor::ExpandMacroDefinition(const macro_desc_t &macro, const toke
     for (int arg_index = 0; arg_index < int(processing_tokens.size()); ++arg_index) {
         const std::string &arg_name = macro.arg_names[arg_index];
 
-        std::string replacement_value;
-        for (const token_t &arg : processing_tokens[arg_index]) {
-            replacement_value.append(arg.raw_view);
-        }
-
-        for (token_t &tok : replacement_list) {
-            if (tok.type == eTokenType::Identifier && tok.raw_view == arg_name) {
-                tok.raw_view = replacement_value;
+        for (auto it = begin(replacement_list); it != end(replacement_list); ) {
+            if (it->type == eTokenType::Identifier && it->raw_view == arg_name) {
+                it = replacement_list.erase(it);
+                it = replacement_list.insert(it, begin(processing_tokens[arg_index]), end(processing_tokens[arg_index]));
+                it += processing_tokens[arg_index].size();
+            } else {
+                ++it;
             }
         }
     }
