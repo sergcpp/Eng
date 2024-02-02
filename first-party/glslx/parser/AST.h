@@ -148,6 +148,7 @@ struct ast_statement;
 struct ast_struct;
 struct ast_interface_block;
 struct ast_variable;
+struct ast_default_precision;
 
 enum class eTrUnitType {
     Compute,
@@ -169,6 +170,7 @@ struct TrUnit {
 
     ast_version_directive *version = nullptr;
     std::vector<ast_extension_directive *> extensions;
+    std::vector<ast_default_precision *> default_precision;
     std::vector<ast_interface_block *> interface_blocks;
     std::vector<ast_struct *> structures;
     std::vector<ast_global_variable *> globals;
@@ -222,6 +224,13 @@ struct ast_extension_directive : ast_type {
     eExtBehavior behavior = eExtBehavior::Invalid;
 
     ast_extension_directive() noexcept : ast_type(false) {}
+};
+
+struct ast_default_precision : ast_type {
+    ePrecision precision = ePrecision::None;
+    ast_builtin *type = nullptr;
+
+    ast_default_precision() noexcept : ast_type(false) {}
 };
 
 enum class eVariableType { Function, Parameter, Global, Field };

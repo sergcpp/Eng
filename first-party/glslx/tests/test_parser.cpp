@@ -774,6 +774,21 @@ void test_parser() {
         require(tr_unit == nullptr);
         require(strcmp(parser.error(), "line_directive.glsl:43:12: error: 1111") == 0);
     }
+    { // default precision qualifiers
+        static const char source[] =
+            "precision highp int;\n"
+            "precision mediump float;\n";
+        static const char *expected = source;
+
+        glslx::Parser parser(source, "default_precision.glsl");
+        std::unique_ptr<glslx::TrUnit> tr_unit = parser.Parse(glslx::eTrUnitType::Compute);
+        require_fatal(tr_unit != nullptr);
+
+        std::stringstream ss;
+        glslx::WriterGLSL().Write(tr_unit.get(), ss);
+        auto debug = ss.str();
+        require(ss.str() == expected);
+    }
     { // first character invalid
         const char source[] = "`\n";
 

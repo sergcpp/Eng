@@ -83,7 +83,7 @@ class Parser {
     bool ParseStorage(top_level_t &current);
     bool ParseAuxStorage(top_level_t &current);
     bool ParseInterpolation(top_level_t &current);
-    bool ParsePrecision(top_level_t &current);
+    bool ParsePrecision(ePrecision &precision);
     bool ParseInvariant(top_level_t &current);
     bool ParsePrecise(top_level_t &current);
     bool ParseMemoryFlags(top_level_t &current);

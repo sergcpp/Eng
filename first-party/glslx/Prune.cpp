@@ -211,6 +211,10 @@ void glslx::Prune_Unreachable(TrUnit *tu) {
     for (ast_extension_directive *ext : tu->extensions) {
         ext->gc = 1;
     }
+    for (ast_default_precision *pre : tu->default_precision) {
+        pre->gc = 1;
+        Mark_Type(pre->type);
+    }
 
     for (ast_interface_block *block : tu->interface_blocks) {
         block->gc = 1;

@@ -347,7 +347,7 @@ bool glslx::Parser::ParseTopLevelItem(top_level_t &level, top_level_t *continuat
             if (!ParseStorage(item)) return false;
             if (!ParseAuxStorage(item)) return false;
             if (!ParseInterpolation(item)) return false;
-            if (!ParsePrecision(item)) return false;
+            if (!ParsePrecision(item.precision)) return false;
             if (!ParseInvariant(item)) return false;
             if (!ParsePrecise(item)) return false;
             if (!ParseMemoryFlags(item)) return false;
@@ -387,6 +387,22 @@ bool glslx::Parser::ParseTopLevelItem(top_level_t &level, top_level_t *continuat
                 return true;
             } else {
                 level.type = unique;
+            }
+        } else if (is_keyword(eKeyword::K_precision)) {
+            if (!next()) { // skip precision
+                return false;
+            }
+            ast_default_precision *pre = astnew<ast_default_precision>();
+            if (!ParsePrecision(pre->precision)) {
+                return false;
+            }
+            pre->type = ParseBuiltin();
+            if (!pre->type) {
+                return false;
+            }
+            ast_->default_precision.push_back(pre);
+            if (!next() || is_type(eTokType::Semicolon)) {
+                return true;
             }
         } else {
             items.push_back(item);
@@ -665,19 +681,19 @@ bool glslx::Parser::ParseInterpolation(top_level_t &current) {
     return true;
 }
 
-bool glslx::Parser::ParsePrecision(top_level_t &current) {
+bool glslx::Parser::ParsePrecision(ePrecision &precision) {
     if (is_keyword(eKeyword::K_highp)) {
-        current.precision = ePrecision::Highp;
+        precision = ePrecision::Highp;
         if (!next()) {
             return false;
         }
     } else if (is_keyword(eKeyword::K_mediump)) {
-        current.precision = ePrecision::Mediump;
+        precision = ePrecision::Mediump;
         if (!next()) {
             return false;
         }
     } else if (is_keyword(eKeyword::K_lowp)) {
-        current.precision = ePrecision::Lowp;
+        precision = ePrecision::Lowp;
         if (!next()) {
             return false;
         }

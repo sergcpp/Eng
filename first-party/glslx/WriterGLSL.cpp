@@ -834,12 +834,22 @@ void glslx::WriterGLSL::Write_ExtensionDirective(const ast_extension_directive *
     }
 }
 
+void glslx::WriterGLSL::Write_DefaultPrecision(const ast_default_precision *precision, std::ostream &out_stream) {
+    out_stream << "precision ";
+    Write_Precision(precision->precision, out_stream);
+    Write_Type(precision->type, out_stream);
+    out_stream << ";\n";
+}
+
 void glslx::WriterGLSL::Write(const TrUnit *tu, std::ostream &out_stream) {
     if (tu->version) {
         Write_VersionDirective(tu->version, out_stream);
     }
     for (int i = 0; i < int(tu->extensions.size()); ++i) {
         Write_ExtensionDirective(tu->extensions[i], out_stream);
+    }
+    for (int i = 0; i < int(tu->default_precision.size()); ++i) {
+        Write_DefaultPrecision(tu->default_precision[i], out_stream);
     }
     for (int i = 0; i < int(tu->globals.size()); ++i) {
         if (!tu->globals[i]->base_type->builtin) {
