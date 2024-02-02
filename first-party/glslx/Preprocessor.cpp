@@ -848,12 +848,15 @@ glslx::Preprocessor::ExpandMacroDefinition(const macro_desc_t &macro, const toke
         }
 
         if (curr_token.type != eTokenType::Comma && curr_token.type != eTokenType::Bracket_End) {
-            if (!expect(eTokenType::Comma, curr_token.type)) {
+            if (!expect(eTokenType::Newline, curr_token.type)) {
                 return {};
             }
+            curr_token = get_next_token();
         }
 
-        processing_tokens.push_back(std::move(curr_arg_tokens));
+        if (!curr_arg_tokens.empty()) {
+            processing_tokens.push_back(std::move(curr_arg_tokens));
+        }
 
         if (curr_token.type == eTokenType::Bracket_End) {
             break;
