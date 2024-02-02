@@ -66,7 +66,9 @@ glslx::Preprocessor::Preprocessor(std::string_view source, const preprocessor_co
 
 glslx::Preprocessor::~Preprocessor() = default;
 
-std::string_view glslx::Preprocessor::Process() {
+std::string glslx::Preprocessor::Process() {
+    std::string output;
+
     token_t curr_token = GetNextToken();
     while (curr_token.type != eTokenType::End) {
         switch (curr_token.type) {
@@ -144,7 +146,7 @@ std::string_view glslx::Preprocessor::Process() {
                 tokens_queue_.insert(begin(tokens_queue_), begin(expanded), end(expanded));
             } else {
                 if (!ShouldTokenBeSkipped()) {
-                    output_.append(curr_token.raw_view);
+                    output.append(curr_token.raw_view);
                 }
             }
         } break;
@@ -155,24 +157,24 @@ std::string_view glslx::Preprocessor::Process() {
                 end(context_stack_));
             break;
         case eTokenType::Concat_Op:
-            while (output_.back() == ' ') {
-                output_.pop_back();
+            while (output.back() == ' ') {
+                output.pop_back();
             }
 
             while ((curr_token = GetNextToken()).type == eTokenType::Space)
                 ; // skip space tokens
 
             if (!ShouldTokenBeSkipped()) {
-                output_.append(curr_token.raw_view);
+                output.append(curr_token.raw_view);
             }
             break;
         case eTokenType::Stringize_Op:
-            output_.append((curr_token = GetNextToken()).raw_view);
+            output.append((curr_token = GetNextToken()).raw_view);
             break;
         case eTokenType::PassthroughDirective:
             if (!ShouldTokenBeSkipped()) {
-                output_.append("#");
-                output_.append(curr_token.raw_view);
+                output.append("#");
+                output.append(curr_token.raw_view);
             }
             break;
         default:
@@ -180,7 +182,7 @@ std::string_view glslx::Preprocessor::Process() {
                 break;
             }
             if (!ShouldTokenBeSkipped()) {
-                output_.append(curr_token.raw_view);
+                output.append(curr_token.raw_view);
             }
         }
         curr_token = GetNextToken();
@@ -189,7 +191,7 @@ std::string_view glslx::Preprocessor::Process() {
             curr_token = GetNextToken();
         }
     }
-    return output_;
+    return output;
 }
 
 void glslx::Preprocessor::ReadLine(std::string &out_line) {
