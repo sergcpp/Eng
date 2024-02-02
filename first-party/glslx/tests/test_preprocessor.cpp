@@ -570,6 +570,33 @@ void test_preprocessor() {
         require(HasMacro(preprocessor, "PASSED_1"));
         require(!HasMacro(preprocessor, "FAILED_1"));
     }
+    { // expressions (3)
+        static const char source[] = R"(
+#define A 1
+#define C 0
+
+#if defined(B) || defined(A)
+	#define PASSED_0
+#else
+	#define FAILED_0
+#endif
+
+#if defined(C) && defined(A)
+	#define PASSED_1
+#else
+	#define FAILED_2
+#endif
+)";
+        glslx::Preprocessor preprocessor(source);
+        preprocessor.Process();
+        require(preprocessor.error().empty());
+
+        require(HasMacro(preprocessor, "PASSED_0"));
+        require(!HasMacro(preprocessor, "FAILED_0"));
+
+        require(HasMacro(preprocessor, "PASSED_1"));
+        require(!HasMacro(preprocessor, "FAILED_1"));
+    }
     { // ???
         static const char source[] = R"(
 #ifndef FOO_H
@@ -612,9 +639,9 @@ int main(int argc, char** argv) {
 )";
         glslx::preprocessor_config_t config;
         config.strip_comments = true;
-        glslx::Preprocessor preprocessor2(source, config);
-        require(preprocessor2.Process() == expected);
-        require(preprocessor2.error().empty());
+        glslx::Preprocessor preprocessor(source, config);
+        require(preprocessor.Process() == expected);
+        require(preprocessor.error().empty());
     }
 
     printf("OK\n");

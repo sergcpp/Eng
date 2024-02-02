@@ -927,6 +927,10 @@ int glslx::Preprocessor::EvaluateExpression(Span<const token_t> _tokens) {
                     return 0;
                 }
 
+                do {
+                    tokens.erase(tokens.cbegin());
+                } while (tokens.front().type == eTokenType::Space);
+
                 return int(std::find_if(cbegin(macros_), cend(macros_), [&identifier_token](auto &&item) {
                                return item.name == identifier_token.raw_view;
                            }) != cend(macros_));
@@ -974,9 +978,9 @@ int glslx::Preprocessor::EvaluateExpression(Span<const token_t> _tokens) {
         }
 
         bool result_apply = false;
-        token_t currToken;
-        while ((currToken = tokens.front()).type == eTokenType::Not || currToken.type == eTokenType::Not) {
-            switch (currToken.type) {
+        token_t curr_token;
+        while ((curr_token = tokens.front()).type == eTokenType::Not || curr_token.type == eTokenType::Not) {
+            switch (curr_token.type) {
             case eTokenType::Minus:
                 // TODO fix this
                 break;
@@ -1094,7 +1098,7 @@ int glslx::Preprocessor::EvaluateExpression(Span<const token_t> _tokens) {
         return result;
     };
 
-    auto eval_end = [&tokens, &eval_eq]() {
+    auto eval_and = [&tokens, &eval_eq]() {
         int result = eval_eq();
 
         while (tokens.front().type == eTokenType::Space) {
@@ -1103,18 +1107,18 @@ int glslx::Preprocessor::EvaluateExpression(Span<const token_t> _tokens) {
 
         while (tokens.front().type == eTokenType::And) {
             tokens.erase(tokens.cbegin());
-            result = result && eval_eq();
+            result &= eval_eq();
         }
 
         return result;
     };
 
-    auto eval_or = [&tokens, &eval_end]() {
-        int result = eval_end();
+    auto eval_or = [&tokens, &eval_and]() {
+        int result = eval_and();
 
         while (tokens.front().type == eTokenType::Or) {
             tokens.erase(tokens.cbegin());
-            result = result || eval_end();
+            result |= eval_and();
         }
 
         return result;
