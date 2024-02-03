@@ -613,6 +613,15 @@ void glslx::WriterGLSL::Write_Precision(ePrecision precision, std::ostream &out_
 }
 
 void glslx::WriterGLSL::Write_GlobalVariable(const ast_global_variable *variable, std::ostream &out_stream) {
+    if (std::find(begin(written_globals_), end(written_globals_), variable) != end(written_globals_)) {
+        return;
+    }
+
+    if (variable->is_invariant && variable->is_hidden) {
+        out_stream << "invariant " << variable->name << ";\n";
+        return;
+    }
+
     if (variable->is_constant) {
         out_stream << "const ";
     }
@@ -624,11 +633,6 @@ void glslx::WriterGLSL::Write_GlobalVariable(const ast_global_variable *variable
 
     if (variable->is_invariant) {
         out_stream << "invariant ";
-        if (variable->is_hidden) {
-            Write_Variable(variable, out_stream);
-            out_stream << ";\n";
-            return;
-        }
     }
 
     switch (variable->interpolation) {
@@ -804,7 +808,20 @@ void glslx::WriterGLSL::Write_InterfaceBlock(const ast_interface_block *block, s
         out_stream << ";\n";
     }
     --nest_level_;
-    out_stream << "};\n";
+    out_stream << "}";
+    bool first = true;
+    for (int i = 0; i < int(tu_->globals.size()); ++i) {
+        if (tu_->globals[i]->base_type == block) {
+            if (first) {
+                out_stream << " " << tu_->globals[i]->name;
+            } else {
+                out_stream << ", " << tu_->globals[i]->name;
+            }
+            first = false;
+            written_globals_.push_back(tu_->globals[i]);
+        }
+    }
+    out_stream << ";\n";
 }
 
 void glslx::WriterGLSL::Write_VersionDirective(const ast_version_directive *version, std::ostream &out_stream) {
@@ -848,6 +865,8 @@ void glslx::WriterGLSL::Write_DefaultPrecision(const ast_default_precision *prec
 }
 
 void glslx::WriterGLSL::Write(const TrUnit *tu, std::ostream &out_stream) {
+    tu_ = tu;
+
     if (tu->version) {
         Write_VersionDirective(tu->version, out_stream);
     }

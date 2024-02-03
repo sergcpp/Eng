@@ -60,20 +60,16 @@ void test_parser() {
                                       "};\n"
                                       "uniform uniform_block {\n"
                                       "    float x;\n"
-                                      "};\n"
+                                      "} uniform_data;\n"
                                       "in input_block {\n"
                                       "    float y;\n"
-                                      "};\n"
+                                      "} input_data;\n"
                                       "out output_block {\n"
                                       "    float z;\n"
-                                      "};\n"
+                                      "} output_data;\n"
                                       "buffer buffer_block {\n"
                                       "    float w;\n"
-                                      "};\n"
-                                      "uniform_block uniform_data;\n"
-                                      "input_block input_data;\n"
-                                      "output_block output_data;\n"
-                                      "buffer_block buffer_data;\n";
+                                      "} buffer_data;\n";
 
         glslx::Parser parser(source, "interface_blocks.glsl");
         std::unique_ptr<glslx::TrUnit> tr_unit = parser.Parse(glslx::eTrUnitType::Compute);
@@ -783,7 +779,7 @@ void test_parser() {
         static const char source[] = "invariant gl_Position;\n"
                                      "out vec3 Color;\n"
                                      "invariant Color;\n";
-        static const char *expected = "out invariant vec4 gl_Position;\n"
+        static const char *expected = "invariant gl_Position;\n"
                                       "out invariant vec3 Color;\n";
 
         glslx::Parser parser(source, "default_precision.glsl");
