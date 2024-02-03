@@ -898,6 +898,16 @@ bool glslx::Parser::is_constant(const ast_expression *expression) {
     } else if (expression->type == eExprType::UnaryMinus || expression->type == eExprType::UnaryPlus ||
                expression->type == eExprType::BitNot) {
         return is_constant(static_cast<const ast_unary_expression *>(expression)->operand);
+    } else if (expression->type == eExprType::ConstructorCall) {
+        const ast_constructor_call *call = static_cast<const ast_constructor_call *>(expression);
+        if (!call->type->builtin) {
+            return false;
+        }
+        bool ret = true;
+        for (int i = 0; i < int(call->parameters.size()); ++i) {
+            ret &= is_constant(call->parameters[i]);
+        }
+        return ret;
     } else if (expression->type == eExprType::Operation) {
         const ast_operation_expression *operation = static_cast<const ast_operation_expression *>(expression);
         return is_constant(operation->operand1) && is_constant(operation->operand2);
@@ -1181,6 +1191,8 @@ glslx::ast_constant_expression *glslx::Parser::Evaluate(ast_expression *expressi
             break;
         }
     } else if (expression->type == eExprType::Sequence) {
+        return expression;
+    } else if (expression->type == eExprType::ConstructorCall) {
         return expression;
     } else if (expression->type == eExprType::ArraySpecifier) {
         ast_array_specifier *arr_specifier = static_cast<ast_array_specifier *>(expression);
@@ -1839,7 +1851,26 @@ glslx::ast_constant_expression *glslx::Parser::ParseArraySize() {
 }
 
 glslx::ast_expression *glslx::Parser::ParseArraySpecifier(Bitmask<eEndCondition> condition) {
-    if (is_type(eTokType::Scope_Begin)) {
+    bool accept_paren = false;
+    if (is_builtin()) {
+        const token_t peek = lexer_.Peek();
+        if (peek.type == eTokType::Operator && peek.as_operator == eOperator::bracket_begin) {
+            if (!next()) {
+                return nullptr;
+            }
+            if (!expect(eOperator::bracket_begin)) {
+                return nullptr;
+            }
+            if (!expect(eTokType::Const_int)) {
+                return nullptr;
+            }
+            if (!expect(eOperator::bracket_end)) {
+                return nullptr;
+            }
+            accept_paren = true;
+        }
+    }
+    if (is_type(eTokType::Scope_Begin) || (accept_paren && is_operator(eOperator::parenthesis_begin))) {
         if (!next()) {
             return nullptr;
         }
@@ -1847,8 +1878,9 @@ glslx::ast_expression *glslx::Parser::ParseArraySpecifier(Bitmask<eEndCondition>
         if (!arr_specifier) {
             return nullptr;
         }
-        while (!is_type(eTokType::Scope_End)) {
-            ast_expression *next_expression = ParseArraySpecifier(condition | eEndCondition::Comma);
+        while (!is_type(eTokType::Scope_End) && !is_operator(eOperator::parenthesis_end)) {
+            ast_expression *next_expression =
+                ParseArraySpecifier(condition | eEndCondition::Parenthesis | eEndCondition::Comma);
             if (!next_expression) {
                 return nullptr;
             }
@@ -1859,7 +1891,10 @@ glslx::ast_expression *glslx::Parser::ParseArraySpecifier(Bitmask<eEndCondition>
                 }
             }
         }
-        if (!expect(eTokType::Scope_End)) {
+        if (!is_type(eTokType::Scope_End) && !is_operator(eOperator::parenthesis_end)) {
+            return nullptr;
+        }
+        if (!next()) {
             return nullptr;
         }
         return arr_specifier;
