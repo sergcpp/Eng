@@ -5,8 +5,8 @@
 ;
 [subrepo]
 	remote = glslx
-	branch = fixes_02_02
-	commit = 1ef650bad3fab846176b5f12b60db472eba1c3a5
-	parent = 1fca622fd2ae1d4d1716223ab5c33f24c67acf0a
+	branch = fixes_03_02
+	commit = f02b18da52819ff1e09d20b0804688c37f070e98
+	parent = d7b761504af26784caf34d97a74304fc4fcf2a2e
 	method = merge
 	cmdver = 0.4.6
