@@ -232,7 +232,7 @@ void glslx::Prune_Unreachable(TrUnit *tu) {
     // keep all uniforms
     for (ast_global_variable *var : tu->globals) {
         if (var->storage == eStorage::Uniform) {
-            var->gc = 1;
+            Mark_Variable(var);
         }
     }
 
