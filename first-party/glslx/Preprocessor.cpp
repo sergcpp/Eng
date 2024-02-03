@@ -527,7 +527,9 @@ bool glslx::Preprocessor::CreateMacroDefinition() {
             ; // skip space tokens
 
         while (curr_token.type != eTokenType::Newline) {
-            value.push_back(curr_token);
+            if (curr_token.type != eTokenType::Comment) {
+                value.push_back(curr_token);
+            }
             curr_token = GetNextToken();
         }
 

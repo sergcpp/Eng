@@ -766,7 +766,10 @@ bool glslx::Parser::ParseLayout(top_level_t &current) {
         }
         while (!is_operator(eOperator::parenthesis_end)) {
             ast_layout_qualifier *qualifier = astnew<ast_layout_qualifier>();
-            if (!qualifier || (!is_type(eTokType::Identifier) && !is_keyword(eKeyword::K_shared))) {
+            if (!qualifier) {
+                return false;
+            }
+            if (!is_type(eTokType::Identifier) && !is_keyword(eKeyword::K_shared)) {
                 return false;
             }
 
