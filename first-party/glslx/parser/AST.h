@@ -304,6 +304,7 @@ enum class eStatement {
     Break,
     Return,
     Discard,
+    ExtJump,
     _Count
 };
 
@@ -424,6 +425,12 @@ struct ast_return_statement : ast_jump_statement {
 
 struct ast_discard_statement : ast_jump_statement {
     ast_discard_statement() noexcept : ast_jump_statement(eStatement::Discard) {}
+};
+
+struct ast_ext_jump_statement : ast_jump_statement {
+    eKeyword keyword;
+
+    ast_ext_jump_statement(eKeyword _keyword) noexcept : ast_jump_statement(eStatement::ExtJump), keyword(_keyword) {}
 };
 
 enum class eExprType {

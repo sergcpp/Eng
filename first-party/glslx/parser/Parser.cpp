@@ -2127,6 +2127,8 @@ glslx::ast_statement *glslx::Parser::ParseStatement() {
         return ParseDiscardStatement();
     } else if (is_keyword(eKeyword::K_return)) {
         return ParseReturnStatement();
+    } else if (is_keyword(eKeyword::K_ignoreIntersectionEXT) || is_keyword(eKeyword::K_terminateRayEXT)) {
+        return ParseExtJumpStatement();
     } else if (is_type(eTokType::Semicolon)) {
         return astnew<ast_empty_statement>();
     } else {
@@ -2505,6 +2507,21 @@ glslx::ast_return_statement *glslx::Parser::ParseReturnStatement() {
             fatal("expected semicolon after return statement");
             return nullptr;
         }
+    }
+    return statement;
+}
+
+glslx::ast_ext_jump_statement *glslx::Parser::ParseExtJumpStatement() {
+    ast_ext_jump_statement *statement = astnew<ast_ext_jump_statement>(tok_.as_keyword);
+    if (!statement) {
+        return nullptr;
+    }
+    if (!next()) { // skip 'return'
+        return nullptr;
+    }
+    if (!is_type(eTokType::Semicolon)) {
+        fatal("expected semicolon after discard statement");
+        return nullptr;
     }
     return statement;
 }

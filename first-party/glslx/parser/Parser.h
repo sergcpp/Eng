@@ -142,6 +142,7 @@ class Parser {
     ast_break_statement *ParseBreakStatement();
     ast_discard_statement *ParseDiscardStatement();
     ast_return_statement *ParseReturnStatement();
+    ast_ext_jump_statement *ParseExtJumpStatement();
     ast_for_statement *ParseForStatement(const ctrl_flow_params_t &ctrl_flow);
     ast_do_statement *ParseDoStatement(const ctrl_flow_params_t &ctrl_flow);
     ast_while_statement *ParseWhileStatement(const ctrl_flow_params_t &ctrl_flow);
