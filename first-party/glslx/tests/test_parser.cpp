@@ -766,18 +766,6 @@ void test_parser() {
         glslx::WriterGLSL().Write(tr_unit.get(), ss);
         require(ss.str() == expected);
     }
-    { // line directive
-        static const char source[] = "\n"
-                                     "\n"
-                                     "\n"
-                                     "#line 42\n"
-                                     "#error 1111\n";
-
-        glslx::Parser parser(source, "line_directive.glsl");
-        std::unique_ptr<glslx::TrUnit> tr_unit = parser.Parse(glslx::eTrUnitType::Compute);
-        require(tr_unit == nullptr);
-        require(strcmp(parser.error(), "line_directive.glsl:43:12: error: 1111") == 0);
-    }
     { // default precision qualifiers
         static const char source[] = "precision highp int;\n"
                                      "precision mediump float;\n";
@@ -789,8 +777,34 @@ void test_parser() {
 
         std::stringstream ss;
         glslx::WriterGLSL().Write(tr_unit.get(), ss);
-        auto debug = ss.str();
         require(ss.str() == expected);
+    }
+    { // invariant
+        static const char source[] = "invariant gl_Position;\n"
+                                     "out vec3 Color;\n"
+                                     "invariant Color;\n";
+        static const char *expected = "out invariant vec4 gl_Position;\n"
+                                      "out invariant vec3 Color;\n";
+
+        glslx::Parser parser(source, "default_precision.glsl");
+        std::unique_ptr<glslx::TrUnit> tr_unit = parser.Parse(glslx::eTrUnitType::Vertex);
+        require_fatal(tr_unit != nullptr);
+
+        std::stringstream ss;
+        glslx::WriterGLSL().Write(tr_unit.get(), ss);
+        require(ss.str() == expected);
+    }
+    { // line directive
+        static const char source[] = "\n"
+                                     "\n"
+                                     "\n"
+                                     "#line 42\n"
+                                     "#error 1111\n";
+
+        glslx::Parser parser(source, "line_directive.glsl");
+        std::unique_ptr<glslx::TrUnit> tr_unit = parser.Parse(glslx::eTrUnitType::Compute);
+        require(tr_unit == nullptr);
+        require(strcmp(parser.error(), "line_directive.glsl:43:12: error: 1111") == 0);
     }
     { // first character invalid
         const char source[] = "`\n";

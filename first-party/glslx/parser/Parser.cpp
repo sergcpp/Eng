@@ -460,6 +460,7 @@ bool glslx::Parser::ParseTopLevelItem(top_level_t &level, top_level_t *continuat
         level.interpolation = next.interpolation;
         level.precision = next.precision;
         level.memory_flags |= next.memory_flags;
+        level.is_invariant = next.is_invariant;
 
         for (int i = 0; i < int(next.layout_qualifiers.size()); ++i) {
             for (int j = 0; j < int(level.layout_qualifiers.size()); ++j) {
@@ -478,9 +479,29 @@ bool glslx::Parser::ParseTopLevelItem(top_level_t &level, top_level_t *continuat
 
     if (!continuation && !level.type) {
         if (is_type(eTokType::Identifier)) {
-            level.type = FindType(tok_.as_identifier);
-            if (!next()) { // skip identifier
-                return false;
+            const token_t peek = lexer_.Peek();
+            if (level.is_invariant && peek.type == eTokType::Semicolon) {
+                ast_variable *var = FindVariable(tok_.as_identifier);
+                if (!var) {
+                    fatal("variable not found");
+                    return false;
+                }
+                if (var->type != eVariableType::Global) {
+                    fatal("expected global variable");
+                    return false;
+                }
+                ast_global_variable *gvar = static_cast<ast_global_variable *>(var);
+                gvar->is_invariant = true;
+
+                if (!next()) { // skip identifier
+                    return false;
+                }
+                return true;
+            } else {
+                level.type = FindType(tok_.as_identifier);
+                if (!next()) { // skip identifier
+                    return false;
+                }
             }
         } else {
             level.type = ParseBuiltin();

@@ -624,6 +624,11 @@ void glslx::WriterGLSL::Write_GlobalVariable(const ast_global_variable *variable
 
     if (variable->is_invariant) {
         out_stream << "invariant ";
+        if (variable->is_hidden) {
+            Write_Variable(variable, out_stream);
+            out_stream << ";\n";
+            return;
+        }
     }
 
     switch (variable->interpolation) {
@@ -856,7 +861,7 @@ void glslx::WriterGLSL::Write(const TrUnit *tu, std::ostream &out_stream) {
         if (!tu->globals[i]->base_type->builtin) {
             continue;
         }
-        if (!tu->globals[i]->is_hidden || config_.write_hidden) {
+        if (!tu->globals[i]->is_hidden || tu->globals[i]->is_invariant || config_.write_hidden) {
             Write_GlobalVariable(tu->globals[i], out_stream);
         }
     }
