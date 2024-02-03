@@ -2284,6 +2284,11 @@ glslx::ast_declaration_statement *glslx::Parser::ParseDeclarationStatement(const
         }
     }
 
+    ePrecision precision = ePrecision::None;
+    if (!ParsePrecision(precision)) {
+        return nullptr;
+    }
+
     ast_type *type = nullptr;
     if (is_builtin()) {
         type = ParseBuiltin();
@@ -2385,6 +2390,7 @@ glslx::ast_declaration_statement *glslx::Parser::ParseDeclarationStatement(const
         }
 
         variable->is_const = is_const;
+        variable->precision = precision;
         variable->base_type = type;
         variable->name = strnew(name);
         statement->variables.push_back(variable);
@@ -2666,12 +2672,12 @@ glslx::ast_type *glslx::Parser::GetType(ast_expression *expression) {
 }
 
 glslx::ast_global_variable *glslx::Parser::AddHiddenGlobal(ast_builtin *type, const char *name, const bool is_array,
-                                                           const ePrecision precision) {
+                                                           const eStorage storage, const ePrecision precision) {
     ast_global_variable *var = astnew<ast_global_variable>();
     if (!var) {
         return nullptr;
     }
-    var->storage = eStorage::In;
+    var->storage = storage;
     var->is_array = is_array;
     var->is_hidden = true;
     var->base_type = type;
@@ -2730,10 +2736,10 @@ bool glslx::Parser::InitSpecialGlobals(const eTrUnitType type) {
         res &= AddHiddenGlobal(int_type, "gl_DrawID") != nullptr;
         res &= AddHiddenGlobal(int_type, "gl_BaseVertex") != nullptr;
         res &= AddHiddenGlobal(int_type, "gl_BaseInstance") != nullptr;
-        res &= AddHiddenGlobal(vec4, "gl_Position") != nullptr;
-        res &= AddHiddenGlobal(float_type, "gl_PointSize") != nullptr;
-        res &= AddHiddenGlobal(float_type, "gl_ClipDistance", true) != nullptr;
-        res &= AddHiddenGlobal(float_type, "gl_CullDistance", true) != nullptr;
+        res &= AddHiddenGlobal(vec4, "gl_Position", false, eStorage::Out) != nullptr;
+        res &= AddHiddenGlobal(float_type, "gl_PointSize", false, eStorage::Out) != nullptr;
+        res &= AddHiddenGlobal(float_type, "gl_ClipDistance", true, eStorage::Out) != nullptr;
+        res &= AddHiddenGlobal(float_type, "gl_CullDistance", true, eStorage::Out) != nullptr;
     } else if (type == eTrUnitType::TessControl) {
         res &= AddHiddenGlobal(int_type, "gl_PatchVerticesIn") != nullptr;
         res &= AddHiddenGlobal(int_type, "gl_PrimitiveID") != nullptr;
@@ -2773,13 +2779,13 @@ bool glslx::Parser::InitSpecialGlobals(const eTrUnitType type) {
     // https://github.com/KhronosGroup/GLSL/blob/master/extensions/khr/GL_KHR_shader_subgroup.txt
     if (type == eTrUnitType::Compute || type == eTrUnitType::Vertex || type == eTrUnitType::Geometry ||
         type == eTrUnitType::TessControl || type == eTrUnitType::TessEvaluation || type == eTrUnitType::Fragment) {
-        res &= AddHiddenGlobal(uint, "gl_SubgroupSize", false, ePrecision::Mediump) != nullptr;
-        res &= AddHiddenGlobal(uint, "gl_SubgroupInvocationID", false, ePrecision::Mediump) != nullptr;
-        res &= AddHiddenGlobal(uvec4, "gl_SubgroupEqMask", false, ePrecision::Highp) != nullptr;
-        res &= AddHiddenGlobal(uvec4, "gl_SubgroupGeMask", false, ePrecision::Highp) != nullptr;
-        res &= AddHiddenGlobal(uvec4, "gl_SubgroupGtMask", false, ePrecision::Highp) != nullptr;
-        res &= AddHiddenGlobal(uvec4, "gl_SubgroupLeMask", false, ePrecision::Highp) != nullptr;
-        res &= AddHiddenGlobal(uvec4, "gl_SubgroupLtMask", false, ePrecision::Highp) != nullptr;
+        res &= AddHiddenGlobal(uint, "gl_SubgroupSize", false, eStorage::In, ePrecision::Mediump) != nullptr;
+        res &= AddHiddenGlobal(uint, "gl_SubgroupInvocationID", false, eStorage::In, ePrecision::Mediump) != nullptr;
+        res &= AddHiddenGlobal(uvec4, "gl_SubgroupEqMask", false, eStorage::In, ePrecision::Highp) != nullptr;
+        res &= AddHiddenGlobal(uvec4, "gl_SubgroupGeMask", false, eStorage::In, ePrecision::Highp) != nullptr;
+        res &= AddHiddenGlobal(uvec4, "gl_SubgroupGtMask", false, eStorage::In, ePrecision::Highp) != nullptr;
+        res &= AddHiddenGlobal(uvec4, "gl_SubgroupLeMask", false, eStorage::In, ePrecision::Highp) != nullptr;
+        res &= AddHiddenGlobal(uvec4, "gl_SubgroupLtMask", false, eStorage::In, ePrecision::Highp) != nullptr;
     }
 
     // https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GLSL_EXT_ray_query.txt

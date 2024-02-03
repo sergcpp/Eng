@@ -241,6 +241,7 @@ struct ast_variable : ast_node<ast_variable> {
     bool is_array = false;
     bool is_precise = false;
     eVariableType type;
+    ePrecision precision = ePrecision::None;
     std::vector<ast_constant_expression *> array_sizes;
 
     ast_variable(eVariableType _type) noexcept : type(_type) {}
@@ -255,7 +256,6 @@ struct ast_function_variable : ast_variable {
 
 struct ast_function_parameter : ast_variable {
     Bitmask<eParamQualifier> qualifiers = eParamQualifier::None;
-    ePrecision precision = ePrecision::None;
 
     ast_function_parameter() noexcept : ast_variable(eVariableType::Parameter) {}
 };
@@ -264,7 +264,6 @@ struct ast_global_variable : ast_variable {
     eStorage storage = eStorage::None;
     eAuxStorage aux_storage = eAuxStorage::None;
     Bitmask<eMemory> memory_flags;
-    ePrecision precision = ePrecision::None;
     eInterpolation interpolation = eInterpolation::None;
     bool is_invariant = false;
     bool is_constant = false;

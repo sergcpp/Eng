@@ -698,24 +698,24 @@ void test_parser() {
     }
     { // vector stuff
         static const char source[] = "const vec4 g = {1.0, 2.0, 3.0, 4.0};\n"
-                                     "const vec2 p[2] = vec2[2](vec2(-0.5, 0.0),\n"
-                                     "                          vec2(0.0, 0.5));\n"
+                                     "const highp vec2 p[2] = vec2[2](vec2(-0.5, 0.0),\n"
+                                     "                                vec2(0.0, 0.5));\n"
                                      "vec4 f() { return g; }\n"
                                      "float func(const vec3 color, float x, float y) {\n"
                                      "    vec2 s = {x, y};\n"
-                                     "    float t = f()[2];\n"
+                                     "    highp float t = f()[2];\n"
                                      "    vec3 a = (vec3(1.0) - x) / (vec3(1.0) + x);\n"
                                      "    return 0.212671 * color[0] + 0.715160 * color.y + 0.072169 * color.z;\n"
                                      "}\n";
         static const char expected[] =
             "const vec4 g = { 1.0, 2.0, 3.0, 4.0 };\n"
-            "const vec2 p[2] = { vec2(-0.5, 0.0), vec2(0.0, 0.5) };\n"
+            "const highp vec2 p[2] = { vec2(-0.5, 0.0), vec2(0.0, 0.5) };\n"
             "vec4 f() {\n"
             "    return g;\n"
             "}\n"
             "float func(const vec3 color, float x, float y) {\n"
             "    vec2 s = { x, y };\n"
-            "    float t = f()[2];\n"
+            "    highp float t = f()[2];\n"
             "    vec3 a = ((vec3(1.0) - x) / (vec3(1.0) + x));\n"
             "    return (((0.212670997 * color[0]) + (0.715160012 * color.y)) + (0.0721689984 * color.z));\n"
             "}\n";

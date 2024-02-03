@@ -469,14 +469,16 @@ void glslx::WriterGLSL::Write_ArraySize(Span<const ast_constant_expression *cons
 }
 
 void glslx::WriterGLSL::Write_Variable(const ast_variable *variable, std::ostream &out_stream, const bool name_only) {
-    if (variable->is_precise) {
-        out_stream << "precise ";
-    }
-
     if (name_only) {
         out_stream << variable->name;
         return;
     }
+
+    if (variable->is_precise) {
+        out_stream << "precise ";
+    }
+
+    Write_Precision(variable->precision, out_stream);
 
     Write_Type(variable->base_type, out_stream);
     out_stream << " " << variable->name;
@@ -619,7 +621,6 @@ void glslx::WriterGLSL::Write_GlobalVariable(const ast_global_variable *variable
     Write_Storage(variable->storage, out_stream);
     Write_AuxStorage(variable->aux_storage, out_stream);
     Write_Memory(variable->memory_flags, out_stream);
-    Write_Precision(variable->precision, out_stream);
 
     if (variable->is_invariant) {
         out_stream << "invariant ";

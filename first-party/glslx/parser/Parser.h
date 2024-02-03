@@ -74,6 +74,7 @@ class Parser {
     bool expect(eOperator op);
 
     ast_global_variable *AddHiddenGlobal(ast_builtin *type, const char *name, bool is_array = false,
+                                         eStorage storage = eStorage::In,
                                          ePrecision precision = ePrecision::None);
     bool InitSpecialGlobals(eTrUnitType type);
 
