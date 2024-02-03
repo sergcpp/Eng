@@ -1455,6 +1455,14 @@ glslx::ast_function *glslx::Parser::ParseFunction(const top_level_t &parse) {
         }
     }
 
+    if (function->parameters.size() == 1 && function->parameters[0]->base_type->builtin) {
+        ast_builtin *type = static_cast<ast_builtin *>(function->parameters[0]->base_type);
+        if (type->type == eKeyword::K_void) {
+            // drop single void parameter
+            function->parameters.clear();
+        }
+    }
+
     if (strcmp(function->name, "main") == 0) {
         if (!function->parameters.empty()) {
             fatal("'main' cannot have parameters");
