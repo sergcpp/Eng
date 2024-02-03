@@ -1613,10 +1613,10 @@ glslx::ast_expression *glslx::Parser::ParseUnary(const Bitmask<eEndCondition> co
             if (!expression) {
                 return nullptr;
             }
-            ast_type *type = GetType(operand);
+            const ast_type *type = Evaluate_ExpressionResultType(ast_.get(), operand);
             if (type && !type->builtin) {
                 ast_variable *field = nullptr;
-                ast_struct *kind = static_cast<ast_struct *>(type);
+                const ast_struct *kind = static_cast<const ast_struct *>(type);
                 for (int i = 0; i < int(kind->fields.size()); ++i) {
                     if (strcmp(kind->fields[i]->name, tok_.as_identifier) == 0) {
                         field = kind->fields[i];

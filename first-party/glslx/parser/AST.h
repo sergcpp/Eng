@@ -202,14 +202,12 @@ struct ast_struct : ast_type {
     ast_struct() noexcept : ast_type(false) {}
 };
 
-struct ast_interface_block : ast_type {
-    const char *name = nullptr;
+struct ast_interface_block : ast_struct {
     eStorage storage = eStorage::None;
     Bitmask<eMemory> memory_flags;
-    std::vector<ast_variable *> fields;
     std::vector<ast_layout_qualifier *> layout_qualifiers;
 
-    ast_interface_block() noexcept : ast_type(false) {}
+    ast_interface_block() noexcept {}
 };
 
 struct ast_version_directive : ast_type {
