@@ -161,5 +161,5 @@ int is_matrix_type(const ast_type *type);
 
 bool is_same_type(const ast_type *type1, const ast_type *type2);
 
-const ast_type *Evaluate_ExpressionResultType(const TrUnit *tu, const ast_expression *expression);
+const ast_type *Evaluate_ExpressionResultType(const TrUnit *tu, const ast_expression *expression, int &array_dims);
 } // namespace glslx

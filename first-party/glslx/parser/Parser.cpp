@@ -257,7 +257,9 @@ std::unique_ptr<glslx::TrUnit> glslx::Parser::Parse(const eTrUnitType type) {
                 } else {
                     bool args_match = true;
                     for (int i = 0; i < int(func->parameters.size()); ++i) {
-                        const ast_type *type = Evaluate_ExpressionResultType(ast_.get(), call->parameters[i]);
+                        int array_dims = 0;
+                        const ast_type *type =
+                            Evaluate_ExpressionResultType(ast_.get(), call->parameters[i], array_dims);
                         if (!type) {
                             args_match = false;
                             break;
@@ -1613,7 +1615,8 @@ glslx::ast_expression *glslx::Parser::ParseUnary(const Bitmask<eEndCondition> co
             if (!expression) {
                 return nullptr;
             }
-            const ast_type *type = Evaluate_ExpressionResultType(ast_.get(), operand);
+            int array_dims = 0;
+            const ast_type *type = Evaluate_ExpressionResultType(ast_.get(), operand, array_dims);
             if (type && !type->builtin) {
                 ast_variable *field = nullptr;
                 const ast_struct *kind = static_cast<const ast_struct *>(type);
@@ -3173,7 +3176,9 @@ bool is_same_type(const ast_type *_type1, const ast_type *_type2) {
 }
 } // namespace glslx
 
-const glslx::ast_type *glslx::Evaluate_ExpressionResultType(const TrUnit *tu, const ast_expression *expression) {
+const glslx::ast_type *glslx::Evaluate_ExpressionResultType(const TrUnit *tu, const ast_expression *expression,
+                                                            int &array_dims) {
+    array_dims = 0;
     switch (expression->type) {
     case eExprType::IntConstant:
         return &g_int_type;
@@ -3186,22 +3191,28 @@ const glslx::ast_type *glslx::Evaluate_ExpressionResultType(const TrUnit *tu, co
     case eExprType::BoolConstant:
         return &g_bool_type;
     case eExprType::VariableIdentifier: {
-        return static_cast<const ast_variable_identifier *>(expression)->variable->base_type;
+        ast_variable *var = static_cast<const ast_variable_identifier *>(expression)->variable;
+        array_dims = var->array_sizes.size();
+        return var->base_type;
     }
     case eExprType::FieldOrSwizzle: {
         const auto *expr = static_cast<const ast_field_or_swizzle *>(expression);
         if (expr->field) {
-            return Evaluate_ExpressionResultType(tu, expr->field);
+            return Evaluate_ExpressionResultType(tu, expr->field, array_dims);
         } else {
-            const ast_type *operand_type = Evaluate_ExpressionResultType(tu, expr->operand);
+            const ast_type *operand_type = Evaluate_ExpressionResultType(tu, expr->operand, array_dims);
             if (operand_type) {
                 return to_vector_type(to_scalar_type(operand_type), int(strlen(expr->name)));
             }
         }
     } break;
     case eExprType::ArraySubscript: {
-        const ast_type *operand_type =
-            Evaluate_ExpressionResultType(tu, static_cast<const ast_array_subscript *>(expression)->operand);
+        const ast_type *operand_type = Evaluate_ExpressionResultType(
+            tu, static_cast<const ast_array_subscript *>(expression)->operand, array_dims);
+        if (array_dims > 0) {
+            --array_dims;
+            return operand_type;
+        }
         if (operand_type && get_vector_size(operand_type) > 1) {
             return to_scalar_type(operand_type);
         }
@@ -3212,7 +3223,8 @@ const glslx::ast_type *glslx::Evaluate_ExpressionResultType(const TrUnit *tu, co
 
         std::vector<const ast_type *> arg_types;
         for (int i = 0; i < int(func_call->parameters.size()); ++i) {
-            arg_types.push_back(Evaluate_ExpressionResultType(tu, func_call->parameters[i]));
+            int array_dims = 0;
+            arg_types.push_back(Evaluate_ExpressionResultType(tu, func_call->parameters[i], array_dims));
             if (!arg_types.back()) {
                 return nullptr;
             }
@@ -3256,7 +3268,8 @@ const glslx::ast_type *glslx::Evaluate_ExpressionResultType(const TrUnit *tu, co
     case eExprType::LogicalNot:
     case eExprType::PrefixIncrement:
     case eExprType::PrefixDecrement:
-        return Evaluate_ExpressionResultType(tu, static_cast<const ast_unary_expression *>(expression)->operand);
+        return Evaluate_ExpressionResultType(tu, static_cast<const ast_unary_expression *>(expression)->operand,
+                                             array_dims);
     case eExprType::Assign:
         /*if (nested) {
             out_stream << "(";
@@ -3268,16 +3281,17 @@ const glslx::ast_type *glslx::Evaluate_ExpressionResultType(const TrUnit *tu, co
         break;*/
         break;
     case eExprType::Sequence:
-        return Evaluate_ExpressionResultType(tu, static_cast<const ast_sequence_expression *>(expression)->operand1);
+        return Evaluate_ExpressionResultType(tu, static_cast<const ast_sequence_expression *>(expression)->operand1,
+                                             array_dims);
     case eExprType::Operation: {
         const auto *operation = static_cast<const ast_operation_expression *>(expression);
-        const ast_type *op1_type = Evaluate_ExpressionResultType(tu, operation->operand1);
-        const ast_type *op2_type = Evaluate_ExpressionResultType(tu, operation->operand2);
+        const ast_type *op1_type = Evaluate_ExpressionResultType(tu, operation->operand1, array_dims);
+        const ast_type *op2_type = Evaluate_ExpressionResultType(tu, operation->operand2, array_dims);
         if (!op1_type || !op2_type) {
             return nullptr;
         }
 
-        if (op1_type == op2_type) {
+        if (is_same_type(op1_type, op2_type)) {
             return op1_type;
         }
 

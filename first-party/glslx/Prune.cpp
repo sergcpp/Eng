@@ -161,9 +161,12 @@ void glslx::Mark_Statement(ast_statement *statement) {
             Mark_Statement(st);
         }
     } break;
-    case eStatement::CaseLabel:
-        Mark_Expression(static_cast<ast_case_label_statement *>(statement)->condition);
-        break;
+    case eStatement::CaseLabel: {
+        ast_case_label_statement *_case = static_cast<ast_case_label_statement *>(statement);
+        if (!_case->is_default) {
+            Mark_Expression(_case->condition);
+        }
+    } break;
     case eStatement::While: {
         auto *while_statement = static_cast<ast_while_statement *>(statement);
         Mark_Statement(while_statement->condition);
@@ -176,9 +179,15 @@ void glslx::Mark_Statement(ast_statement *statement) {
     } break;
     case eStatement::For: {
         auto *for_statement = static_cast<ast_for_statement *>(statement);
-        Mark_Statement(for_statement->init);
-        Mark_Expression(for_statement->condition);
-        Mark_Expression(for_statement->loop);
+        if (for_statement->init) {
+            Mark_Statement(for_statement->init);
+        }
+        if (for_statement->condition) {
+            Mark_Expression(for_statement->condition);
+        }
+        if (for_statement->loop) {
+            Mark_Expression(for_statement->loop);
+        }
         Mark_Statement(for_statement->body);
     } break;
     case eStatement::Return: {
