@@ -233,3 +233,39 @@ jobs:
         with:
           cmake-args: "-DRENDERER=VK"
           config: "RelWithDebInfo"
+  build-windows-x86_64-vk-asan:
+    runs-on: [ windows, builder ]
+    steps:
+      - name: Checkout Workflows
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - name: Re-initialize repository
+        uses: ./.github/actions/checkout
+      - name: Compile the code
+        uses: ./.github/actions/build-windows
+        with:
+          cmake-args: "-A x64 -DRENDERER=VK"
+          config: "Asan"
+          bin-dir: "windows-x86_64-vk-asan"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-x86_64-vk-asan
+          path: windows-x86_64-vk-asan/
+  test-windows-x86_64-vk-asan:
+    runs-on: [ windows, x86_64 ]
+    needs:
+      - build-windows-x86_64-vk-asan
+    steps:
+      - name: Checkout Workflows
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - name: Re-initialize repository
+        uses: ./.github/actions/checkout
+      - name: Run Tests
+        uses: ./.github/actions/test-asan
+        with:
+          bin-dir: "windows-x86_64-vk-asan"
+          test-args: "--mt"
