@@ -8,7 +8,8 @@
 
 #include "_cs_common.glsl"
 #include "gi_common.glsl"
-#include "gi_blur_interface.h"
+#include "ssr_common.glsl"
+#include "ssr_blur_interface.h"
 
 #pragma multi_compile _ PER_PIXEL_KERNEL_ROTATION
 
@@ -22,7 +23,7 @@ LAYOUT_PARAMS uniform UniformParams {
 
 layout(binding = DEPTH_TEX_SLOT) uniform sampler2D g_depth_tex;
 layout(binding = NORM_TEX_SLOT) uniform usampler2D g_normal_tex;
-layout(binding = GI_TEX_SLOT) uniform sampler2D g_gi_tex;
+layout(binding = REFL_TEX_SLOT) uniform sampler2D g_refl_tex;
 layout(binding = SAMPLE_COUNT_TEX_SLOT) uniform sampler2D g_sample_count_tex;
 layout(binding = VARIANCE_TEX_SLOT) uniform sampler2D g_variance_tex;
 
@@ -56,11 +57,42 @@ mat3 GetBasis(vec3 N) {
     return mat3(T, B, N);
 }
 
+float GetSpecularDominantFactor(float NoV, float linearRoughness) {
+    linearRoughness = saturate(linearRoughness);
+
+    const float a = 0.298475 * log(39.4115 - 39.0029 * linearRoughness);
+    const float dominantFactor = pow(saturate(1.0 - NoV), 10.8649) * (1.0 - a) + a;
+
+    return saturate(dominantFactor);
+}
+
+vec3 GetSpecularDominantDirectionWithFactor( vec3 N, vec3 V, float dominantFactor ) {
+    vec3 R = reflect(-V, N);
+    vec3 D = mix(N, R, dominantFactor);
+    return normalize(D);
+}
+
+vec4 GetSpecularDominantDirection( vec3 N, vec3 V, float linearRoughness ) {
+    const float NoV = abs( dot( N, V ) );
+    const float dominantFactor = GetSpecularDominantFactor( NoV, linearRoughness );
+    return vec4( GetSpecularDominantDirectionWithFactor( N, V, dominantFactor ), dominantFactor );
+}
+
 // Ray Tracing Gems II, Listing 49-9
-mat2x3 GetKernelBasis(vec3 X, vec3 N, float radius_ws, float roughness) {
+mat2x3 GetKernelBasis(const vec3 X, vec3 N, float radius_ws, float roughness) {
     const mat3 basis = GetBasis(N);
     vec3 T = basis[0];
     vec3 B = basis[1];
+
+    vec3 V = -normalize(X);
+    vec4 D = GetSpecularDominantDirection(N, V, roughness);
+    float NoD = abs(dot(N, D.xyz));
+
+    if (NoD < 0.999) {
+        const vec3 R = reflect(-D.xyz, N);
+        T = normalize(cross(N, R));
+        B = cross(R, T);
+    }
 
     T *= radius_ws;
     B *= radius_ws;
@@ -147,6 +179,12 @@ vec2 GetCombinedWeight(
     return params;
 }*/
 
+float GetSpecMagicCurve(float roughness, float power) {
+    float f = 1.0 - exp2( -200.0 * roughness * roughness );
+    f *= pow(roughness, power);
+    return f;
+}
+
 float GetBlurRadius(float radius, float hit_dist, float view_z, float non_linear_accum_speed, float radius_bias, float radius_scale, float roughness) {
     // Modify by hit distance
     float hit_dist_factor = hit_dist / (hit_dist + view_z);
@@ -170,7 +208,7 @@ float GetBlurRadius(float radius, float hit_dist, float view_z, float non_linear
     // Final blur radius
     float r = s * radius + addon;
     r = r * (radius_scale + radius_bias) + radius_bias;
-    //r *= GetSpecMagicCurve( roughness );
+    r *= GetSpecMagicCurve(roughness, 0.25);
 
     return r;
 }
@@ -183,7 +221,9 @@ void Blur(ivec2 dispatch_thread_id, ivec2 group_thread_id, uvec2 screen_size) {
     const float center_depth = texelFetch(g_depth_tex, dispatch_thread_id, 0).x;
     const float center_depth_lin = LinearizeDepth(center_depth, g_shrd_data.clip_info);
 
-    const vec3 center_normal_ws = UnpackNormalAndRoughness(texelFetch(g_normal_tex, dispatch_thread_id, 0).x).xyz;
+    const vec4 normal_fetch = UnpackNormalAndRoughness(texelFetch(g_normal_tex, dispatch_thread_id, 0).x);
+    const vec3 center_normal_ws = normal_fetch.xyz;
+    const float center_roughness = normal_fetch.w;
     const vec3 center_normal_vs = normalize((g_shrd_data.view_from_world * vec4(center_normal_ws, 0.0)).xyz);
 
     const vec3 center_point_vs = ReconstructViewPosition(pix_uv, g_shrd_data.frustum_info, -center_depth_lin, 0.0 /* is_ortho */);
@@ -202,19 +242,20 @@ void Blur(ivec2 dispatch_thread_id, ivec2 group_thread_id, uvec2 screen_size) {
     const float RadiusScale = 1.0;
 #endif
 
-    const float InitialBlurRadius = 0.05;
+    const float InitialBlurRadius = 0.1;
 
-    /* mediump */ vec4 sum = texelFetch(g_gi_tex, dispatch_thread_id, 0);
+    /* mediump */ vec4 sum = texelFetch(g_refl_tex, dispatch_thread_id, 0);
     /* mediump */ vec2 total_weight = vec2(1.0);
 
     float hit_dist = sum.w;
-    float blur_radius = GetBlurRadius(InitialBlurRadius, hit_dist, center_depth_lin, accumulation_speed, RadiusBias, RadiusScale, 1.0);
+    float blur_radius = GetBlurRadius(InitialBlurRadius, hit_dist, center_depth_lin, accumulation_speed, RadiusBias, RadiusScale, center_roughness);
     float blur_radius_ws = PixelRadiusToWorld(g_shrd_data.taa_info.w, 0.0 /* is_ortho */, blur_radius, center_depth_lin);
 
-    mat2x3 TvBv = GetKernelBasis(center_point_vs, center_normal_vs, blur_radius_ws, 1.0 /* roughness */);
+    mat2x3 TvBv = GetKernelBasis(center_point_vs, center_normal_vs, blur_radius_ws, center_roughness);
     vec4 kernel_rotator = GetBlurKernelRotation(uvec2(dispatch_thread_id), g_params.rotator, g_params.frame_index.x);
 
-    for (int i = 0; i < 8; ++i) {
+    const bool needs_blur = IsGlossyReflection(center_roughness) && !IsMirrorReflection(center_roughness);
+    for (int i = 0; i < 8 && needs_blur; ++i) {
         const vec3 offset = g_Special8[i];
         const vec2 uv = GetKernelSampleCoordinates(g_shrd_data.clip_from_view, offset, center_point_vs, TvBv[0], TvBv[1], kernel_rotator);
 
@@ -233,7 +274,7 @@ void Blur(ivec2 dispatch_thread_id, ivec2 group_thread_id, uvec2 screen_size) {
         //weight *= GetEdgeStoppingDepthWeight(center_depth_lin, neighbor_depth);
         weight *= GetEdgeStoppingPlanarDistanceWeight(geometry_weight_params, center_normal_vs, neighbor_point_vs);
 
-        sum += weight * textureLod(g_gi_tex, uv, 0.0);
+        sum += weight * textureLod(g_refl_tex, uv, 0.0);
         total_weight += vec2(weight);
     }
 
