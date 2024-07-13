@@ -5,8 +5,8 @@
 ;
 [subrepo]
 	remote = Ren
-	branch = update_13_07
-	commit = 1f696e6894aeb18b9d4b53aa2b3857e6abe12fb2
+	branch = master
+	commit = 918d052a3b459da0ca21bed6489ad39c59cb2bfd
 	method = merge
 	cmdver = 0.4.6
-	parent = be736011c868c710dd82fa659daf573a04dd402d
+	parent = 817ab02d46e25ae6e3a03a521c40efd4bc3866c3
