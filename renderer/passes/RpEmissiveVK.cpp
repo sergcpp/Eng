@@ -1,4 +1,4 @@
-#include "RpGBufferFill.h"
+#include "RpEmissive.h"
 
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
@@ -15,11 +15,9 @@ uint32_t _draw_range_ext(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf, cons
                          Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::BasicDrawBatch> batches,
                          uint32_t i, uint64_t mask, const uint32_t materials_per_descriptor,
                          Ren::Span<const VkDescriptorSet> descr_sets, int *draws_count);
-uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::BasicDrawBatch> batches, uint32_t i,
-                     uint64_t mask);
 } // namespace RpSharedInternal
 
-void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
+void Eng::RpEmissive::DrawOpaque(RpBuilder &builder) {
     using namespace RpSharedInternal;
 
     auto &ctx = builder.ctx();
@@ -32,25 +30,22 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
     RpAllocBuf &instance_indices_buf = builder.GetReadBuffer(instance_indices_buf_);
     RpAllocBuf &unif_shared_data_buf = builder.GetReadBuffer(shared_data_buf_);
     RpAllocBuf &materials_buf = builder.GetReadBuffer(materials_buf_);
-    RpAllocBuf &cells_buf = builder.GetReadBuffer(cells_buf_);
-    RpAllocBuf &items_buf = builder.GetReadBuffer(items_buf_);
-    RpAllocBuf &decals_buf = builder.GetReadBuffer(decals_buf_);
 
     RpAllocTex &noise_tex = builder.GetReadTexture(noise_tex_);
     RpAllocTex &dummy_black = builder.GetReadTexture(dummy_black_);
+
+    if ((*p_list_)->emissive_start_index == -1) {
+        return;
+    }
 
     VkDescriptorSet descr_sets[2];
 
     { // allocate descriptors
         const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, *unif_shared_data_buf.ref},
                                          {Ren::eBindTarget::UTBuf, BIND_INST_BUF, *instances_buf.tbos[0]},
-                                         {Ren::eBindTarget::UTBuf, BIND_DECAL_BUF, *decals_buf.tbos[0]},
-                                         {Ren::eBindTarget::UTBuf, BIND_CELLS_BUF, *cells_buf.tbos[0]},
-                                         {Ren::eBindTarget::UTBuf, BIND_ITEMS_BUF, *items_buf.tbos[0]},
                                          {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, *instance_indices_buf.ref},
                                          {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, *materials_buf.ref},
-                                         {Ren::eBindTarget::Tex2DSampled, BIND_NOISE_TEX, *noise_tex.ref},
-                                         {Ren::eBindTarget::Tex2DSampled, BIND_DECAL_TEX, *dummy_black.ref}};
+                                         {Ren::eBindTarget::Tex2DSampled, BIND_NOISE_TEX, *noise_tex.ref}};
         descr_sets[0] = Ren::PrepareDescriptorSet(api_ctx, pi_vegetation_[0].prog()->descr_set_layouts()[0], bindings,
                                                   ctx.default_descr_alloc(), ctx.log());
         descr_sets[1] = bindless_tex_->textures_descr_sets[0];
@@ -72,7 +67,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
     const Ren::Span<const uint32_t> batch_indices = {(*p_list_)->basic_batch_indices};
 
     int draws_count = 0;
-    uint32_t i = 0;
+    uint32_t i = (*p_list_)->emissive_start_index;
 
     { // solid meshes
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
@@ -94,11 +89,12 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i, 0,
+                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i, BDB::BitEmissive,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[1].handle());
-                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[1], batch_indices, batches, i, BDB::BitBackSided,
-                                    materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
+                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[1], batch_indices, batches, i,
+                                    BDB::BitEmissive | BDB::BitBackSided, materials_per_descriptor,
+                                    bindless_tex_->textures_descr_sets, &draws_count);
             }
 
             { // solid two-sided
@@ -106,8 +102,9 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i, BDB::BitTwoSided,
-                                    materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
+                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i,
+                                    BDB::BitEmissive | BDB::BitTwoSided, materials_per_descriptor,
+                                    bindless_tex_->textures_descr_sets, &draws_count);
             }
 
             { // moving solid one-sided
@@ -115,8 +112,9 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i, BDB::BitMoving,
-                                    materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
+                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i,
+                                    BDB::BitEmissive | BDB::BitMoving, materials_per_descriptor,
+                                    bindless_tex_->textures_descr_sets, &draws_count);
             }
 
             { // moving solid two-sided
@@ -125,7 +123,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i,
-                                    BDB::BitMoving | BDB::BitTwoSided, materials_per_descriptor,
+                                    BDB::BitEmissive | BDB::BitMoving | BDB::BitTwoSided, materials_per_descriptor,
                                     bindless_tex_->textures_descr_sets, &draws_count);
             }
 
@@ -134,11 +132,12 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i, BDB::BitAlphaTest,
-                                    materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
+                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i,
+                                    BDB::BitEmissive | BDB::BitAlphaTest, materials_per_descriptor,
+                                    bindless_tex_->textures_descr_sets, &draws_count);
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[1].handle());
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[1], batch_indices, batches, i,
-                                    BDB::BitAlphaTest | BDB::BitBackSided, materials_per_descriptor,
+                                    BDB::BitEmissive | BDB::BitAlphaTest | BDB::BitBackSided, materials_per_descriptor,
                                     bindless_tex_->textures_descr_sets, &draws_count);
             }
 
@@ -148,7 +147,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i,
-                                    BDB::BitAlphaTest | BDB::BitTwoSided, materials_per_descriptor,
+                                    BDB::BitEmissive | BDB::BitAlphaTest | BDB::BitTwoSided, materials_per_descriptor,
                                     bindless_tex_->textures_descr_sets, &draws_count);
             }
 
@@ -158,12 +157,12 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i,
-                                    BDB::BitMoving | BDB::BitAlphaTest, materials_per_descriptor,
+                                    BDB::BitEmissive | BDB::BitMoving | BDB::BitAlphaTest, materials_per_descriptor,
                                     bindless_tex_->textures_descr_sets, &draws_count);
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[1].handle());
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[1], batch_indices, batches, i,
-                                    BDB::BitMoving | BDB::BitAlphaTest | BDB::BitBackSided, materials_per_descriptor,
-                                    bindless_tex_->textures_descr_sets, &draws_count);
+                                    BDB::BitEmissive | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitBackSided,
+                                    materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
 
             { // moving alpha-tested two-sided
@@ -172,8 +171,8 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i,
-                                    BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided, materials_per_descriptor,
-                                    bindless_tex_->textures_descr_sets, &draws_count);
+                                    BDB::BitEmissive | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided,
+                                    materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
         }
 
@@ -187,8 +186,9 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[0].layout(),
                                                  0, 2, descr_sets, 0, nullptr);
-                i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[0], batch_indices, batches, i, BDB::BitsVege,
-                                    materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
+                i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[0], batch_indices, batches, i,
+                                    BDB::BitEmissive | BDB::BitsVege, materials_per_descriptor,
+                                    bindless_tex_->textures_descr_sets, &draws_count);
             }
 
             { // vegetation solid two-sided
@@ -196,7 +196,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[1].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[1].layout(),
                                                  0, 2, descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsVege | BDB::BitTwoSided;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsVege | BDB::BitTwoSided;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[1], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -206,7 +206,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[0].layout(),
                                                  0, 2, descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsVege | BDB::BitMoving;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsVege | BDB::BitMoving;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[0], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -216,7 +216,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[1].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[1].layout(),
                                                  0, 2, descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsVege | BDB::BitMoving | BDB::BitTwoSided;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsVege | BDB::BitMoving | BDB::BitTwoSided;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[1], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -226,7 +226,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[0].layout(),
                                                  0, 2, descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsVege | BDB::BitAlphaTest;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsVege | BDB::BitAlphaTest;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[0], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -236,7 +236,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[1].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[1].layout(),
                                                  0, 2, descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsVege | BDB::BitAlphaTest | BDB::BitTwoSided;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsVege | BDB::BitAlphaTest | BDB::BitTwoSided;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[1], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -246,7 +246,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[0].layout(),
                                                  0, 2, descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsVege | BDB::BitMoving | BDB::BitAlphaTest;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsVege | BDB::BitMoving | BDB::BitAlphaTest;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[0], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -256,7 +256,8 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[1].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vegetation_[1].layout(),
                                                  0, 2, descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsVege | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
+                const uint64_t DrawMask =
+                    BDB::BitEmissive | BDB::BitsVege | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_vegetation_[1], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -272,8 +273,9 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i, BDB::BitsSkinned,
-                                    materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
+                i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i,
+                                    BDB::BitEmissive | BDB::BitsSkinned, materials_per_descriptor,
+                                    bindless_tex_->textures_descr_sets, &draws_count);
             }
 
             { // skinned solid two-sided
@@ -281,7 +283,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitTwoSided;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsSkinned | BDB::BitTwoSided;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -291,7 +293,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitMoving;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsSkinned | BDB::BitMoving;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -301,7 +303,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitMoving | BDB::BitTwoSided;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsSkinned | BDB::BitMoving | BDB::BitTwoSided;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -311,7 +313,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitAlphaTest;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsSkinned | BDB::BitAlphaTest;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -321,7 +323,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitAlphaTest | BDB::BitTwoSided;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsSkinned | BDB::BitAlphaTest | BDB::BitTwoSided;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -331,7 +333,7 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[0].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitMoving | BDB::BitAlphaTest;
+                const uint64_t DrawMask = BDB::BitEmissive | BDB::BitsSkinned | BDB::BitMoving | BDB::BitAlphaTest;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[0], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
@@ -341,7 +343,8 @@ void Eng::RpGBufferFill::DrawOpaque(RpBuilder &builder) {
                 api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].handle());
                 api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple_[2].layout(), 0, 2,
                                                  descr_sets, 0, nullptr);
-                const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
+                const uint64_t DrawMask =
+                    BDB::BitEmissive | BDB::BitsSkinned | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
                 i = _draw_range_ext(api_ctx, cmd_buf, pi_simple_[2], batch_indices, batches, i, DrawMask,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
