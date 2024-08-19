@@ -13,7 +13,7 @@ runs:
           cd $REPO_NAME
           git remote set-url origin $REPO_URL
           git fetch --all
-          git fetch --tags
+          git fetch --tags -f
           git checkout -f ${{ env.GITHUB_SHA }}
           #git reset --hard origin/${{ env.GITHUB_REF_NAME }}
           #git clean -fdx -e *assets_pc*
