@@ -49,11 +49,10 @@ void main() {
     gl_FragColor = vec4(col, 1.0);
 })";
 
-        eShaderLoadStatus sh_status;
-        ShaderRef vs_ref = test.LoadShaderGLSL("constant_vs", vs_src, eShaderType::Vertex, &sh_status);
-        require(sh_status == eShaderLoadStatus::CreatedFromData);
-        ShaderRef fs_ref = test.LoadShaderGLSL("constant_fs", fs_src, eShaderType::Fragment, &sh_status);
-        require(sh_status == eShaderLoadStatus::CreatedFromData);
+        ShaderRef vs_ref = test.LoadShaderGLSL("constant_vs", vs_src, eShaderType::Vertex);
+        require(vs_ref->ready());
+        ShaderRef fs_ref = test.LoadShaderGLSL("constant_fs", fs_src, eShaderType::Fragment);
+        require(fs_ref->ready());
 
         ProgramRef p = test.LoadProgram(vs_ref, fs_ref, {}, {}, {});
 
@@ -97,9 +96,8 @@ void main() {
 	inout_buffer.data[global_index].c = vec4(1.0, 0.0, 1.0, 1.0);
 })";
 
-        eShaderLoadStatus sh_status;
-        ShaderRef cs_ref = test.LoadShaderGLSL("sample_cs", cs_source, eShaderType::Compute, &sh_status);
-        require(sh_status == eShaderLoadStatus::CreatedFromData);
+        ShaderRef cs_ref = test.LoadShaderGLSL("sample_cs", cs_source, eShaderType::Compute);
+        require(cs_ref->ready());
 
         ProgramRef p = test.LoadProgram(cs_ref);
 
@@ -342,11 +340,10 @@ void main() {
                 0x03, 0x00, 0x31, 0x00, 0x00, 0x00, 0x34, 0x00, 0x00, 0x00, 0xFD, 0x00, 0x01, 0x00, 0x38, 0x00, 0x01,
                 0x00};
 
-            eShaderLoadStatus sh_status;
-            ShaderRef vs_ref = test.LoadShaderSPIRV("simple_vs", vert_spv, eShaderType::Vertex, &sh_status);
-            require(sh_status == eShaderLoadStatus::CreatedFromData);
-            ShaderRef fs_ref = test.LoadShaderSPIRV("simple_fs", frag_spv, eShaderType::Fragment, &sh_status);
-            require(sh_status == eShaderLoadStatus::CreatedFromData);
+            ShaderRef vs_ref = test.LoadShaderSPIRV("simple_vs", vert_spv, eShaderType::Vertex);
+            require(vs_ref->ready());
+            ShaderRef fs_ref = test.LoadShaderSPIRV("simple_fs", frag_spv, eShaderType::Fragment);
+            require(fs_ref->ready());
 
             ProgramRef p = test.LoadProgram(vs_ref, fs_ref, {}, {}, {});
 

@@ -54,10 +54,9 @@ void Eng::ExEmissive::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, FgAlloc
 #endif
 
         Ren::ProgramRef emissive_simple_prog =
-            sh.LoadProgram(ctx, bindless ? "internal/emissive.vert.glsl" : "internal/emissive@NO_BINDLESS.vert.glsl",
+            sh.LoadProgram(bindless ? "internal/emissive.vert.glsl" : "internal/emissive@NO_BINDLESS.vert.glsl",
                            bindless ? "internal/emissive.frag.glsl" : "internal/emissive@NO_BINDLESS.frag.glsl");
         Ren::ProgramRef emissive_vegetation_prog = sh.LoadProgram(
-            ctx,
             bindless ? "internal/emissive@VEGETATION.vert.glsl" : "internal/emissive@VEGETATION;NO_BINDLESS.vert.glsl",
             bindless ? "internal/emissive.frag.glsl" : "internal/emissive@NO_BINDLESS.frag.glsl");
 

@@ -85,10 +85,11 @@ void run_image_test(std::string_view test_name, const double min_psnr, const eIm
         return;
     }
 
-    ShaderLoader shader_loader;
+    ShaderLoader shader_loader(ren_ctx);
     Random rand(0);
     Sys::ThreadPool threads(1);
     auto renderer = std::make_unique<Renderer>(ren_ctx, shader_loader, rand, threads);
+    renderer->InitPipelines();
 
     renderer->settings.enable_bloom = false;
     renderer->settings.enable_shadow_jitter = true;

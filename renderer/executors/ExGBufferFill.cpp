@@ -65,10 +65,9 @@ void Eng::ExGBufferFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, FgAl
 #endif
 
         Ren::ProgramRef gbuf_simple_prog = sh.LoadProgram(
-            ctx, bindless ? "internal/gbuffer_fill.vert.glsl" : "internal/gbuffer_fill@NO_BINDLESS.vert.glsl",
+            bindless ? "internal/gbuffer_fill.vert.glsl" : "internal/gbuffer_fill@NO_BINDLESS.vert.glsl",
             bindless ? "internal/gbuffer_fill.frag.glsl" : "internal/gbuffer_fill@NO_BINDLESS.frag.glsl");
         Ren::ProgramRef gbuf_vegetation_prog = sh.LoadProgram(
-            ctx,
             bindless ? "internal/gbuffer_fill@VEGETATION.vert.glsl"
                      : "internal/gbuffer_fill@VEGETATION;NO_BINDLESS.vert.glsl",
             bindless ? "internal/gbuffer_fill.frag.glsl" : "internal/gbuffer_fill@NO_BINDLESS.frag.glsl");

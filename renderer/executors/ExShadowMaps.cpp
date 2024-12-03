@@ -63,16 +63,14 @@ void Eng::ExShadowMaps::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, FgAll
 #else
         const bool bindless = true;
 #endif
-        Ren::ProgramRef shadow_solid_prog =
-            sh.LoadProgram(ctx, "internal/shadow.vert.glsl", "internal/shadow.frag.glsl");
-        Ren::ProgramRef shadow_vege_solid_prog = sh.LoadProgram(
-            ctx, bindless ? "internal/shadow_vege.vert.glsl" : "internal/shadow_vege@NO_BINDLESS.vert.glsl",
-            "internal/shadow.frag.glsl");
+        Ren::ProgramRef shadow_solid_prog = sh.LoadProgram("internal/shadow.vert.glsl", "internal/shadow.frag.glsl");
+        Ren::ProgramRef shadow_vege_solid_prog =
+            sh.LoadProgram(bindless ? "internal/shadow_vege.vert.glsl" : "internal/shadow_vege@NO_BINDLESS.vert.glsl",
+                           "internal/shadow.frag.glsl");
         Ren::ProgramRef shadow_transp_prog = sh.LoadProgram(
-            ctx, bindless ? "internal/shadow@ALPHATEST.vert.glsl" : "internal/shadow@ALPHATEST;NO_BINDLESS.vert.glsl",
+            bindless ? "internal/shadow@ALPHATEST.vert.glsl" : "internal/shadow@ALPHATEST;NO_BINDLESS.vert.glsl",
             bindless ? "internal/shadow@ALPHATEST.frag.glsl" : "internal/shadow@ALPHATEST;NO_BINDLESS.frag.glsl");
         Ren::ProgramRef shadow_vege_transp_prog = sh.LoadProgram(
-            ctx,
             bindless ? "internal/shadow_vege@ALPHATEST.vert.glsl"
                      : "internal/shadow_vege@ALPHATEST;NO_BINDLESS.vert.glsl",
             bindless ? "internal/shadow@ALPHATEST.frag.glsl" : "internal/shadow@ALPHATEST;NO_BINDLESS.frag.glsl");

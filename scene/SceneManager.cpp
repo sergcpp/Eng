@@ -1464,7 +1464,7 @@ void Eng::SceneManager::OnLoadPipelines(Ren::Bitmask<Ren::eMatFlags> flags, std:
                                         Ren::SmallVectorImpl<Ren::PipelineRef> &out_pipelines) {
     using namespace SceneManagerConstants;
 
-    const Ren::ProgramRef ret = sh_.LoadProgram(ren_ctx_, v_shader, f_shader, tc_shader, te_shader);
+    const Ren::ProgramRef ret = sh_.LoadProgram(v_shader, f_shader, tc_shader, te_shader);
     init_pipelines_(ret, flags, scene_data_.persistent_data.pipelines, out_pipelines);
 }
 

@@ -36,11 +36,11 @@ void Eng::ExOITDepthPeel::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, FgA
 #endif
 
         Ren::ProgramRef depth_peel_simple_high_prog = sh.LoadProgram(
-            ctx, bindless ? "internal/depth_peel.vert.glsl" : "internal/depth_peel@NO_BINDLESS.vert.glsl",
+            bindless ? "internal/depth_peel.vert.glsl" : "internal/depth_peel@NO_BINDLESS.vert.glsl",
             bindless ? "internal/depth_peel@HIGH.frag.glsl" : "internal/depth_peel@HIGH;NO_BINDLESS.frag.glsl");
 
         Ren::ProgramRef depth_peel_simple_ultra_prog = sh.LoadProgram(
-            ctx, bindless ? "internal/depth_peel.vert.glsl" : "internal/depth_peel@NO_BINDLESS.vert.glsl",
+            bindless ? "internal/depth_peel.vert.glsl" : "internal/depth_peel@NO_BINDLESS.vert.glsl",
             bindless ? "internal/depth_peel@ULTRA.frag.glsl" : "internal/depth_peel@ULTRA;NO_BINDLESS.frag.glsl");
 
         if (!rp_depth_peel_.Setup(ctx.api_ctx(), {}, depth_target, ctx.log())) {

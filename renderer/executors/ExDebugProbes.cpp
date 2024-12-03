@@ -49,7 +49,7 @@ void Eng::ExDebugProbes::Execute(FgBuilder &builder) {
 
 void Eng::ExDebugProbes::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     if (!initialized) {
-        prog_probe_debug_ = sh.LoadProgram(ctx, "internal/probe_debug.vert.glsl", "internal/probe_debug.frag.glsl");
+        prog_probe_debug_ = sh.LoadProgram("internal/probe_debug.vert.glsl", "internal/probe_debug.frag.glsl");
         initialized = true;
     }
 }

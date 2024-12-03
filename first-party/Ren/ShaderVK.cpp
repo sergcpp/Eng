@@ -29,18 +29,11 @@ static_assert(int(eShaderType::ClosestHit) < int(eShaderType::AnyHit), "!");
 static_assert(int(eShaderType::AnyHit) < int(eShaderType::Intersection), "!");
 } // namespace Ren
 
-Ren::Shader::Shader(std::string_view name, ApiContext *api_ctx, std::string_view shader_src, eShaderType type,
-                    eShaderLoadStatus *status, ILog *log) {
-    name_ = String{name};
-    api_ctx_ = api_ctx;
-    Init(shader_src, type, status, log);
-}
-
 Ren::Shader::Shader(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> shader_code, const eShaderType type,
-                    eShaderLoadStatus *status, ILog *log) {
+                    ILog *log) {
     name_ = String{name};
     api_ctx_ = api_ctx;
-    Init(shader_code, type, status, log);
+    Init(shader_code, type, log);
 }
 
 Ren::Shader::~Shader() {
@@ -68,12 +61,10 @@ Ren::Shader &Ren::Shader::operator=(Shader &&rhs) noexcept {
     return (*this);
 }
 
-void Ren::Shader::Init(std::string_view shader_src, eShaderType type, eShaderLoadStatus *status, ILog *log) {}
-
-void Ren::Shader::Init(Span<const uint8_t> shader_code, const eShaderType type, eShaderLoadStatus *status, ILog *log) {
-    InitFromSPIRV(shader_code, type, status, log);
+void Ren::Shader::Init(Span<const uint8_t> shader_code, const eShaderType type, ILog *log) {
+    InitFromSPIRV(shader_code, type, log);
 #ifdef ENABLE_GPU_DEBUG
-    if (*status == eShaderLoadStatus::CreatedFromData) {
+    if (module_ != VkShaderModule{}) {
         VkDebugUtilsObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
         name_info.objectType = VK_OBJECT_TYPE_SHADER_MODULE;
         name_info.objectHandle = uint64_t(module_);
@@ -83,10 +74,8 @@ void Ren::Shader::Init(Span<const uint8_t> shader_code, const eShaderType type, 
 #endif
 }
 
-void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_code, const eShaderType type, eShaderLoadStatus *status,
-                                ILog *log) {
+void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_code, const eShaderType type, ILog *log) {
     if (shader_code.empty()) {
-        (*status) = eShaderLoadStatus::SetToDefault;
         return;
     }
 
@@ -100,7 +89,6 @@ void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_code, const eShaderTy
         const VkResult res = api_ctx_->vkCreateShaderModule(api_ctx_->device, &create_info, nullptr, &module_);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create shader module!");
-            (*status) = eShaderLoadStatus::Error;
             return;
         }
     }
@@ -109,7 +97,6 @@ void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_code, const eShaderTy
     const SpvReflectResult res = spvReflectCreateShaderModule(shader_code.size(), shader_code.data(), &module);
     if (res != SPV_REFLECT_RESULT_SUCCESS) {
         log->Error("Failed to reflect shader module!");
-        (*status) = eShaderLoadStatus::Error;
         return;
     }
 
@@ -152,6 +139,5 @@ void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_code, const eShaderTy
         pc_ranges.push_back({blck.offset, blck.size});
     }
 
-    (*status) = eShaderLoadStatus::CreatedFromData;
     spvReflectDestroyShaderModule(&module);
 }

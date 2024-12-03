@@ -49,24 +49,24 @@ void Ren::Program::Init(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, S
     assert(id_ == 0);
 
     std::string prog_name;
-    for (const ShaderRef &sh : shaders_) {
-        if (!sh) {
-            continue;
-        }
-        if (!prog_name.empty()) {
-            prog_name += "&";
-        }
-        prog_name += sh->name();
+    prog_name += vs_ref->name();
+    prog_name += "&";
+    prog_name += fs_ref->name();
+    if (tcs_ref && tes_ref) {
+        prog_name += "&";
+        prog_name += tcs_ref->name();
+        prog_name += "&";
+        prog_name += fs_ref->name();
     }
     log->Info("Initializing program %s", prog_name.c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
-        glAttachShader(program, (GLuint)vs_ref->id());
-        glAttachShader(program, (GLuint)fs_ref->id());
+        glAttachShader(program, GLuint(vs_ref->id()));
+        glAttachShader(program, GLuint(fs_ref->id()));
         if (tcs_ref && tes_ref) {
-            glAttachShader(program, (GLuint)tcs_ref->id());
-            glAttachShader(program, (GLuint)tes_ref->id());
+            glAttachShader(program, GLuint(tcs_ref->id()));
+            glAttachShader(program, GLuint(tes_ref->id()));
         }
         if (gs_ref) {
             glAttachShader(program, gs_ref->id());
@@ -108,17 +108,7 @@ void Ren::Program::Init(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, S
 void Ren::Program::Init(ShaderRef cs_ref, ILog *log) {
     assert(id_ == 0);
 
-    std::string prog_name;
-    for (const ShaderRef &sh : shaders_) {
-        if (!sh) {
-            continue;
-        }
-        if (!prog_name.empty()) {
-            prog_name += "&";
-        }
-        prog_name += sh->name();
-    }
-    log->Info("Initializing program %s", prog_name.c_str());
+    log->Info("Initializing program %s", cs_ref->name().c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
@@ -140,7 +130,7 @@ void Ren::Program::Init(ShaderRef cs_ref, ILog *log) {
             program = 0;
         } else {
 #ifdef ENABLE_GPU_DEBUG
-            glObjectLabel(GL_PROGRAM, program, -1, prog_name.c_str());
+            glObjectLabel(GL_PROGRAM, program, -1, cs_ref->name().c_str());
 #endif
         }
     } else {

@@ -97,38 +97,24 @@ void Ren::Context::ReleaseMaterials() {
 }
 
 #if defined(REN_GL_BACKEND)
-Ren::ShaderRef Ren::Context::LoadShaderGLSL(std::string_view name, std::string_view shader_src, eShaderType type,
-                                            eShaderLoadStatus *load_status) {
+Ren::ShaderRef Ren::Context::LoadShaderGLSL(std::string_view name, std::string_view shader_src, eShaderType type) {
     ShaderRef ref = shaders_.FindByName(name);
     if (!ref) {
-        ref = shaders_.Insert(name, api_ctx_.get(), shader_src, type, load_status, log_);
-    } else {
-        if (ref->ready()) {
-            if (load_status) {
-                (*load_status) = eShaderLoadStatus::Found;
-            }
-        } else if (!shader_src.empty()) {
-            ref->Init(shader_src, type, load_status, log_);
-        }
+        ref = shaders_.Insert(name, api_ctx_.get(), shader_src, type, log_);
+    } else if (!ref->ready() && !shader_src.empty()) {
+        ref->Init(shader_src, type, log_);
     }
     return ref;
 }
 #endif
 
 #if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
-Ren::ShaderRef Ren::Context::LoadShaderSPIRV(std::string_view name, Span<const uint8_t> shader_data, eShaderType type,
-                                             eShaderLoadStatus *load_status) {
+Ren::ShaderRef Ren::Context::LoadShaderSPIRV(std::string_view name, Span<const uint8_t> shader_data, eShaderType type) {
     ShaderRef ref = shaders_.FindByName(name);
     if (!ref) {
-        ref = shaders_.Insert(name, api_ctx_.get(), shader_data, type, load_status, log_);
-    } else {
-        if (ref->ready()) {
-            if (load_status) {
-                (*load_status) = eShaderLoadStatus::Found;
-            }
-        } else if (!shader_data.empty()) {
-            ref->Init(shader_data, type, load_status, log_);
-        }
+        ref = shaders_.Insert(name, api_ctx_.get(), shader_data, type, log_);
+    } else if (!ref->ready() && !shader_data.empty()) {
+        ref->Init(shader_data, type, log_);
     }
     return ref;
 }
@@ -188,7 +174,7 @@ void Ren::Context::ReleasePrograms() {
         return;
     }
     log_->Error("---------REMAINING PROGRAMS--------");
-    for ([[maybe_unused]] const Program &p : programs_) {
+    for (const Program &p : programs_) {
         std::string prog_name;
         for (const ShaderRef &sh : p.shaders()) {
             if (!sh) {
@@ -207,6 +193,15 @@ void Ren::Context::ReleasePrograms() {
     }
     log_->Error("-----------------------------------");
     programs_.clear();
+}
+
+Ren::PipelineRef Ren::Context::LoadPipeline(ProgramRef prog_ref, const int subgroup_size) {
+    PipelineRef ref = pipelines_.LowerBound([&](const Pipeline &pi) { return pi.prog() < prog_ref; });
+    if (!ref || ref->prog() != prog_ref) {
+        assert(prog_ref);
+        ref = pipelines_.Insert(api_ctx_.get(), std::move(prog_ref), log_, subgroup_size);
+    }
+    return ref;
 }
 
 Ren::Tex3DRef Ren::Context::LoadTexture3D(std::string_view name, const Tex3DParams &p, MemAllocators *mem_allocs,

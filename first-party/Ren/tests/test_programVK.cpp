@@ -159,9 +159,8 @@ void main() {
             0x00, 0x00, 0x2d, 0x00, 0x00, 0x00, 0x3e, 0x00, 0x03, 0x00, 0x31, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00,
             0xfd, 0x00, 0x01, 0x00, 0x38, 0x00, 0x01, 0x00};
 
-        eShaderLoadStatus sh_status;
-        ShaderRef cs_ref = test.LoadShaderSPIRV("sample_cs", cs_spirv, eShaderType::Compute, &sh_status);
-        require(sh_status == eShaderLoadStatus::CreatedFromData);
+        ShaderRef cs_ref = test.LoadShaderSPIRV("sample_cs", cs_spirv, eShaderType::Compute);
+        require(cs_ref->ready());
 
         ProgramRef p = test.LoadProgram(cs_ref);
         require(p->uniform(0).loc != -1);

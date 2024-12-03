@@ -100,6 +100,16 @@ template <typename T> class SortedStorage : public SparseArray<T> {
 
         return {this, *first};
     }
+
+    bool CheckUnique() const {
+        bool unique = true;
+        for (auto it1 = this->begin(); it1 != this->end() && unique; ++it1) {
+            for (auto it2 = std::next(it1); it2 != this->end() && unique; ++it2) {
+                unique &= (*it1 != *it2);
+            }
+        }
+        return unique;
+    }
 };
 
 class RefCounter {

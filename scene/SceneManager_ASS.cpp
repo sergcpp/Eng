@@ -490,18 +490,19 @@ bool WriteDB(const Sys::JsObjectP &js_db, const char *out_folder, Ren::ILog *log
         js_db.Write(out_file);
         write_successful = out_file.good();
     } catch (...) {
+        log->Error("Failed to write %s", temp.c_str());
     }
 
     if (write_successful) {
         remove(name3.c_str());
         if (rename(name2.c_str(), name3.c_str()) != 0) {
-            log->Error("Failed to rename %s -> %s", name2.c_str(), name3.c_str());
+            //log->Error("Failed to rename %s -> %s", name2.c_str(), name3.c_str());
         }
         if (rename(name1.c_str(), name2.c_str()) != 0) {
-            log->Error("Failed to rename %s -> %s", name1.c_str(), name2.c_str());
+            //log->Error("Failed to rename %s -> %s", name1.c_str(), name2.c_str());
         }
         if (rename(temp.c_str(), name1.c_str()) != 0) {
-            log->Error("Failed to rename %s -> %s", temp.c_str(), name1.c_str());
+            //log->Error("Failed to rename %s -> %s", temp.c_str(), name1.c_str());
         }
     }
 
@@ -1341,145 +1342,148 @@ bool Eng::SceneManager::HPreprocessJson(assets_context_t &ctx, const char *in_fi
     }
     std::ofstream dst_stream(out_file, std::ios::binary);
 
-    Sys::JsObject js_root;
-    if (!js_root.Read(src_stream)) {
-        throw std::runtime_error("Cannot load scene!");
+    Sys::JsElement js_root_el(Sys::JsLiteralType::Null);
+    if (!js_root_el.Read(src_stream)) {
+        ctx.log->Error("Failed to parse %s", in_file);
+        return false;
     }
 
-    const std::filesystem::path base_path = std::filesystem::path(in_file).parent_path();
+    if (js_root_el.type() == Sys::JsType::Object) {
+        const std::filesystem::path base_path = std::filesystem::path(in_file).parent_path();
+        Sys::JsObject &js_root = js_root_el.as_obj();
+        if (js_root.Has("objects")) {
+            Sys::JsArray &js_objects = js_root.at("objects").as_arr();
+            for (Sys::JsElement &js_obj_el : js_objects.elements) {
+                Sys::JsObject &js_obj = js_obj_el.as_obj();
 
-    if (js_root.Has("objects")) {
-        Sys::JsArray &js_objects = js_root.at("objects").as_arr();
-        for (Sys::JsElement &js_obj_el : js_objects.elements) {
-            Sys::JsObject &js_obj = js_obj_el.as_obj();
-
-            if (js_obj.Has("decal")) {
-                Sys::JsObject &js_decal = js_obj.at("decal").as_obj();
-                if (js_decal.Has("diff")) {
-                    Sys::JsString &js_diff_tex = js_decal.at("diff").as_str();
-                    ReplaceTextureExtension(ctx.platform, js_diff_tex.val);
-                }
-                if (js_decal.Has("norm")) {
-                    Sys::JsString &js_norm_tex = js_decal.at("norm").as_str();
-                    ReplaceTextureExtension(ctx.platform, js_norm_tex.val);
-                }
-                if (js_decal.Has("spec")) {
-                    Sys::JsString &js_spec_tex = js_decal.at("spec").as_str();
-                    ReplaceTextureExtension(ctx.platform, js_spec_tex.val);
-                }
-                if (js_decal.Has("mask")) {
-                    Sys::JsString &js_mask_tex = js_decal.at("mask").as_str();
-                    ReplaceTextureExtension(ctx.platform, js_mask_tex.val);
-                }
-            }
-        }
-    }
-
-    if (js_root.Has("probes")) {
-        Sys::JsArray &js_probes = js_root.at("probes").as_arr();
-        for (Sys::JsElement &js_probe_el : js_probes.elements) {
-            Sys::JsObject &js_probe = js_probe_el.as_obj();
-
-            if (js_probe.Has("faces")) {
-                Sys::JsArray &js_faces = js_probe.at("faces").as_arr();
-                for (Sys::JsElement &js_face_el : js_faces.elements) {
-                    Sys::JsString &js_face_str = js_face_el.as_str();
-                    ReplaceTextureExtension(ctx.platform, js_face_str.val);
-                }
-            }
-        }
-    }
-
-    if (js_root.Has("chapters")) {
-        Sys::JsArray &js_chapters = js_root.at("chapters").as_arr();
-        for (Sys::JsElement &js_chapter_el : js_chapters.elements) {
-            Sys::JsObject &js_chapter = js_chapter_el.as_obj();
-
-            Sys::JsObject js_caption, js_text_data;
-
-            if (js_chapter.Has("html_src")) {
-                Sys::JsObject &js_html_src = js_chapter.at("html_src").as_obj();
-                for (auto &js_src_pair : js_html_src.elements) {
-                    const std::string &js_lang = js_src_pair.first, &js_file_path = js_src_pair.second.as_str().val;
-
-                    const std::filesystem::path html_file_path = base_path / std::filesystem::path(js_file_path);
-
-                    std::string caption;
-                    std::string html_body = ExtractHTMLData(ctx, html_file_path.u8string().c_str(), caption);
-
-                    caption = std::regex_replace(caption, std::regex("\n"), "");
-                    caption = std::regex_replace(caption, std::regex("\r"), "");
-                    caption = std::regex_replace(caption, std::regex("\'"), "&apos;");
-                    caption = std::regex_replace(caption, std::regex("\""), "&quot;");
-                    caption = std::regex_replace(caption, std::regex("<h1>"), "");
-                    caption = std::regex_replace(caption, std::regex("</h1>"), "");
-
-                    html_body = std::regex_replace(html_body, std::regex("\n"), "");
-                    html_body = std::regex_replace(html_body, std::regex("\'"), "&apos;");
-                    html_body = std::regex_replace(html_body, std::regex("\""), "&quot;");
-
-                    // remove spaces
-                    if (!caption.empty()) {
-                        int n = 0;
-                        while (n < int(caption.length()) && caption[n] == ' ') {
-                            n++;
-                        }
-                        caption.erase(0, n);
-                        while (caption.back() == ' ') {
-                            caption.pop_back();
-                        }
+                if (js_obj.Has("decal")) {
+                    Sys::JsObject &js_decal = js_obj.at("decal").as_obj();
+                    if (js_decal.Has("diff")) {
+                        Sys::JsString &js_diff_tex = js_decal.at("diff").as_str();
+                        ReplaceTextureExtension(ctx.platform, js_diff_tex.val);
                     }
-
-                    if (!html_body.empty()) {
-                        int n = 0;
-                        while (n < int(html_body.length()) && html_body[n] == ' ') {
-                            n++;
-                        }
-                        html_body.erase(0, n);
-                        while (html_body.back() == ' ') {
-                            html_body.pop_back();
-                        }
+                    if (js_decal.Has("norm")) {
+                        Sys::JsString &js_norm_tex = js_decal.at("norm").as_str();
+                        ReplaceTextureExtension(ctx.platform, js_norm_tex.val);
                     }
-
-                    js_caption[js_lang] = Sys::JsString{caption};
-                    js_text_data[js_lang] = Sys::JsString{html_body};
-                }
-            }
-
-            js_chapter["caption"] = std::move(js_caption);
-            js_chapter["text_data"] = std::move(js_text_data);
-        }
-    }
-
-    if (js_root.Has("environment")) {
-        Sys::JsObject &js_environment = js_root.at("environment").as_obj();
-        if (js_environment.Has("env_map")) {
-            Sys::JsString &js_env_map = js_environment.at("env_map").as_str();
-            ReplaceTextureExtension(ctx.platform, js_env_map.val);
-        }
-    }
-
-    if (js_root.Has("objects")) {
-        Sys::JsArray &js_objects = js_root.at("objects").as_arr();
-        for (Sys::JsElement &js_obj_el : js_objects.elements) {
-            Sys::JsObject &js_obj = js_obj_el.as_obj();
-            if (js_obj.Has("drawable")) {
-                Sys::JsObject &js_drawable = js_obj.at("drawable").as_obj();
-                if (js_drawable.Has("mesh_file")) {
-                    Sys::JsString &js_mesh_file = js_drawable.at("mesh_file").as_str();
-                    size_t n;
-                    if ((n = js_mesh_file.val.find(".gltf")) != std::string::npos) {
-                        js_mesh_file.val.replace(n + 1, 4, "mesh");
+                    if (js_decal.Has("spec")) {
+                        Sys::JsString &js_spec_tex = js_decal.at("spec").as_str();
+                        ReplaceTextureExtension(ctx.platform, js_spec_tex.val);
+                    }
+                    if (js_decal.Has("mask")) {
+                        Sys::JsString &js_mask_tex = js_decal.at("mask").as_str();
+                        ReplaceTextureExtension(ctx.platform, js_mask_tex.val);
                     }
                 }
             }
-            if (js_obj.Has("acc_structure")) {
-                Sys::JsObject &js_acc_structure = js_obj.at("acc_structure").as_obj();
-                if (js_acc_structure.Has("mesh_file")) {
-                    Sys::JsString &js_mesh_file = js_acc_structure.at("mesh_file").as_str();
-                    size_t n;
-                    if ((n = js_mesh_file.val.find(".gltf")) != std::string::npos) {
-                        js_mesh_file.val.replace(n + 1, 4, "mesh");
+        }
+
+        if (js_root.Has("probes")) {
+            Sys::JsArray &js_probes = js_root.at("probes").as_arr();
+            for (Sys::JsElement &js_probe_el : js_probes.elements) {
+                Sys::JsObject &js_probe = js_probe_el.as_obj();
+
+                if (js_probe.Has("faces")) {
+                    Sys::JsArray &js_faces = js_probe.at("faces").as_arr();
+                    for (Sys::JsElement &js_face_el : js_faces.elements) {
+                        Sys::JsString &js_face_str = js_face_el.as_str();
+                        ReplaceTextureExtension(ctx.platform, js_face_str.val);
+                    }
+                }
+            }
+        }
+
+        if (js_root.Has("chapters")) {
+            Sys::JsArray &js_chapters = js_root.at("chapters").as_arr();
+            for (Sys::JsElement &js_chapter_el : js_chapters.elements) {
+                Sys::JsObject &js_chapter = js_chapter_el.as_obj();
+
+                Sys::JsObject js_caption, js_text_data;
+
+                if (js_chapter.Has("html_src")) {
+                    Sys::JsObject &js_html_src = js_chapter.at("html_src").as_obj();
+                    for (auto &js_src_pair : js_html_src.elements) {
+                        const std::string &js_lang = js_src_pair.first, &js_file_path = js_src_pair.second.as_str().val;
+
+                        const std::filesystem::path html_file_path = base_path / std::filesystem::path(js_file_path);
+
+                        std::string caption;
+                        std::string html_body = ExtractHTMLData(ctx, html_file_path.u8string().c_str(), caption);
+
+                        caption = std::regex_replace(caption, std::regex("\n"), "");
+                        caption = std::regex_replace(caption, std::regex("\r"), "");
+                        caption = std::regex_replace(caption, std::regex("\'"), "&apos;");
+                        caption = std::regex_replace(caption, std::regex("\""), "&quot;");
+                        caption = std::regex_replace(caption, std::regex("<h1>"), "");
+                        caption = std::regex_replace(caption, std::regex("</h1>"), "");
+
+                        html_body = std::regex_replace(html_body, std::regex("\n"), "");
+                        html_body = std::regex_replace(html_body, std::regex("\'"), "&apos;");
+                        html_body = std::regex_replace(html_body, std::regex("\""), "&quot;");
+
+                        // remove spaces
+                        if (!caption.empty()) {
+                            int n = 0;
+                            while (n < int(caption.length()) && caption[n] == ' ') {
+                                n++;
+                            }
+                            caption.erase(0, n);
+                            while (caption.back() == ' ') {
+                                caption.pop_back();
+                            }
+                        }
+
+                        if (!html_body.empty()) {
+                            int n = 0;
+                            while (n < int(html_body.length()) && html_body[n] == ' ') {
+                                n++;
+                            }
+                            html_body.erase(0, n);
+                            while (html_body.back() == ' ') {
+                                html_body.pop_back();
+                            }
+                        }
+
+                        js_caption[js_lang] = Sys::JsString{caption};
+                        js_text_data[js_lang] = Sys::JsString{html_body};
+                    }
+                }
+
+                js_chapter["caption"] = std::move(js_caption);
+                js_chapter["text_data"] = std::move(js_text_data);
+            }
+        }
+
+        if (js_root.Has("environment")) {
+            Sys::JsObject &js_environment = js_root.at("environment").as_obj();
+            if (js_environment.Has("env_map")) {
+                Sys::JsString &js_env_map = js_environment.at("env_map").as_str();
+                ReplaceTextureExtension(ctx.platform, js_env_map.val);
+            }
+        }
+
+        if (js_root.Has("objects")) {
+            Sys::JsArray &js_objects = js_root.at("objects").as_arr();
+            for (Sys::JsElement &js_obj_el : js_objects.elements) {
+                Sys::JsObject &js_obj = js_obj_el.as_obj();
+                if (js_obj.Has("drawable")) {
+                    Sys::JsObject &js_drawable = js_obj.at("drawable").as_obj();
+                    if (js_drawable.Has("mesh_file")) {
+                        Sys::JsString &js_mesh_file = js_drawable.at("mesh_file").as_str();
+                        size_t n;
+                        if ((n = js_mesh_file.val.find(".gltf")) != std::string::npos) {
+                            js_mesh_file.val.replace(n + 1, 4, "mesh");
+                        }
+                    }
+                }
+                if (js_obj.Has("acc_structure")) {
+                    Sys::JsObject &js_acc_structure = js_obj.at("acc_structure").as_obj();
+                    if (js_acc_structure.Has("mesh_file")) {
+                        Sys::JsString &js_mesh_file = js_acc_structure.at("mesh_file").as_str();
+                        size_t n;
+                        if ((n = js_mesh_file.val.find(".gltf")) != std::string::npos) {
+                            js_mesh_file.val.replace(n + 1, 4, "mesh");
+                        }
                     }
                 }
             }
@@ -1488,8 +1492,7 @@ bool Eng::SceneManager::HPreprocessJson(assets_context_t &ctx, const char *in_fi
 
     Sys::JsFlags flags;
     flags.use_spaces = 1;
-
-    js_root.Write(dst_stream, flags);
+    js_root_el.Write(dst_stream, flags);
 
     return true;
 }

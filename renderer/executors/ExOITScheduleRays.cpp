@@ -56,10 +56,9 @@ void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, 
 #endif
 
         Ren::ProgramRef oit_blend_simple_prog = sh.LoadProgram(
-            ctx, bindless ? "internal/oit_schedule_rays.vert.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.vert.glsl",
+            bindless ? "internal/oit_schedule_rays.vert.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.vert.glsl",
             bindless ? "internal/oit_schedule_rays.frag.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.frag.glsl");
         Ren::ProgramRef oit_blend_vegetation_prog = sh.LoadProgram(
-            ctx,
             bindless ? "internal/oit_schedule_rays@VEGETATION.vert.glsl"
                      : "internal/oit_schedule_rays@VEGETATION;NO_BINDLESS.vert.glsl",
             bindless ? "internal/oit_schedule_rays.frag.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.frag.glsl");

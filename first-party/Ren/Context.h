@@ -162,17 +162,14 @@ class Context {
 
     /*** Program ***/
 #if defined(REN_GL_BACKEND)
-    ShaderRef LoadShaderGLSL(std::string_view name, std::string_view shader_src, eShaderType type,
-                             eShaderLoadStatus *load_status);
+    ShaderRef LoadShaderGLSL(std::string_view name, std::string_view shader_src, eShaderType type);
 #endif
 #if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
-    ShaderRef LoadShaderSPIRV(std::string_view name, Span<const uint8_t> shader_data, eShaderType type,
-                              eShaderLoadStatus *load_status);
+    ShaderRef LoadShaderSPIRV(std::string_view name, Span<const uint8_t> shader_data, eShaderType type);
 #endif
 
 #if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
-    ProgramRef LoadProgram(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref,
-                           ShaderRef gs_ref);
+    ProgramRef LoadProgram(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref, ShaderRef gs_ref);
     ProgramRef LoadProgram(ShaderRef cs_source);
 #elif defined(REN_SW_BACKEND)
     ProgramRef LoadProgramSW(void *vs_shader, void *fs_shader, int num_fvars, const Attribute *attrs,
@@ -186,6 +183,9 @@ class Context {
 
     ProgramRef GetProgram(uint32_t index);
     void ReleasePrograms();
+
+    /*** Pipeline ***/
+    PipelineRef LoadPipeline(ProgramRef prog_ref, int subgroup_size = -1);
 
     /*** Texture 3D ***/
     Tex3DRef LoadTexture3D(std::string_view name, const Tex3DParams &p, MemAllocators *mem_allocs,
