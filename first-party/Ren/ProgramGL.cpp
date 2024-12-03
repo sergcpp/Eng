@@ -114,7 +114,7 @@ void Ren::Program::Init(ShaderRef cs_ref, eProgLoadStatus *status, ILog *log) {
         return;
     }
 
-    log->Info("Initializing program %s...", name_.c_str());
+    log->Info("Initializing program %s", name_.c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
@@ -160,7 +160,7 @@ void Ren::Program::InitBindings(ILog *log) {
 
         const Shader &sh = (*sh_ref);
         for (const Descr &b : sh.blck_bindings) {
-            if (uniform_blocks_.size() < b.loc + 1) {
+            if (int(uniform_blocks_.size()) < b.loc + 1) {
                 uniform_blocks_.resize(b.loc + 1);
             }
             Descr &u = uniform_blocks_[b.loc];
