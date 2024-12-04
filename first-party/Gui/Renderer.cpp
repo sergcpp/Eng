@@ -69,6 +69,7 @@ bool Gui::Renderer::Init() {
                 return false;
             }
         } else {
+#if defined(REN_GL_BACKEND)
             eShaderLoadStatus sh_status;
             ui_vs_ref = ctx_.LoadShaderGLSL("__ui_vs__", vs_source, eShaderType::Vertex, &sh_status);
             if (sh_status != eShaderLoadStatus::CreatedFromData && sh_status != eShaderLoadStatus::Found) {
@@ -80,6 +81,9 @@ bool Gui::Renderer::Init() {
                 ctx_.log()->Error("[Gui::Renderer::Init]: Failed to compile fragment shader!");
                 return false;
             }
+#else
+            return false;
+#endif
         }
 
         eProgLoadStatus status;

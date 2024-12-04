@@ -1,4 +1,5 @@
 #include "Context.h"
+#include "Context.h"
 
 #include <algorithm>
 #include <istream>
@@ -96,7 +97,7 @@ void Ren::Context::ReleaseMaterials() {
     materials_.clear();
 }
 
-#if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
+#if defined(REN_GL_BACKEND)
 Ren::ShaderRef Ren::Context::LoadShaderGLSL(std::string_view name, std::string_view shader_src, eShaderType type,
                                             eShaderLoadStatus *load_status) {
     ShaderRef ref = shaders_.FindByName(name);
@@ -113,8 +114,9 @@ Ren::ShaderRef Ren::Context::LoadShaderGLSL(std::string_view name, std::string_v
     }
     return ref;
 }
+#endif
 
-#if defined(REN_VK_BACKEND) || !defined(__ANDROID__)
+#if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
 Ren::ShaderRef Ren::Context::LoadShaderSPIRV(std::string_view name, Span<const uint8_t> shader_data, eShaderType type,
                                              eShaderLoadStatus *load_status) {
     ShaderRef ref = shaders_.FindByName(name);
@@ -131,7 +133,6 @@ Ren::ShaderRef Ren::Context::LoadShaderSPIRV(std::string_view name, Span<const u
     }
     return ref;
 }
-#endif
 #endif
 
 Ren::ProgramRef Ren::Context::LoadProgram(std::string_view name, ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref,

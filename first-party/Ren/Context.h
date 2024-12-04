@@ -161,14 +161,16 @@ class Context {
     void ReleaseMaterials();
 
     /*** Program ***/
-#if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
+#if defined(REN_GL_BACKEND)
     ShaderRef LoadShaderGLSL(std::string_view name, std::string_view shader_src, eShaderType type,
                              eShaderLoadStatus *load_status);
-#ifndef __ANDROID__
+#endif
+#if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
     ShaderRef LoadShaderSPIRV(std::string_view name, Span<const uint8_t> shader_data, eShaderType type,
                               eShaderLoadStatus *load_status);
 #endif
 
+#if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
     ProgramRef LoadProgram(std::string_view name, ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref,
                            ShaderRef tes_ref, ShaderRef gs_ref, eProgLoadStatus *load_status);
     ProgramRef LoadProgram(std::string_view name, ShaderRef cs_source, eProgLoadStatus *load_status);

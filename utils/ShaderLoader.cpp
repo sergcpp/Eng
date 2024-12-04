@@ -164,7 +164,7 @@ Ren::ShaderRef Eng::ShaderLoader::LoadShader(Ren::Context &ctx, std::string_view
     }
 
     Ren::eShaderLoadStatus status;
-    Ren::ShaderRef ret = ctx.LoadShaderGLSL(name, {}, type, &status);
+    Ren::ShaderRef ret = ctx.LoadShaderSPIRV(name, {}, type, &status);
     if (!ret->ready()) {
 #if defined(REN_VK_BACKEND)
         if (ctx.capabilities.spirv) {
