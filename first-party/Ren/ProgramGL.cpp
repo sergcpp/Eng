@@ -9,17 +9,12 @@
 #pragma warning(disable : 4996)
 #endif
 
-Ren::Program::Program(std::string_view name, ApiContext *api_ctx, ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref,
-                      ShaderRef tes_ref, ShaderRef gs_ref, eProgLoadStatus *status, ILog *log) {
-    name_ = String{name};
-    Init(std::move(vs_ref), std::move(fs_ref), std::move(tcs_ref), std::move(tes_ref), std::move(gs_ref), status, log);
+Ren::Program::Program(ApiContext *api_ctx, ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref,
+                      ShaderRef gs_ref, ILog *log) {
+    Init(std::move(vs_ref), std::move(fs_ref), std::move(tcs_ref), std::move(tes_ref), std::move(gs_ref), log);
 }
 
-Ren::Program::Program(std::string_view name, ApiContext *api_ctx, ShaderRef cs_ref, eProgLoadStatus *status,
-                      ILog *log) {
-    name_ = String{name};
-    Init(std::move(cs_ref), status, log);
-}
+Ren::Program::Program(ApiContext *api_ctx, ShaderRef cs_ref, ILog *log) { Init(std::move(cs_ref), log); }
 
 Ren::Program::~Program() {
     if (id_) {
@@ -45,19 +40,25 @@ Ren::Program &Ren::Program::operator=(Program &&rhs) noexcept {
     attributes_ = std::move(rhs.attributes_);
     uniforms_ = std::move(rhs.uniforms_);
     uniform_blocks_ = std::move(rhs.uniform_blocks_);
-    name_ = std::move(rhs.name_);
 
     return *this;
 }
 
 void Ren::Program::Init(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref, ShaderRef gs_ref,
-                        eProgLoadStatus *status, ILog *log) {
+                        ILog *log) {
     assert(id_ == 0);
 
-    if (!vs_ref || !fs_ref) {
-        (*status) = eProgLoadStatus::SetToDefault;
-        return;
+    std::string prog_name;
+    for (const ShaderRef &sh : shaders_) {
+        if (!sh) {
+            continue;
+        }
+        if (!prog_name.empty()) {
+            prog_name += "&";
+        }
+        prog_name += sh->name();
     }
+    log->Info("Initializing program %s", prog_name.c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
@@ -87,7 +88,7 @@ void Ren::Program::Init(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, S
             program = 0;
         } else {
 #ifdef ENABLE_GPU_DEBUG
-            glObjectLabel(GL_PROGRAM, program, -1, name_.c_str());
+            glObjectLabel(GL_PROGRAM, program, -1, prog_name.c_str());
 #endif
         }
     } else {
@@ -102,19 +103,22 @@ void Ren::Program::Init(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, S
     shaders_[int(eShaderType::TesselationEvaluation)] = std::move(tes_ref);
 
     InitBindings(log);
-
-    (*status) = eProgLoadStatus::CreatedFromData;
 }
 
-void Ren::Program::Init(ShaderRef cs_ref, eProgLoadStatus *status, ILog *log) {
+void Ren::Program::Init(ShaderRef cs_ref, ILog *log) {
     assert(id_ == 0);
 
-    if (!cs_ref) {
-        (*status) = eProgLoadStatus::SetToDefault;
-        return;
+    std::string prog_name;
+    for (const ShaderRef &sh : shaders_) {
+        if (!sh) {
+            continue;
+        }
+        if (!prog_name.empty()) {
+            prog_name += "&";
+        }
+        prog_name += sh->name();
     }
-
-    log->Info("Initializing program %s", name_.c_str());
+    log->Info("Initializing program %s", prog_name.c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
@@ -136,7 +140,7 @@ void Ren::Program::Init(ShaderRef cs_ref, eProgLoadStatus *status, ILog *log) {
             program = 0;
         } else {
 #ifdef ENABLE_GPU_DEBUG
-            glObjectLabel(GL_PROGRAM, program, -1, name_.c_str());
+            glObjectLabel(GL_PROGRAM, program, -1, prog_name.c_str());
 #endif
         }
     } else {
@@ -148,8 +152,6 @@ void Ren::Program::Init(ShaderRef cs_ref, eProgLoadStatus *status, ILog *log) {
     shaders_[int(eShaderType::Compute)] = std::move(cs_ref);
 
     InitBindings(log);
-
-    (*status) = eProgLoadStatus::CreatedFromData;
 }
 
 void Ren::Program::InitBindings(ILog *log) {

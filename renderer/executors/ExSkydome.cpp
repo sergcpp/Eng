@@ -167,11 +167,7 @@ void Eng::ExSkydomeCube::Execute(FgBuilder &builder) {
 void Eng::ExSkydomeCube::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     if (!initialized_) {
         prog_skydome_phys_ = sh.LoadProgram(ctx, "internal/skydome_phys.vert.glsl", "internal/skydome_phys.frag.glsl");
-        assert(prog_skydome_phys_->ready());
-
         Ren::ProgramRef prog = sh.LoadProgram(ctx, "internal/skydome_downsample.comp.glsl");
-        assert(prog->ready());
-
         if (!pi_skydome_downsample_.Init(ctx.api_ctx(), std::move(prog), ctx.log())) {
             ctx.log()->Error("ExSkydomeCube: Failed to initialize pipeline!");
         }
@@ -281,14 +277,10 @@ void Eng::ExSkydomeScreen::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     if (!initialized) {
         prog_skydome_simple_ =
             sh.LoadProgram(ctx, "internal/skydome_simple.vert.glsl", "internal/skydome_simple.frag.glsl");
-        assert(prog_skydome_simple_->ready());
-
         prog_skydome_phys_[0] =
             sh.LoadProgram(ctx, "internal/skydome_phys.vert.glsl", "internal/skydome_phys@SCREEN.frag.glsl");
-        assert(prog_skydome_phys_[0]->ready());
         prog_skydome_phys_[1] =
             sh.LoadProgram(ctx, "internal/skydome_phys.vert.glsl", "internal/skydome_phys@SCREEN;SUBSAMPLE.frag.glsl");
-        assert(prog_skydome_phys_[1]->ready());
 
         initialized = true;
     }

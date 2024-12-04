@@ -29,7 +29,6 @@ void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Fg
 #endif
 
         prog_oit_blit_depth_ = sh.LoadProgram(ctx, "internal/blit.vert.glsl", "internal/blit_oit_depth.frag.glsl");
-        assert(prog_oit_blit_depth_->ready());
 
         Ren::ProgramRef oit_blend_simple_prog[4] = {
             sh.LoadProgram(
@@ -47,10 +46,6 @@ void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Fg
                 ctx, bindless ? "internal/oit_blend_layer.vert.glsl" : "internal/oit_blend_layer@NO_BINDLESS.vert.glsl",
                 bindless ? "internal/oit_blend_layer@GI_CACHE;SPECULAR.frag.glsl"
                          : "internal/oit_blend_layer@GI_CACHE;SPECULAR;NO_BINDLESS.frag.glsl")};
-        assert(oit_blend_simple_prog[0]->ready());
-        assert(oit_blend_simple_prog[1]->ready());
-        assert(oit_blend_simple_prog[2]->ready());
-        assert(oit_blend_simple_prog[3]->ready());
         Ren::ProgramRef oit_blend_vegetation_prog[4] = {
             sh.LoadProgram(ctx,
                            bindless ? "internal/oit_blend_layer@VEGETATION.vert.glsl"
@@ -72,10 +67,6 @@ void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Fg
                                     : "internal/oit_blend_layer@VEGETATION;NO_BINDLESS.vert.glsl",
                            bindless ? "internal/oit_blend_layer@GI_CACHE;SPECULAR.frag.glsl"
                                     : "internal/oit_blend_layer@GI_CACHE;SPECULAR;NO_BINDLESS.frag.glsl")};
-        assert(oit_blend_vegetation_prog[0]->ready());
-        assert(oit_blend_vegetation_prog[1]->ready());
-        assert(oit_blend_vegetation_prog[2]->ready());
-        assert(oit_blend_vegetation_prog[3]->ready());
 
         if (!rp_oit_blend_.Setup(ctx.api_ctx(), color_targets, depth_target, ctx.log())) {
             ctx.log()->Error("[ExOITBlendLayer::LazyInit]: Failed to init render pass!");

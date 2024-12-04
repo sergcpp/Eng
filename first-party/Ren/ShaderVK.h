@@ -49,6 +49,6 @@ class Shader : public RefCounter {
     void Init(Span<const uint8_t> shader_code, eShaderType type, eShaderLoadStatus *status, ILog *log);
 };
 
-typedef StrongRef<Shader> ShaderRef;
-typedef Storage<Shader> ShaderStorage;
+using ShaderRef = StrongRef<Shader, NamedStorage<Shader>>;
+using ShaderStorage = NamedStorage<Shader>;
 } // namespace Ren

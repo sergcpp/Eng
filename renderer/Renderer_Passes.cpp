@@ -46,7 +46,7 @@ bool Eng::Renderer::InitPipelines() {
     auto init_pipeline = [&](Ren::Pipeline &pi, std::string_view cs_name,
                              std::optional<int> subgroup_size = std::nullopt) {
         Ren::ProgramRef prog = sh_.LoadProgram(ctx_, cs_name);
-        if (!prog->ready() || !pi.Init(ctx_.api_ctx(), std::move(prog), ctx_.log(), subgroup_size)) {
+        if (!pi.Init(ctx_.api_ctx(), std::move(prog), ctx_.log(), subgroup_size)) {
             ctx_.log()->Error("Renderer: failed to initialize pipeline!");
             return false;
         }
@@ -166,50 +166,50 @@ bool Eng::Renderer::InitPipelines() {
 
     blit_static_vel_prog_ =
         sh_.LoadProgram(ctx_, "internal/blit_static_vel.vert.glsl", "internal/blit_static_vel.frag.glsl");
-    success &= blit_static_vel_prog_->ready();
+    success &= bool(blit_static_vel_prog_);
 
     blit_gauss2_prog_ = sh_.LoadProgram(ctx_, "internal/blit_gauss.vert.glsl", "internal/blit_gauss.frag.glsl");
-    success &= blit_gauss2_prog_->ready();
+    success &= bool(blit_gauss2_prog_);
 
     blit_ao_prog_ = sh_.LoadProgram(ctx_, "internal/blit_ssao.vert.glsl", "internal/blit_ssao.frag.glsl");
-    success &= blit_ao_prog_->ready();
+    success &= bool(blit_ao_prog_);
 
     blit_bilateral_prog_ =
         sh_.LoadProgram(ctx_, "internal/blit_bilateral.vert.glsl", "internal/blit_bilateral.frag.glsl");
-    success &= blit_bilateral_prog_->ready();
+    success &= bool(blit_bilateral_prog_);
 
     blit_taa_prog_[0] = sh_.LoadProgram(ctx_, "internal/blit_taa.vert.glsl",
                                         "internal/blit_taa@CATMULL_ROM;ROUNDED_NEIBOURHOOD;TONEMAP;YCoCg.frag.glsl");
-    success &= blit_taa_prog_[0]->ready();
+    success &= bool(blit_taa_prog_[0]);
     blit_taa_prog_[1] =
         sh_.LoadProgram(ctx_, "internal/blit_taa.vert.glsl",
                         "internal/blit_taa@CATMULL_ROM;ROUNDED_NEIBOURHOOD;TONEMAP;YCoCg;MOTION_BLUR.frag.glsl");
-    success &= blit_taa_prog_[1]->ready();
+    success &= bool(blit_taa_prog_[1]);
 
     blit_taa_static_prog_ =
         sh_.LoadProgram(ctx_, "internal/blit_taa.vert.glsl", "internal/blit_taa@STATIC_ACCUMULATION.frag.glsl");
-    success &= blit_taa_static_prog_->ready();
+    success &= bool(blit_taa_static_prog_);
 
     blit_ssr_prog_ = sh_.LoadProgram(ctx_, "internal/blit_ssr.vert.glsl", "internal/blit_ssr.frag.glsl");
-    success &= blit_ssr_prog_->ready();
+    success &= bool(blit_ssr_prog_);
 
     blit_ssr_dilate_prog_ =
         sh_.LoadProgram(ctx_, "internal/blit_ssr_dilate.vert.glsl", "internal/blit_ssr_dilate.frag.glsl");
-    success &= blit_ssr_dilate_prog_->ready();
+    success &= bool(blit_ssr_dilate_prog_);
 
     blit_ssr_compose_prog_ =
         sh_.LoadProgram(ctx_, "internal/blit_ssr_compose.vert.glsl", "internal/blit_ssr_compose.frag.glsl");
-    success &= blit_ssr_compose_prog_->ready();
+    success &= bool(blit_ssr_compose_prog_);
 
     blit_upscale_prog_ = sh_.LoadProgram(ctx_, "internal/blit_upscale.vert.glsl", "internal/blit_upscale.frag.glsl");
-    success &= blit_upscale_prog_->ready();
+    success &= bool(blit_upscale_prog_);
 
     blit_down2_prog_ = sh_.LoadProgram(ctx_, "internal/blit_down.vert.glsl", "internal/blit_down.frag.glsl");
-    success &= blit_down2_prog_->ready();
+    success &= bool(blit_down2_prog_);
 
     blit_down_depth_prog_ =
         sh_.LoadProgram(ctx_, "internal/blit_down_depth.vert.glsl", "internal/blit_down_depth.frag.glsl");
-    success &= blit_down_depth_prog_->ready();
+    success &= bool(blit_down_depth_prog_);
 
     return success;
 }

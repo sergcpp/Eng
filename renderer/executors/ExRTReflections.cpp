@@ -37,7 +37,6 @@ void Eng::ExRTReflections::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                                 subgroup_select("internal/rt_reflections_swrt.comp.glsl",
                                                                 "internal/rt_reflections_swrt@NO_SUBGROUP.comp.glsl")));
         }
-        assert(rt_reflections_prog->ready());
 
         if (!pi_rt_reflections_[0].Init(ctx.api_ctx(), std::move(rt_reflections_prog), ctx.log())) {
             ctx.log()->Error("ExRTReflections: Failed to initialize pipeline!");
@@ -57,7 +56,6 @@ void Eng::ExRTReflections::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                  subgroup_select("internal/rt_reflections_swrt@GI_CACHE.comp.glsl",
                                                  "internal/rt_reflections_swrt@GI_CACHE;NO_SUBGROUP.comp.glsl")));
         }
-        assert(rt_reflections_prog->ready());
 
         if (!pi_rt_reflections_[1].Init(ctx.api_ctx(), std::move(rt_reflections_prog), ctx.log())) {
             ctx.log()->Error("ExRTReflections: Failed to initialize pipeline!");
@@ -69,7 +67,6 @@ void Eng::ExRTReflections::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                         "internal/rt_reflections_hwrt@STOCH_LIGHTS;GI_CACHE;NO_SUBGROUP.comp.glsl"),
                         subgroup_select("internal/rt_reflections_swrt@STOCH_LIGHTS;GI_CACHE.comp.glsl",
                                         "internal/rt_reflections_swrt@STOCH_LIGHTS;GI_CACHE;NO_SUBGROUP.comp.glsl")));
-        assert(rt_reflections_prog->ready());
 
         if (!pi_rt_reflections_[2].Init(ctx.api_ctx(), std::move(rt_reflections_prog), ctx.log())) {
             ctx.log()->Error("ExRTReflections: Failed to initialize pipeline!");
@@ -82,7 +79,6 @@ void Eng::ExRTReflections::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                              "internal/rt_reflections_hwrt@FOUR_BOUNCES;NO_SUBGROUP.comp.glsl"),
                              subgroup_select("internal/rt_reflections_swrt@FOUR_BOUNCES.comp.glsl",
                                              "internal/rt_reflections_swrt@FOUR_BOUNCES;NO_SUBGROUP.comp.glsl")));
-        assert(rt_reflections_prog->ready());
 
         if (!pi_rt_reflections_4bounce_[0].Init(ctx.api_ctx(), std::move(rt_reflections_prog), ctx.log())) {
             ctx.log()->Error("ExRTReflections: Failed to initialize pipeline!");
@@ -94,7 +90,6 @@ void Eng::ExRTReflections::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                         "internal/rt_reflections_hwrt@FOUR_BOUNCES;GI_CACHE;NO_SUBGROUP.comp.glsl"),
                         subgroup_select("internal/rt_reflections_swrt@FOUR_BOUNCES;GI_CACHE.comp.glsl",
                                         "internal/rt_reflections_swrt@FOUR_BOUNCES;GI_CACHE;NO_SUBGROUP.comp.glsl")));
-        assert(rt_reflections_prog->ready());
 
         if (!pi_rt_reflections_4bounce_[1].Init(ctx.api_ctx(), std::move(rt_reflections_prog), ctx.log())) {
             ctx.log()->Error("ExRTReflections: Failed to initialize pipeline!");
@@ -108,7 +103,6 @@ void Eng::ExRTReflections::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                         subgroup_select(
                             "internal/rt_reflections_swrt@STOCH_LIGHTS;FOUR_BOUNCES;GI_CACHE.comp.glsl",
                             "internal/rt_reflections_swrt@STOCH_LIGHTS;FOUR_BOUNCES;GI_CACHE;NO_SUBGROUP.comp.glsl")));
-        assert(rt_reflections_prog->ready());
 
         if (!pi_rt_reflections_4bounce_[2].Init(ctx.api_ctx(), std::move(rt_reflections_prog), ctx.log())) {
             ctx.log()->Error("ExRTReflections: Failed to initialize pipeline!");

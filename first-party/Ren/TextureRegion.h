@@ -45,6 +45,6 @@ class TextureRegion : public RefCounter {
               TextureAtlasArray *atlas, eTexLoadStatus *load_status);
 };
 
-typedef StrongRef<TextureRegion> TextureRegionRef;
-typedef Storage<TextureRegion> TextureRegionStorage;
+using TextureRegionRef = StrongRef<TextureRegion, NamedStorage<TextureRegion>>;
+using TextureRegionStorage = NamedStorage<TextureRegion>;
 } // namespace Ren

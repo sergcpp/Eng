@@ -25,12 +25,11 @@ void Eng::ExDebugProbes::Execute(FgBuilder &builder) {
     rast_state.depth.test_enabled = true;
     rast_state.depth.compare_op = unsigned(Ren::eCompareOp::Greater);
 
-    const Ren::Binding bindings[] = {
-        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, *unif_sh_data_buf.ref},
-        {Ren::eBindTarget::Tex2DArraySampled, ProbeDebug::OFFSET_TEX_SLOT,
-         *std::get<const Ren::Texture2DArray *>(off_tex._ref)},
-        {Ren::eBindTarget::Tex2DArraySampled, ProbeDebug::IRRADIANCE_TEX_SLOT,
-         *std::get<const Ren::Texture2DArray *>(irr_tex._ref)}};
+    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, *unif_sh_data_buf.ref},
+                                     {Ren::eBindTarget::Tex2DArraySampled, ProbeDebug::OFFSET_TEX_SLOT,
+                                      *std::get<const Ren::Texture2DArray *>(off_tex._ref)},
+                                     {Ren::eBindTarget::Tex2DArraySampled, ProbeDebug::IRRADIANCE_TEX_SLOT,
+                                      *std::get<const Ren::Texture2DArray *>(irr_tex._ref)}};
 
     const ProbeVolume &volume = args_->probe_volumes[args_->volume_to_debug];
 
@@ -51,8 +50,6 @@ void Eng::ExDebugProbes::Execute(FgBuilder &builder) {
 void Eng::ExDebugProbes::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     if (!initialized) {
         prog_probe_debug_ = sh.LoadProgram(ctx, "internal/probe_debug.vert.glsl", "internal/probe_debug.frag.glsl");
-        assert(prog_probe_debug_->ready());
-
         initialized = true;
     }
 }

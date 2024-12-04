@@ -27,8 +27,6 @@ void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                                             "internal/rt_gi_cache_hwrt@NO_SUBGROUP.comp.glsl"),
                                             subgroup_select("internal/rt_gi_cache_swrt.comp.glsl",
                                                             "internal/rt_gi_cache_swrt@NO_SUBGROUP.comp.glsl")));
-        assert(rt_gi_cache_prog->ready());
-
         if (!pi_rt_gi_cache_[0][0].Init(ctx.api_ctx(), std::move(rt_gi_cache_prog), ctx.log())) {
             ctx.log()->Error("ExRTGICache: Failed to initialize pipeline!");
         }
@@ -38,8 +36,6 @@ void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                              "internal/rt_gi_cache_hwrt@PARTIAL;NO_SUBGROUP.comp.glsl"),
                              subgroup_select("internal/rt_gi_cache_swrt@PARTIAL.comp.glsl",
                                              "internal/rt_gi_cache_swrt@PARTIAL;NO_SUBGROUP.comp.glsl")));
-        assert(rt_gi_cache_prog->ready());
-
         if (!pi_rt_gi_cache_[0][1].Init(ctx.api_ctx(), std::move(rt_gi_cache_prog), ctx.log())) {
             ctx.log()->Error("ExRTGICache: Failed to initialize pipeline!");
         }
@@ -49,8 +45,6 @@ void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                              "internal/rt_gi_cache_hwrt@STOCH_LIGHTS;NO_SUBGROUP.comp.glsl"),
                              subgroup_select("internal/rt_gi_cache_swrt@STOCH_LIGHTS.comp.glsl",
                                              "internal/rt_gi_cache_swrt@STOCH_LIGHTS;NO_SUBGROUP.comp.glsl")));
-        assert(rt_gi_cache_prog->ready());
-
         if (!pi_rt_gi_cache_[1][0].Init(ctx.api_ctx(), std::move(rt_gi_cache_prog), ctx.log())) {
             ctx.log()->Error("ExRTGICache: Failed to initialize pipeline!");
         }
@@ -60,8 +54,6 @@ void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
                                              "internal/rt_gi_cache_hwrt@STOCH_LIGHTS;PARTIAL;NO_SUBGROUP.comp.glsl"),
                              subgroup_select("internal/rt_gi_cache_swrt@STOCH_LIGHTS;PARTIAL.comp.glsl",
                                              "internal/rt_gi_cache_swrt@STOCH_LIGHTS;PARTIAL;NO_SUBGROUP.comp.glsl")));
-        assert(rt_gi_cache_prog->ready());
-
         if (!pi_rt_gi_cache_[1][1].Init(ctx.api_ctx(), std::move(rt_gi_cache_prog), ctx.log())) {
             ctx.log()->Error("ExRTGICache: Failed to initialize pipeline!");
         }

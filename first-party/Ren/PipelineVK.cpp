@@ -122,7 +122,17 @@ bool Ren::Pipeline::Init(ApiContext *api_ctx, const RastState &rast_state, Progr
                          uint32_t subpass_index, ILog *log) {
     Destroy();
 
-    log->Info("Initializing pipeline %s", prog->name().c_str());
+    std::string pipeline_name;
+    for (const ShaderRef &sh : prog->shaders()) {
+        if (!sh) {
+            continue;
+        }
+        if (!pipeline_name.empty()) {
+            pipeline_name += "&";
+        }
+        pipeline_name += sh->name();
+    }
+    log->Info("Initializing pipeline %s", pipeline_name.c_str());
 
     api_ctx_ = api_ctx;
     type_ = ePipelineType::Graphics;
@@ -348,7 +358,17 @@ bool Ren::Pipeline::Init(ApiContext *api_ctx, const RastState &rast_state, Progr
 bool Ren::Pipeline::Init(ApiContext *api_ctx, ProgramRef prog, ILog *log, std::optional<int> subgroup_size) {
     Destroy();
 
-    log->Info("Initializing pipeline %s", prog->name().c_str());
+    std::string pipeline_name;
+    for (const ShaderRef &sh : prog->shaders()) {
+        if (!sh) {
+            continue;
+        }
+        if (!pipeline_name.empty()) {
+            pipeline_name += "&";
+        }
+        pipeline_name += sh->name();
+    }
+    log->Info("Initializing pipeline %s", pipeline_name.c_str());
 
     ePipelineType type = ePipelineType::Undefined;
 

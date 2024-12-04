@@ -86,9 +86,8 @@ bool Gui::Renderer::Init() {
 #endif
         }
 
-        eProgLoadStatus status;
-        ui_program = ctx_.LoadProgram("__ui_program__", ui_vs_ref, ui_fs_ref, {}, {}, {}, &status);
-        if (status != eProgLoadStatus::CreatedFromData && status != eProgLoadStatus::Found) {
+        ui_program = ctx_.LoadProgram(ui_vs_ref, ui_fs_ref, {}, {}, {});
+        if (!ui_program) {
             ctx_.log()->Error("[Gui::Renderer::Init]: Failed to link program!");
             return false;
         }

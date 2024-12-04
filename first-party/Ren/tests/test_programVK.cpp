@@ -163,11 +163,7 @@ void main() {
         ShaderRef cs_ref = test.LoadShaderSPIRV("sample_cs", cs_spirv, eShaderType::Compute, &sh_status);
         require(sh_status == eShaderLoadStatus::CreatedFromData);
 
-        eProgLoadStatus status;
-        ProgramRef p = test.LoadProgram("sample", cs_ref, &status);
-        require(status == eProgLoadStatus::CreatedFromData);
-
-        // require(p->uniform(0).name == "delta");
+        ProgramRef p = test.LoadProgram(cs_ref);
         require(p->uniform(0).loc != -1);
 
 #if 0
