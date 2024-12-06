@@ -5,9 +5,9 @@
 #include "../Material.h"
 
 void test_program() {
-    printf("Test program            | ");
-
     using namespace Ren;
+
+    printf("Test program            | ");
 
     { // Load spirv program
         TestContext test;

@@ -5,7 +5,7 @@
 #include "../Json.h"
 
 namespace {
-const char json_example[] = "{"
+static const char json_example[] = "{"
                             "\t\"widget\": {\n"
                             "\t\t\"debug\": \"on\",\n"
                             "\t\t\"window\": {\n"
@@ -34,7 +34,7 @@ const char json_example[] = "{"
                             "\t}"
                             "}";
 
-const char json_example2[] = "{\n"
+static const char json_example2[] = "{\n"
                              "\t\"glossary\": {\n"
                              "\t\t\"title\": \"example glossary\",\n"
                              "\t\t\"GlossDiv\": {\n"
@@ -57,7 +57,7 @@ const char json_example2[] = "{\n"
                              "\t}\n"
                              "}";
 
-const char json_example3[] = "{\n"
+static const char json_example3[] = "{\n"
                              "\t\"menu\": {\n"
                              "\t\t\"id\": \"file\",\n"
                              "\t\t\"value\": \"File\",\n"
@@ -73,6 +73,8 @@ const char json_example3[] = "{\n"
 }
 
 void test_json() {
+    using namespace Sys;
+
     printf("Test json               | ");
 
     { // Test types

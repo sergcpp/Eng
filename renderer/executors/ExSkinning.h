@@ -3,8 +3,6 @@
 #include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"
 
-struct DrawList;
-
 namespace Eng {
 class ExSkinning final : public FgExecutor {
     const Ren::Pipeline &pi_skinning_;

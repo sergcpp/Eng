@@ -3,9 +3,9 @@
 #include "../Storage.h"
 
 void test_storage() {
-    printf("Test storage            | ");
-
     using namespace Ren;
+
+    printf("Test storage            | ");
 
     class MyObj : public RefCounter {
         String name_;
