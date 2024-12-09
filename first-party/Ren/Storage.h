@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include "HashMap32.h"
 #include "Span.h"
 #include "SparseArray.h"
@@ -102,7 +104,7 @@ template <typename T> class SortedStorage : public SparseArray<T> {
 
 class RefCounter {
   public:
-    unsigned ref_count() const { return ctrl_->strong_refs; }
+    uint32_t ref_count() const { return ctrl_->strong_refs.load(); }
 
   protected:
     template <typename T, typename StorageType> friend class StrongRef;
@@ -140,8 +142,8 @@ class RefCounter {
 
   private:
     struct CtrlBlock {
-        uint32_t strong_refs;
-        uint32_t weak_refs;
+        std::atomic_uint32_t strong_refs;
+        std::atomic_uint32_t weak_refs;
     };
 
     mutable CtrlBlock *ctrl_;
@@ -167,12 +169,12 @@ template <typename T, typename StorageType> class StrongRef {
 
     uint32_t strong_refs() const {
         const T &p = storage_->at(index_);
-        return p.ctrl_->strong_refs;
+        return p.ctrl_->strong_refs.load();
     }
 
     uint32_t weak_refs() const {
         const T &p = storage_->at(index_);
-        return p.ctrl_->weak_refs;
+        return p.ctrl_->weak_refs.load();
     }
 
     StrongRef(const StrongRef &rhs) {
@@ -274,7 +276,7 @@ template <typename T, typename StorageType> class StrongRef {
     void Release() {
         if (storage_) {
             const T &p = storage_->at(index_);
-            if (--p.ctrl_->strong_refs == 0) {
+            if (p.ctrl_->strong_refs.fetch_sub(1) == 1) {
                 storage_->erase(index_);
             }
             storage_ = nullptr;
@@ -402,7 +404,7 @@ template <typename T, typename StorageType> class WeakRef {
         return &storage_->at(index_);
     }
 
-    explicit operator bool() const { return ctrl_ && ctrl_->strong_refs != 0; }
+    explicit operator bool() const { return ctrl_ && ctrl_->strong_refs.load() != 0; }
 
     uint32_t index() const { return index_; }
 
@@ -415,7 +417,7 @@ template <typename T, typename StorageType> class WeakRef {
 
     void Release() {
         if (ctrl_) {
-            if (--ctrl_->weak_refs == 0 && ctrl_->strong_refs == 0) {
+            if (ctrl_->weak_refs.fetch_sub(1) == 1 && ctrl_->strong_refs.load() == 0) {
                 delete ctrl_;
             }
             storage_ = nullptr;
