@@ -60,6 +60,8 @@ class Renderer {
 
     void InitPipelines();
 
+    PrimDraw &prim_draw() { return prim_draw_; }
+
     int accumulated_frames() const { return accumulated_frames_; }
     void reset_accumulation() { frame_index_ = view_state_.frame_index = accumulated_frames_ = 0; }
 
