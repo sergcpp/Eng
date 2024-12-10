@@ -5,6 +5,7 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo;Asan" CACHE STRING "
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_definitions(-D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 
 find_library(CORE_GRAPHICS CoreGraphics)
 
@@ -33,8 +34,6 @@ ELSE(WIN32)
         set(LIBS dl pthread)
     endif()
 ENDIF(WIN32)
-
-add_definitions(-D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 
 set(SOURCE_FILES AlignedAlloc.h
                  AssetFile.h
