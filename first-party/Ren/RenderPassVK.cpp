@@ -23,14 +23,14 @@ extern const VkAttachmentLoadOp vk_load_ops[] = {
     VK_ATTACHMENT_LOAD_OP_DONT_CARE, // DontCare
     VK_ATTACHMENT_LOAD_OP_NONE_EXT   // None
 };
-static_assert((sizeof(vk_load_ops) / sizeof(vk_load_ops[0])) == int(eLoadOp::_Count), "!");
+static_assert(std::size(vk_load_ops) == int(eLoadOp::_Count), "!");
 
 extern const VkAttachmentStoreOp vk_store_ops[] = {
     VK_ATTACHMENT_STORE_OP_STORE,     // Store
     VK_ATTACHMENT_STORE_OP_DONT_CARE, // DontCare
     VK_ATTACHMENT_STORE_OP_NONE_EXT   // None
 };
-static_assert((sizeof(vk_store_ops) / sizeof(vk_store_ops[0])) == int(eStoreOp::_Count), "!");
+static_assert(std::size(vk_store_ops) == int(eStoreOp::_Count), "!");
 
 // make sure we can simply cast these
 static_assert(VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT == 1, "!");
