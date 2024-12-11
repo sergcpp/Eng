@@ -34,6 +34,8 @@ ELSE(WIN32)
     endif()
 ENDIF(WIN32)
 
+add_definitions(-D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+
 set(SOURCE_FILES AlignedAlloc.h
                  AssetFile.h
                  AssetFile.cpp

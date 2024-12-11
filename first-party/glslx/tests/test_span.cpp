@@ -76,6 +76,7 @@ void test_span() {
         require(test8[1] == 2);
         require(test8[2] == 3);
     }
+
     { // loop
         const int arr_values[] = {1, 2, 3, 4, 5};
         Span<const int> test0(arr_values);
@@ -85,6 +86,7 @@ void test_span() {
         }
         require(sum == 15);
     }
+
     { // usage with std::vector
         const std::vector<int> arr_values = {1, 2, 3, 4, 5};
         Span<const int> test0(arr_values);
@@ -94,6 +96,7 @@ void test_span() {
         }
         require(sum == 15);
     }
+
     { // const removal
         int val = 1;
         std::vector<int *> arr_values = {&val, &val, &val, &val, &val};
@@ -103,6 +106,27 @@ void test_span() {
             sum += *i;
         }
         require(sum == 5);
+    }
+
+    { // comparison operators
+        const int v1[] = {1, 2, 3, 4, 5};
+        const int v2[] = {1, 2, 3, 4, 6};
+        const int v3[] = {1, 2, 3, 4, 5};
+        const int v4[] = {1, 2, 3, 4, 6};
+
+        Span<const int> s1 = v1;
+        Span<const int> s2 = v2;
+        Span<const int> s3 = v3;
+        Span<const int> s4 = v4;
+
+        require(s1 < s2);
+        require(s1 <= s3);
+        require(s2 > s1);
+        require(s2 >= s4);
+        require(s1 == s3);
+        require(s2 == s4);
+        require(s1 != s2);
+        require(s3 != s4);
     }
 
     printf("OK\n");
