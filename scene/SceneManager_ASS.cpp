@@ -35,7 +35,7 @@ void LoadTGA(Sys::AssetFile &in_file, int w, int h, uint8_t *out_data) {
         return;
     }
 
-    if (format == Ren::eTexFormat::RawRGB888) {
+    if (format == Ren::eTexFormat::RGB8) {
         int i = 0;
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -45,7 +45,7 @@ void LoadTGA(Sys::AssetFile &in_file, int w, int h, uint8_t *out_data) {
                 out_data[i++] = 255;
             }
         }
-    } else if (format == Ren::eTexFormat::RawRGBA8888) {
+    } else if (format == Ren::eTexFormat::RGBA8) {
         int i = 0;
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {

@@ -199,7 +199,7 @@ void run_image_test(std::string_view test_name, const double min_psnr, const eIm
             const Sys::JsStringP &js_view_transform = js_cam.at("view_transform").as_str();
             if (js_view_transform.val == "agx") {
                 renderer->settings.tonemap_mode = eTonemapMode::LUT;
-                renderer->SetTonemapLUT(LUT_DIMS, Ren::eTexFormat::RawRGB10_A2,
+                renderer->SetTonemapLUT(LUT_DIMS, Ren::eTexFormat::RGB10_A2,
                                         Ren::Span<const uint8_t>(reinterpret_cast<const uint8_t *>(__agx),
                                                                  reinterpret_cast<const uint8_t *>(__agx) +
                                                                      4 * LUT_DIMS * LUT_DIMS * LUT_DIMS));
@@ -289,7 +289,7 @@ void run_image_test(std::string_view test_name, const double min_psnr, const eIm
     Ren::Tex2DParams params;
     params.w = ref_w;
     params.h = ref_h;
-    params.format = Ren::eTexFormat::RawRGBA8888;
+    params.format = Ren::eTexFormat::RGBA8;
     params.sampling.filter = Ren::eTexFilter::BilinearNoMipmap;
     params.sampling.wrap = Ren::eTexWrap::ClampToEdge;
     params.usage = Ren::eTexUsage::RenderTarget | Ren::eTexUsage::Transfer;

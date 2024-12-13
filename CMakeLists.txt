@@ -55,6 +55,8 @@ set(INPUT_SOURCE_FILES input/InputManager.h
 
 set(RENDERER_SOURCES    renderer/CDFUtils.h
                         renderer/CDFUtils.cpp
+                        renderer/ParseJs.h
+                        renderer/ParseJs.cpp
                         renderer/PrimDraw.h
                         renderer/PrimDraw.cpp
                         renderer/Renderer.h
