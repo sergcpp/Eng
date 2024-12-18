@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include <algorithm>
+#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 
@@ -50,10 +51,12 @@ bool Sys::JsNumber::Read(std::istream &in) {
     while (in.read(&c, 1) && isspace(c))
         ;
     in.seekg(-1, std::ios::cur);
-    return bool(in >> val);
+    return bool(in >> std::setprecision(std::numeric_limits<double>::digits10 + 1) >> val);
 }
 
-void Sys::JsNumber::Write(std::ostream &out, const JsFlags /*flags*/) const { out << val; }
+void Sys::JsNumber::Write(std::ostream &out, const JsFlags /*flags*/) const {
+    out << std::setprecision(std::numeric_limits<double>::digits10 + 1) << val;
+}
 
 /////////////////////////////////////////////////////////////////
 
@@ -190,7 +193,7 @@ template <typename Alloc> void Sys::JsArrayT<Alloc>::Write(std::ostream &out, Js
         out << ident_str;
         it->Write(out, flags);
         if (it != std::prev(elements.cend(), 1)) {
-            out << ", ";
+            out << (flags.use_new_lines ? "," : ", ");
         }
     }
     if (!ident_str.empty()) {
@@ -335,7 +338,7 @@ template <typename Alloc> void Sys::JsObjectT<Alloc>::Write(std::ostream &out, J
         out << '\"' << it->first << "\" : ";
         it->second.Write(out, flags);
         if (it != std::prev(elements.end(), 1)) {
-            out << ", ";
+            out << (flags.use_new_lines ? "," : ", ");
         }
     }
     if (!ident_str.empty()) {
