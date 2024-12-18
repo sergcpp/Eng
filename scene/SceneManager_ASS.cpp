@@ -19,7 +19,7 @@
 #include <Gui/Utils.h>
 
 namespace SceneManagerInternal {
-const uint32_t AssetsBuildVersion = 48;
+const uint32_t AssetsBuildVersion = 49;
 
 void LoadTGA(Sys::AssetFile &in_file, int w, int h, uint8_t *out_data) {
     auto in_file_size = size_t(in_file.size());
@@ -1491,7 +1491,9 @@ bool Eng::SceneManager::HPreprocessJson(assets_context_t &ctx, const char *in_fi
     }
 
     Sys::JsFlags flags;
-    flags.use_spaces = 1;
+    flags.use_new_lines = 0;
+    flags.use_identation = 0;
+    flags.prefer_spaces = 0;
     js_root_el.Write(dst_stream, flags);
 
     return true;
