@@ -12,7 +12,7 @@ VkMemoryPropertyFlags GetVkMemoryPropertyFlags(eBufType type);
 uint32_t FindMemoryType(uint32_t search_from, const VkPhysicalDeviceMemoryProperties *mem_properties,
                         uint32_t mem_type_bits, VkMemoryPropertyFlags desired_mem_flags, VkDeviceSize desired_size);
 VkFormat ToSRGBFormat(VkFormat format);
-VkImageUsageFlags to_vk_image_usage(eTexUsage usage, eTexFormat format);
+VkImageUsageFlags to_vk_image_usage(Bitmask<eTexUsage> usage, eTexFormat format);
 } // namespace Ren
 
 namespace FgBuilderInternal {
@@ -145,7 +145,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
 
         Ren::Tex2DParams &p = t.desc;
         // Needed to clear the image initially
-        p.usage |= Ren::eTexUsageBits::Transfer;
+        p.usage |= Ren::eTexUsage::Transfer;
         if (t.history_index != -1) {
             // combine usage flags
             FgAllocTex &hist_tex = textures_[t.history_index];
@@ -174,7 +174,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             img_info.mipLevels = mip_count;
             img_info.arrayLayers = 1;
             img_info.format = Ren::VKFormatFromTexFormat(p.format);
-            if (bool(p.flags & Ren::eTexFlagBits::SRGB)) {
+            if (p.flags & Ren::eTexFlags::SRGB) {
                 img_info.format = Ren::ToSRGBFormat(img_info.format);
             }
             img_info.tiling = VK_IMAGE_TILING_OPTIMAL;

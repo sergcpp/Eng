@@ -292,9 +292,9 @@ void run_image_test(std::string_view test_name, const double min_psnr, const eIm
     params.format = Ren::eTexFormat::RGBA8;
     params.sampling.filter = Ren::eTexFilter::Bilinear;
     params.sampling.wrap = Ren::eTexWrap::ClampToEdge;
-    params.usage = Ren::eTexUsage::RenderTarget | Ren::eTexUsage::Transfer;
+    params.usage = Ren::Bitmask(Ren::eTexUsage::RenderTarget) | Ren::eTexUsage::Transfer;
 #if defined(REN_GL_BACKEND)
-    params.flags = Ren::eTexFlagBits::SRGB;
+    params.flags = Ren::eTexFlags::SRGB;
 #endif
 
     Ren::eTexLoadStatus status;

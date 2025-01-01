@@ -784,7 +784,7 @@ void Eng::FgBuilder::AllocateNeededResources_Simple() {
         }
 
         // Needed to clear the image initially
-        tex.desc.usage |= Ren::eTexUsageBits::Transfer;
+        tex.desc.usage |= Ren::eTexUsage::Transfer;
 
         if (tex.history_index != -1) {
             FgAllocTex &hist_tex = textures_.at(tex.history_index);
