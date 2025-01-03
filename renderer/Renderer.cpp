@@ -386,8 +386,9 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
 
         color_rts[2].flags = Ren::eTexFlags::SRGB;
 
-        const auto depth_format =
-            ctx_.capabilities.depth24_stencil8_format ? Ren::eTexFormat::D24_S8 : Ren::eTexFormat::D32_S8;
+        //const auto depth_format =
+        //    ctx_.capabilities.depth24_stencil8_format ? Ren::eTexFormat::D24_S8 : Ren::eTexFormat::D32_S8;
+        const auto depth_format = Ren::eTexFormat::D32_S8;
 
         const Ren::RenderTargetInfo depth_rt = {depth_format, 1 /* samples */,
                                                 Ren::eImageLayout::DepthStencilAttachmentOptimal, Ren::eLoadOp::Load,
@@ -921,8 +922,8 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
         frame_textures.depth_params.w = view_state_.scr_res[0];
         frame_textures.depth_params.h = view_state_.scr_res[1];
-        frame_textures.depth_params.format =
-            ctx_.capabilities.depth24_stencil8_format ? Ren::eTexFormat::D24_S8 : Ren::eTexFormat::D32_S8;
+        frame_textures.depth_params.format = Ren::eTexFormat::D32_S8;
+            //ctx_.capabilities.depth24_stencil8_format ? Ren::eTexFormat::D24_S8 : Ren::eTexFormat::D32_S8;
         frame_textures.depth_params.sampling.wrap = Ren::eTexWrap::ClampToEdge;
 
         // Main HDR color
