@@ -9,37 +9,33 @@
 struct view_state_t;
 
 namespace Eng {
-class PrimDraw;
-class ExRTShadows final : public FgExecutor {
+class ExVolVoxelize final : public FgExecutor {
   public:
     struct Args {
+        FgResRef shared_data;
+        FgResRef random_seq;
         FgResRef geo_data;
         FgResRef materials;
-        FgResRef vtx_buf1;
-        FgResRef ndx_buf;
-        FgResRef shared_data;
-        FgResRef noise_tex;
-        FgResRef depth_tex;
-        FgResRef normal_tex;
         FgResRef tlas_buf;
-        FgResRef tile_list_buf;
-        FgResRef indir_args;
 
-        const Ren::IAccStructure *tlas = nullptr;
+        Ren::IAccStructure *tlas = nullptr;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgResRef blas_buf;
+            FgResRef rt_blas_buf;
             FgResRef prim_ndx_buf;
             FgResRef mesh_instances_buf;
             FgResRef textures_buf;
+            FgResRef vtx_buf1;
+            FgResRef ndx_buf;
         } swrt;
 
-        FgResRef out_shadow_tex;
+        FgResRef out_emission_tex;
+        FgResRef out_scatter_tex;
     };
 
-    ExRTShadows(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args)
-        : view_state_(view_state), bindless_tex_(bindless_tex), args_(args) {}
+    ExVolVoxelize(const DrawList **p_list, const view_state_t *view_state, const Args *args)
+        : p_list_(p_list), view_state_(view_state), args_(args) {}
 
     void Execute(FgBuilder &builder) override;
 
@@ -47,18 +43,16 @@ class ExRTShadows final : public FgExecutor {
     bool initialized_ = false;
 
     // lazily initialized data
-    Ren::PipelineRef pi_rt_shadows_;
+    Ren::PipelineRef pi_vol_voxelize_;
 
     // temp data (valid only between Setup and Execute calls)
+    const DrawList **p_list_ = nullptr;
     const view_state_t *view_state_ = nullptr;
-    const BindlessTextureData *bindless_tex_ = nullptr;
-
     const Args *args_ = nullptr;
 
     void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
 
-    void Execute_HWRT_Pipeline(FgBuilder &builder);
-    void Execute_HWRT_Inline(FgBuilder &builder);
+    void Execute_HWRT(FgBuilder &builder);
     void Execute_SWRT(FgBuilder &builder);
 };
 } // namespace Eng
