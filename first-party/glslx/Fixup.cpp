@@ -11,7 +11,7 @@ void glslx::Fixup::Visit_Statement(ast_statement *statement) {
                 continue;
             }
             if (config_.remove_const && !IsConstant(declaration->variables[i]->initial_value)) {
-                declaration->variables[i]->is_const = false;
+                declaration->variables[i]->flags &= ~Bitmask{eVariableFlags::Const};
             }
         }
     } break;
