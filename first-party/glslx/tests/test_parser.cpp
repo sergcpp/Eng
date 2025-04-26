@@ -12,18 +12,17 @@ void test_parser() {
 
     printf("Test parser             | ");
 
-    auto check_serialization = [](TrUnit *tu) -> std::unique_ptr<TrUnit> {
+    auto check_serialization = [](std::unique_ptr<TrUnit> &tu) {
         if (!tu) {
-            return {};
+            return;
         }
         std::stringstream temp;
         Serialize s;
-        s.SerializeAST(tu, temp);
+        s.SerializeAST(tu.get(), temp);
         require(temp.good());
-        std::unique_ptr<TrUnit> ret = std::make_unique<TrUnit>();
-        require(s.DeserializeAST(ret.get(), temp));
-        require_fatal(ret != nullptr);
-        return ret;
+        tu = std::make_unique<TrUnit>();
+        require(s.DeserializeAST(tu.get(), temp));
+        require_fatal(tu != nullptr);
     };
 
     { // directives
@@ -37,7 +36,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -55,7 +54,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -103,7 +102,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -131,7 +130,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -157,7 +156,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -193,7 +192,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -326,7 +325,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -350,7 +349,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -375,7 +374,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -439,7 +438,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -483,7 +482,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -556,7 +555,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -616,7 +615,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -640,7 +639,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -665,7 +664,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -691,7 +690,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -723,7 +722,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -752,7 +751,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -808,7 +807,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -847,7 +846,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -865,7 +864,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -893,7 +892,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -910,7 +909,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -929,7 +928,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);
@@ -948,7 +947,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit == nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
         require_fatal(tr_unit == nullptr);
 
         require(strcmp(parser.error(), "line_directive.glsl:43:12: error: 1111") == 0);
@@ -959,7 +958,7 @@ void test_parser() {
         Parser parser(source, "first_character_invalid.glsl");
         std::unique_ptr<TrUnit> tr_unit = parser.Parse(eTrUnitType::Compute);
         require(tr_unit == nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
         require_fatal(tr_unit == nullptr);
         require(strcmp(parser.error(), "first_character_invalid.glsl:1:1: error: Invalid character encountered") == 0);
     }
@@ -983,7 +982,7 @@ void test_parser() {
 
         tr_unit = Clone().CloneAST(tr_unit.get());
         require_fatal(tr_unit != nullptr);
-        tr_unit = check_serialization(tr_unit.get());
+        check_serialization(tr_unit);
 
         std::stringstream ss;
         WriterGLSL().Write(tr_unit.get(), ss);

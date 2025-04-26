@@ -722,7 +722,10 @@ glslx::ast_variable *glslx::Serialize::Deserialize_Variable(std::istream &in) {
 }
 
 void glslx::Serialize::Serialize_Structure(const ast_struct *structure, std::ostream &out) {
-    const int32_t name_index = string_index_[structure->name];
+    int32_t name_index = -1;
+    if (structure->name) {
+        name_index = string_index_[structure->name];
+    }
     out.write((const char *)&name_index, sizeof(int32_t));
     const int32_t fields_count = int32_t(structure->fields.size());
     out.write((const char *)&fields_count, sizeof(int32_t));
@@ -736,7 +739,9 @@ glslx::ast_struct *glslx::Serialize::Deserialize_Structure(std::istream &in) {
     ast_struct *ret = dst_->make<ast_struct>(dst_->alloc.allocator);
     int32_t name_index = -1;
     in.read((char *)&name_index, sizeof(int32_t));
-    ret->name = strings_[name_index];
+    if (name_index != -1) {
+        ret->name = strings_[name_index];
+    }
     int32_t fields_count = -1;
     in.read((char *)&fields_count, sizeof(int32_t));
     for (int32_t i = 0; i < fields_count; ++i) {
@@ -769,7 +774,9 @@ glslx::ast_interface_block *glslx::Serialize::Deserialize_InterfaceBlock(std::is
     ////
     int32_t name_index = -1;
     in.read((char *)&name_index, sizeof(int32_t));
-    ret->name = strings_[name_index];
+    if (name_index != -1) {
+        ret->name = strings_[name_index];
+    }
     int32_t fields_count = -1;
     in.read((char *)&fields_count, sizeof(int32_t));
     for (int32_t i = 0; i < fields_count; ++i) {

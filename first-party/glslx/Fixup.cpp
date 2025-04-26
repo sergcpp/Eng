@@ -168,14 +168,14 @@ void glslx::Fixup::Apply(TrUnit *tu) {
                 return;
             }
             lhs->operand = variable_identifier;
-            lhs->name = "y";
+            lhs->name = tu->makestr("y");
 
             auto *y_field = new (&tu->alloc) ast_field_or_swizzle();
             if (!y_field) {
                 return;
             }
             y_field->operand = variable_identifier;
-            y_field->name = "y";
+            y_field->name = tu->makestr("y");
             auto *rhs = new (&tu->alloc) ast_unary_expression(eExprType::UnaryMinus, y_field);
 
             auto *expr = new (&tu->alloc) ast_assignment_expression(eOperator::assign);

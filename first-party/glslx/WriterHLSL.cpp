@@ -310,7 +310,7 @@ void glslx::WriterHLSL::Write_Expression(const ast_expression *expression, bool 
         if (op1_type && op2_type) {
             if (operation->oper == eOperator::multiply && is_matrix_type(op1_type) && get_vector_size(op2_type) > 1) {
                 ast_function_call func_call(tu_->alloc.allocator);
-                func_call.name = "mul";
+                func_call.name = tu_->makestr("mul");
                 func_call.parameters.push_back(operation->operand2);
                 func_call.parameters.push_back(operation->operand1);
                 return Write_FunctionCall(&func_call, out_stream);
@@ -1410,7 +1410,7 @@ void glslx::WriterHLSL::Write_InterfaceBlock(const ast_interface_block *block, s
     out_stream << "};\n";
 }
 
-void glslx::WriterHLSL::Write(const TrUnit *tu, std::ostream &out_stream) {
+void glslx::WriterHLSL::Write(TrUnit *tu, std::ostream &out_stream) {
     tu_ = tu;
     ast_function *main_function = nullptr;
     auto *p_find = tu->functions_by_name.Find("main");
