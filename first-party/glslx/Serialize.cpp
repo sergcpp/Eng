@@ -884,6 +884,7 @@ void glslx::Serialize::SerializeAST(const TrUnit *tu, std::ostream &out) {
         }
         const std::streampos extensions_end = out.tellp();
         assert(int32_t(extensions_end - extensions_beg) == block_size);
+        (void)extensions_beg, (void)extensions_end;
     }
     if (!tu->builtins.empty()) {
         out.write((char *)&Block_Builtins, sizeof(int32_t));
@@ -896,6 +897,7 @@ void glslx::Serialize::SerializeAST(const TrUnit *tu, std::ostream &out) {
         }
         const std::streampos builtins_end = out.tellp();
         assert(int32_t(builtins_end - builtins_beg) == block_size);
+        (void)builtins_beg, (void)builtins_end;
     }
     if (!tu->default_precision.empty()) {
         out.write((char *)&Block_DefaultPrecision, sizeof(int32_t));
@@ -907,6 +909,7 @@ void glslx::Serialize::SerializeAST(const TrUnit *tu, std::ostream &out) {
         }
         const std::streampos precision_end = out.tellp();
         assert(int32_t(precision_end - precision_beg) == block_size);
+        (void)precision_beg, (void)precision_end;
     }
     if (!tu->structures.empty()) {
         out.write((char *)&Block_Structures, sizeof(int32_t));
