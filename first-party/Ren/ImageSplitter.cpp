@@ -1,6 +1,6 @@
-#include "TextureSplitter.h"
+#include "ImageSplitter.h"
 
-int Ren::TextureSplitter::Allocate(const int res[2], int pos[2]) {
+int Ren::ImageSplitter::Allocate(const int res[2], int pos[2]) {
     const int i = Insert_Recursive(0, res);
     if (i != -1) {
         pos[0] = nodes_[i].pos[0];
@@ -9,12 +9,12 @@ int Ren::TextureSplitter::Allocate(const int res[2], int pos[2]) {
     return i;
 }
 
-bool Ren::TextureSplitter::Free(const int pos[2]) {
+bool Ren::ImageSplitter::Free(const int pos[2]) {
     const int i = Find_r(0, pos);
     return Free(i);
 }
 
-bool Ren::TextureSplitter::Free(const int i) {
+bool Ren::ImageSplitter::Free(const int i) {
     if (i == -1 || nodes_[i].is_free) {
         return false;
     }
@@ -42,14 +42,14 @@ bool Ren::TextureSplitter::Free(const int i) {
     return true;
 }
 
-void Ren::TextureSplitter::Clear() {
+void Ren::ImageSplitter::Clear() {
     nodes_.resize(1);
 
     nodes_[0].child[0] = -1;
     nodes_[0].child[1] = -1;
 }
 
-int Ren::TextureSplitter::FindNode(const int pos[2], int size[2]) const {
+int Ren::ImageSplitter::FindNode(const int pos[2], int size[2]) const {
     const int i = Find_r(0, pos);
     if (i != -1) {
         size[0] = nodes_[i].size[0];
@@ -58,7 +58,7 @@ int Ren::TextureSplitter::FindNode(const int pos[2], int size[2]) const {
     return i;
 }
 
-int Ren::TextureSplitter::Insert_Recursive(const int i, const int res[2]) {
+int Ren::ImageSplitter::Insert_Recursive(const int i, const int res[2]) {
     if (!nodes_[i].is_free || res[0] > nodes_[i].size[0] || res[1] > nodes_[i].size[1]) {
         return -1;
     }
@@ -113,7 +113,7 @@ int Ren::TextureSplitter::Insert_Recursive(const int i, const int res[2]) {
     }
 }
 
-int Ren::TextureSplitter::Find_r(const int i, const int pos[2]) const {
+int Ren::ImageSplitter::Find_r(const int i, const int pos[2]) const {
     if (pos[0] < nodes_[i].pos[0] || pos[0] > (nodes_[i].pos[0] + nodes_[i].size[0]) || pos[1] < nodes_[i].pos[1] ||
         pos[1] > (nodes_[i].pos[1] + nodes_[i].size[1])) {
         return -1;
@@ -135,7 +135,7 @@ int Ren::TextureSplitter::Find_r(const int i, const int pos[2]) const {
     }
 }
 
-void Ren::TextureSplitter::SafeErase(const int i, int *indices, const int num) {
+void Ren::ImageSplitter::SafeErase(const int i, int *indices, const int num) {
     const int last = int(nodes_.size()) - 1;
 
     if (last != i) {
