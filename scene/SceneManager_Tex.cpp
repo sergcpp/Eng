@@ -19,9 +19,9 @@ namespace SceneManagerInternal {
 void CaptureMaterialTextureChange(Ren::Context &ctx, Eng::SceneData &scene_data, const Ren::ImageHandle old_handle,
                                   const Ren::ImageHandle new_handle) {
     const Ren::StoragesRef &storages = ctx.storages();
-    const auto &[img_main, img_cold] = storages.images.Get(new_handle);
+    const auto &[img_main, img_cold] = storages.images[new_handle];
 
-    uint32_t tex_user = storages.images.Get(old_handle).second.first_user;
+    uint32_t tex_user = storages.images[old_handle].second.first_user;
     img_cold.first_user = tex_user;
     while (tex_user != 0xffffffff) {
         const auto &[mat_main, mat_cold] = storages.materials.GetUnsafe(tex_user);
@@ -30,12 +30,12 @@ void CaptureMaterialTextureChange(Ren::Context &ctx, Eng::SceneData &scene_data,
             if (mat_main.textures[i] == old_handle) {
                 mat_main.textures[i] = new_handle;
 
-                const auto it = lower_bound(std::begin(scene_data.samplers), std::end(scene_data.samplers),
-                                            img_cold.params.sampling,
-                                            [&ctx](const Ren::SamplerHandle lhs_handle, const Ren::SamplingParams s) {
-                                                return ctx.samplers().Get(lhs_handle).params < s;
-                                            });
-                if (it == std::end(scene_data.samplers) || ctx.samplers().Get(*it).params != img_cold.params.sampling) {
+                const auto it = lower_bound(
+                    std::begin(scene_data.samplers), std::end(scene_data.samplers), img_cold.params.sampling,
+                    [&storages](const Ren::SamplerHandle lhs_handle, const Ren::SamplingParams s) {
+                        return storages.samplers[lhs_handle].params < s;
+                    });
+                if (it == std::end(scene_data.samplers) || storages.samplers[*it].params != img_cold.params.sampling) {
                     mat_main.samplers[i] = ctx.CreateSampler(img_cold.params.sampling);
                     scene_data.samplers.insert(it, mat_main.samplers[i]);
                 } else {
@@ -133,7 +133,9 @@ void Eng::SceneManager::TextureLoaderProc() {
         req->buf->set_data_len(0);
         req->mip_offset_to_init = 0xff;
 
-        const auto &[img_main, img_cold] = ren_ctx_.images().Get(req->img);
+        const Ren::StoragesRef &storages = ren_ctx_.storages();
+
+        const auto &[img_main, img_cold] = storages.images[req->img];
 
         size_t read_offset = 0, read_size = 0;
 
@@ -253,7 +255,7 @@ void Eng::SceneManager::EstimateTextureMemory(const int portion_size) {
 
     uint64_t mem_after_estimation = scene_data_.estimated_texture_mem.load();
 
-    const auto &images = ren_ctx_.images();
+    const auto &images = ren_ctx_.storages().images;
 
     for (int i = 0; i < portion_size; i++) {
         scene_data_.tex_mem_bucket_index =
@@ -269,7 +271,7 @@ void Eng::SceneManager::EstimateTextureMemory(const int portion_size) {
         while (index != end) {
             const Ren::ImageHandle tex = scene_data_.name_to_texture.at(index).val;
 
-            bucket += GetDataLenBytes(images.Get(tex).second.params);
+            bucket += GetDataLenBytes(images[tex].second.params);
 
             index = scene_data_.name_to_texture.FindOccupiedInRange(index + 1, end);
         }
@@ -292,7 +294,7 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
 
     bool finished = true;
 
-    auto &images = ren_ctx_.images();
+    auto &images = ren_ctx_.storages().images;
 
     //
     // Process io pending textures
@@ -327,7 +329,7 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
                     } else if (_res != Ren::eWaitResult::Timeout) {
                         SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, _req->img, _req->img);
 
-                        const Ren::ImageCold &img_cold = images.Get(_req->img).second;
+                        const Ren::ImageCold &img_cold = images[_req->img].second;
                         if (img_cold.params.w != _req->orig_w || img_cold.params.h != _req->orig_h) {
                             // process texture further (for next mip levels)
                             _req->sort_key = 0xffffffff;
@@ -365,13 +367,13 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
                 // stage_buf->fence.ClientWaitSync();
                 ren_ctx_.BegSingleTimeCommands(stage_buf->cmd_buf);
 
-                Ren::ImgParams p = images.Get(req->img).second.params;
+                Ren::ImgParams p = images[req->img].second.params;
                 const int new_mip_count =
                     (p.flags & Ren::eImgFlags::Stub) ? req->mip_count_to_init : (p.mip_count + req->mip_count_to_init);
                 p.flags &= ~Ren::Bitmask(Ren::eImgFlags::Stub);
-                images.Get(req->img).second.params = p;
+                images[req->img].second.params = p;
 
-                Ren::ImgParams new_params = images.Get(req->img).second.params;
+                Ren::ImgParams new_params = images[req->img].second.params;
                 new_params.format = req->orig_format;
                 new_params.w = w;
                 new_params.h = h;
@@ -379,7 +381,7 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
 
                 const Ren::ImageHandle new_img = ren_ctx_.CreateImage(
                     req->img, new_params, scene_data_.persistent_data->mem_allocs.get(), stage_buf->cmd_buf);
-                const auto &[img_main, img_cold] = images.Get(new_img);
+                const auto &[img_main, img_cold] = images[new_img];
 
                 int data_off = int(req->buf->data_off());
                 for (int j = int(req->mip_offset_to_init); j < int(req->mip_offset_to_init) + req->mip_count_to_init;
@@ -413,7 +415,7 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
                 ren_ctx_.log()->Info("Texture %s loaded (%.3f ms)", img_cold.name.c_str(),
                                      double(t2_us - t1_us) * 0.001);
             } else if (res == Sys::eFileReadResult::Failed) {
-                ren_ctx_.log()->Error("Error loading %s", images.Get(req->img).second.name.c_str());
+                ren_ctx_.log()->Error("Error loading %s", images[req->img].second.name.c_str());
             }
 
             if (res != Sys::eFileReadResult::Pending) {
@@ -438,7 +440,7 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
         for (int i = 0; i < portion_size && !gc_textures_.empty(); i++) {
             auto &req = gc_textures_.front();
 
-            const auto &[img_main, img_cold] = images.Get(req.img);
+            const auto &[img_main, img_cold] = images[req.img];
             ren_ctx_.log()->Warning("Texture %s is being garbage collected", img_cold.name.c_str());
 
             Ren::ImgParams new_params = img_cold.params;
@@ -476,12 +478,12 @@ void Eng::SceneManager::RebuildMaterialTextureGraph() {
 
     // reset texture user
     for (const auto &texture : scene_data_.name_to_texture) {
-        Ren::ImageCold &img_cold = storages.images.Get(texture.val).second;
+        Ren::ImageCold &img_cold = storages.images[texture.val].second;
         img_cold.first_user = 0xffffffff;
     }
     // assign material index as the first user
     for (auto it = scene_data_.name_to_material.begin(); it != scene_data_.name_to_material.end(); ++it) {
-        const auto &[mat_main, mat_cold] = storages.materials.Get(it->val);
+        const auto &[mat_main, mat_cold] = storages.materials[it->val];
 
         mat_cold.next_texture_user = {};
         mat_cold.next_texture_user.resize(mat_main.textures.size(), 0xffffffff);
@@ -489,7 +491,7 @@ void Eng::SceneManager::RebuildMaterialTextureGraph() {
         for (int i = 0; i < int(mat_main.textures.size()); ++i) {
             const Ren::ImageHandle tex = mat_main.textures[i];
 
-            const auto &[img_main, img_cold] = storages.images.Get(tex);
+            const auto &[img_main, img_cold] = storages.images[tex];
             if (img_cold.first_user == 0xffffffff) {
                 img_cold.first_user = it->val.index;
             } else if (img_cold.first_user != it->val.index) {
@@ -599,7 +601,7 @@ void Eng::SceneManager::TexturesGCIteration(const Ren::Span<const TexEntry> visi
 
         it->frame_dist += std::max(int(finished_textures_.size()) / FinishedPortion, 1);
 
-        const Ren::ImageCold &img_cold = ren_ctx_.images().Get(it->img).second;
+        const Ren::ImageCold &img_cold = ren_ctx_.storages().images[it->img].second;
         if (found_entry) {
             it->sort_key = found_entry->sort_key;
             it->frame_dist = 0;
@@ -666,7 +668,7 @@ void Eng::SceneManager::StopTextureLoaderThread() {
 void Eng::SceneManager::ForceTextureReload() {
     StopTextureLoaderThread();
 
-    const auto &images = ren_ctx_.images();
+    const auto &images = ren_ctx_.storages().images;
 
     std::vector<Ren::TransitionInfo> img_transitions;
     img_transitions.reserve(scene_data_.name_to_texture.size());
@@ -675,7 +677,7 @@ void Eng::SceneManager::ForceTextureReload() {
     for (auto it = std::begin(scene_data_.name_to_texture); it != std::end(scene_data_.name_to_texture); ++it) {
         Ren::ImgParams new_params;
         { // Get params
-            const auto &[img_main, img_cold] = images.Get(it->val);
+            const auto &[img_main, img_cold] = images[it->val];
 
             new_params = img_cold.params;
             new_params.flags |= Ren::eImgFlags::Stub;
@@ -725,7 +727,7 @@ void Eng::SceneManager::ReleaseImages(const bool immediately) {
         "Scene Mem Allocs", &ren_ctx_.api(), 16 * 1024 * 1024 /* initial_block_size */, 1.5f /* growth_factor */,
         128 * 1024 * 1024 /* max_pool_size */);
 
-    const auto &images = ren_ctx_.images();
+    const auto &images = ren_ctx_.storages().images;
 
     std::vector<Ren::TransitionInfo> img_transitions;
     img_transitions.reserve(scene_data_.name_to_texture.size());
@@ -735,7 +737,7 @@ void Eng::SceneManager::ReleaseImages(const bool immediately) {
         Ren::ImgParams p;
         Ren::String name_str;
         { // Get params
-            const auto &[img_main, img_cold] = images.Get(it->val);
+            const auto &[img_main, img_cold] = images[it->val];
 
             p = img_cold.params;
             p.format = Ren::eFormat::RGBA8;

@@ -14,48 +14,48 @@
 void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
     using namespace SampleLights;
 
-    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::BufferROHandle random_seq_buf = fg.AccessROBuffer(args_->random_seq);
+    const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle random_seq = fg.AccessROBuffer(args_->random_seq);
 
-    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle geo_data = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
     [[maybe_unused]] const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
-    const Ren::ImageROHandle albedo_tex = fg.AccessROImage(args_->albedo_tex);
-    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::ImageROHandle norm_tex = fg.AccessROImage(args_->norm_tex);
-    const Ren::ImageROHandle spec_tex = fg.AccessROImage(args_->spec_tex);
+    const Ren::ImageROHandle albedo = fg.AccessROImage(args_->albedo);
+    const Ren::ImageROHandle depth = fg.AccessROImage(args_->depth);
+    const Ren::ImageROHandle norm = fg.AccessROImage(args_->norm);
+    const Ren::ImageROHandle spec = fg.AccessROImage(args_->spec);
 
-    const Ren::ImageRWHandle out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
-    const Ren::ImageRWHandle out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
+    const Ren::ImageRWHandle out_diffuse = fg.AccessRWImage(args_->out_diffuse);
+    const Ren::ImageRWHandle out_specular = fg.AccessRWImage(args_->out_specular);
 
-    if (!args_->lights_buf) {
+    if (!args_->lights) {
         return;
     }
 
-    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::BufferROHandle nodes_buf = fg.AccessROBuffer(args_->nodes_buf);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(args_->lights);
+    const Ren::BufferROHandle nodes = fg.AccessROBuffer(args_->nodes);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-                                     {Ren::eBindTarget::UTBuf, RANDOM_SEQ_BUF_SLOT, random_seq_buf},
-                                     {Ren::eBindTarget::UTBuf, LIGHTS_BUF_SLOT, lights_buf},
-                                     {Ren::eBindTarget::UTBuf, LIGHT_NODES_BUF_SLOT, nodes_buf},
+    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
+                                     {Ren::eBindTarget::UTBuf, RANDOM_SEQ_BUF_SLOT, random_seq},
+                                     {Ren::eBindTarget::UTBuf, LIGHTS_BUF_SLOT, lights},
+                                     {Ren::eBindTarget::UTBuf, LIGHT_NODES_BUF_SLOT, nodes},
                                      {Ren::eBindTarget::AccStruct, TLAS_SLOT, args_->tlas},
-                                     {Ren::eBindTarget::SBufRO, GEO_DATA_BUF_SLOT, geo_data_buf},
-                                     {Ren::eBindTarget::SBufRO, MATERIAL_BUF_SLOT, materials_buf},
+                                     {Ren::eBindTarget::SBufRO, GEO_DATA_BUF_SLOT, geo_data},
+                                     {Ren::eBindTarget::SBufRO, MATERIAL_BUF_SLOT, materials},
                                      {Ren::eBindTarget::UTBuf, VTX_BUF1_SLOT, vtx_buf1},
                                      {Ren::eBindTarget::UTBuf, NDX_BUF_SLOT, ndx_buf},
-                                     {Ren::eBindTarget::TexSampled, ALBEDO_TEX_SLOT, albedo_tex},
-                                     {Ren::eBindTarget::TexSampled, DEPTH_TEX_SLOT, {depth_tex, 1}},
-                                     {Ren::eBindTarget::TexSampled, NORM_TEX_SLOT, norm_tex},
-                                     {Ren::eBindTarget::TexSampled, SPEC_TEX_SLOT, spec_tex},
-                                     {Ren::eBindTarget::ImageRW, OUT_DIFFUSE_IMG_SLOT, out_diffuse_tex},
-                                     {Ren::eBindTarget::ImageRW, OUT_SPECULAR_IMG_SLOT, out_specular_tex}};
+                                     {Ren::eBindTarget::TexSampled, ALBEDO_TEX_SLOT, albedo},
+                                     {Ren::eBindTarget::TexSampled, DEPTH_TEX_SLOT, {depth, 1}},
+                                     {Ren::eBindTarget::TexSampled, NORM_TEX_SLOT, norm},
+                                     {Ren::eBindTarget::TexSampled, SPEC_TEX_SLOT, spec},
+                                     {Ren::eBindTarget::ImageRW, OUT_DIFFUSE_IMG_SLOT, out_diffuse},
+                                     {Ren::eBindTarget::ImageRW, OUT_SPECULAR_IMG_SLOT, out_specular}};
 
     const Ren::Vec3u grp_count = Ren::Vec3u{(view_state_->ren_res[0] + GRP_SIZE_X - 1u) / GRP_SIZE_X,
                                             (view_state_->ren_res[1] + GRP_SIZE_Y - 1u) / GRP_SIZE_Y, 1u};
@@ -65,8 +65,8 @@ void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
     uniform_params.lights_count = view_state_->stochastic_lights_count;
     uniform_params.frame_index = view_state_->frame_index;
 
-    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_sample_lights_).first;
-    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
+    const Ren::PipelineMain &pi = storages.pipelines[pi_sample_lights_].first;
+    const Ren::ProgramMain &pr = storages.programs[pi.prog].first;
 
     VkDescriptorSet descr_sets[2];
     descr_sets[0] = PrepareDescriptorSet(api, storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());

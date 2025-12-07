@@ -25,11 +25,11 @@ class ExShadowDepth final : public FgExecutor {
     FgBufROHandle vtx_buf1_;
     FgBufROHandle vtx_buf2_;
     FgBufROHandle ndx_buf_;
-    FgBufROHandle instances_buf_;
-    FgBufROHandle instance_indices_buf_;
-    FgBufROHandle shared_data_buf_;
-    FgBufROHandle materials_buf_;
-    FgImgROHandle noise_tex_;
+    FgBufROHandle instances_;
+    FgBufROHandle instance_indices_;
+    FgBufROHandle shared_data_;
+    FgBufROHandle materials_;
+    FgImgROHandle noise_;
 
     // outputs
     FgImgRWHandle shadow_depth_;
@@ -39,10 +39,10 @@ class ExShadowDepth final : public FgExecutor {
 
   public:
     ExShadowDepth(const int w, const int h, const DrawList **p_list, const FgBufROHandle vtx_buf1,
-                  const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
-                  const BindlessTextureData *bindless_tex, const FgBufROHandle instances_buf,
-                  const FgBufROHandle instance_indices_buf, const FgBufROHandle shared_data_buf,
-                  const FgImgROHandle noise_tex, const FgImgRWHandle shadow_depth)
+                  const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials,
+                  const BindlessTextureData *bindless_tex, const FgBufROHandle instances,
+                  const FgBufROHandle instance_indices, const FgBufROHandle shared_data, const FgImgROHandle noise,
+                  const FgImgRWHandle shadow_depth)
         : w_(w), h_(h) {
         p_list_ = p_list;
         bindless_tex_ = bindless_tex;
@@ -51,11 +51,11 @@ class ExShadowDepth final : public FgExecutor {
         vtx_buf2_ = vtx_buf2;
         ndx_buf_ = ndx_buf;
 
-        instances_buf_ = instances_buf;
-        instance_indices_buf_ = instance_indices_buf;
-        shared_data_buf_ = shared_data_buf;
-        materials_buf_ = materials_buf;
-        noise_tex_ = noise_tex;
+        instances_ = instances;
+        instance_indices_ = instance_indices;
+        shared_data_ = shared_data;
+        materials_ = materials;
+        noise_ = noise;
 
         shadow_depth_ = shadow_depth;
     }

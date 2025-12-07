@@ -21,7 +21,7 @@ bool InitDescrSetLayouts(const ApiContext &api, ProgramMain &prog_main,
             continue;
         }
 
-        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders.Get(sh_handle);
+        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders[sh_handle];
         for (const Descr &u : sh.second.unif_bindings) {
             auto &bindings = layout_bindings[u.set];
 
@@ -88,7 +88,7 @@ void InitBindings(const ApiContext &api, ProgramMain &prog_main, ProgramCold &pr
             continue;
         }
 
-        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders.Get(sh_handle);
+        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders[sh_handle];
         for (const Descr &u : sh.second.unif_bindings) {
             auto it = std::find(std::begin(prog_cold.uniforms), std::end(prog_cold.uniforms), u);
             if (it == std::end(prog_cold.uniforms)) {
@@ -113,7 +113,7 @@ void InitBindings(const ApiContext &api, ProgramMain &prog_main, ProgramCold &pr
     }
 
     if (const ShaderROHandle sh_handle = prog_main.shaders[int(eShaderType::Vertex)]) {
-        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders.Get(sh_handle);
+        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders[sh_handle];
         for (const Descr &a : sh.second.attr_bindings) {
             prog_cold.attributes.emplace_back(a);
         }

@@ -2,7 +2,6 @@
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_control_flow_attributes : require
 
-#define ENABLE_SHEEN 0
 #define ENABLE_CLEARCOAT 0
 #define MIN_SPEC_ROUGHNESS 0.4
 

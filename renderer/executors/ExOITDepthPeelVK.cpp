@@ -24,12 +24,12 @@ void Eng::ExOITDepthPeel::DrawTransparent(const FgContext &fg, const Ren::ImageR
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
 
-    const Ren::BufferHandle out_depth_buf = fg.AccessRWBuffer(out_depth_buf_);
+    const Ren::BufferHandle out_depth = fg.AccessRWBuffer(out_depth_);
 
     if ((*p_list_)->alpha_blend_start_index == -1) {
         return;
@@ -37,19 +37,19 @@ void Eng::ExOITDepthPeel::DrawTransparent(const FgContext &fg, const Ren::ImageR
 
     const Ren::StoragesRef &storages = fg.storages();
 
-    const Ren::PipelineMain &pi_simple0_main = storages.pipelines.Get(pi_simple_[0]).first;
-    const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
-    const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
+    const Ren::PipelineMain &pi_simple0_main = storages.pipelines[pi_simple_[0]].first;
+    const Ren::PipelineMain &pi_simple1_main = storages.pipelines[pi_simple_[1]].first;
+    const Ren::PipelineMain &pi_simple2_main = storages.pipelines[pi_simple_[2]].first;
 
     VkDescriptorSet descr_sets[2];
     { // allocate descriptors
-        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
-                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
-                                         {Ren::eBindTarget::STBufRW, DepthPeel::OUT_IMG_BUF_SLOT, out_depth_buf}};
+        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data},
+                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances},
+                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices},
+                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials},
+                                         {Ren::eBindTarget::STBufRW, DepthPeel::OUT_IMG_BUF_SLOT, out_depth}};
 
-        const auto &[prog_main, prog_cold] = storages.programs.Get(pi_simple0_main.prog);
+        const auto &[prog_main, prog_cold] = storages.programs[pi_simple0_main.prog];
         descr_sets[0] =
             PrepareDescriptorSet(api, storages, prog_main.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
         descr_sets[1] = bindless_tex_->textures_descr_sets[0];
@@ -74,14 +74,14 @@ void Eng::ExOITDepthPeel::DrawTransparent(const FgContext &fg, const Ren::ImageR
     uint32_t i = (*p_list_)->alpha_blend_start_index;
 
     { // solid meshes
-        const Ren::RenderPass &rp = storages.render_passes.Get(pi_simple0_main.render_pass);
+        const Ren::RenderPass &rp = storages.render_passes[pi_simple0_main.render_pass];
 
         const Ren::FramebufferHandle fb =
             fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth_tex, depth_tex, {});
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         rp_begin_info.renderPass = rp.handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         const VkClearValue clear_values[4] = {{}, {}, {}, {}};
         rp_begin_info.pClearValues = clear_values;
@@ -91,7 +91,7 @@ void Eng::ExOITDepthPeel::DrawTransparent(const FgContext &fg, const Ren::ImageR
         { // Simple meshes
             Ren::DebugMarker _m(api, cmd_buf, "SIMPLE");
 
-            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_simple0_main.vtx_input];
             VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 

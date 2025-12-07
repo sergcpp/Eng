@@ -11,8 +11,8 @@ class ExDebugOIT final : public FgExecutor {
     struct Args {
         int layer_index = 0;
 
-        FgBufROHandle oit_depth_buf;
-        FgImgRWHandle output_tex;
+        FgBufROHandle oit_depth;
+        FgImgRWHandle output;
     };
 
     ExDebugOIT(ShaderLoader &sh, const view_state_t *view_state, const Args *pass_data);

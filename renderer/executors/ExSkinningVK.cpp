@@ -12,10 +12,10 @@
 void Eng::ExSkinning::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
 
-    const Ren::BufferROHandle skin_vtx_buf = fg.AccessROBuffer(skin_vtx_buf_);
-    const Ren::BufferROHandle skin_transforms_buf = fg.AccessROBuffer(skin_transforms_buf_);
-    const Ren::BufferROHandle shape_keys_buf = fg.AccessROBuffer(shape_keys_buf_);
-    const Ren::BufferROHandle delta_buf = fg.AccessROBuffer(delta_buf_);
+    const Ren::BufferROHandle skin_vtx = fg.AccessROBuffer(skin_vtx_);
+    const Ren::BufferROHandle skin_transforms = fg.AccessROBuffer(skin_transforms_);
+    const Ren::BufferROHandle shape_keys = fg.AccessROBuffer(shape_keys_);
+    const Ren::BufferROHandle delta = fg.AccessROBuffer(delta_);
 
     const Ren::BufferHandle vtx_buf1 = fg.AccessRWBuffer(vtx_buf1_);
     const Ren::BufferHandle vtx_buf2 = fg.AccessRWBuffer(vtx_buf2_);
@@ -23,8 +23,8 @@ void Eng::ExSkinning::Execute(const FgContext &fg) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_skinning_).first;
-    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
+    const Ren::PipelineMain &pi = storages.pipelines[pi_skinning_].first;
+    const Ren::ProgramMain &pr = storages.programs[pi.prog].first;
 
     if (!p_list_->skin_regions.empty()) {
         VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
@@ -34,22 +34,22 @@ void Eng::ExSkinning::Execute(const FgContext &fg) {
         descr_sizes.sbuf_count = 6;
         VkDescriptorSet descr_set = fg.descr_alloc().Alloc(descr_sizes, descr_set_layout);
 
-        const Ren::BufferMain &skin_vtx_buf_main = fg.storages().buffers.Get(skin_vtx_buf).first;
-        const Ren::BufferMain &skin_transforms_buf_main = fg.storages().buffers.Get(skin_transforms_buf).first;
-        const Ren::BufferMain &shape_keys_buf_main = fg.storages().buffers.Get(shape_keys_buf).first;
-        const Ren::BufferMain &delta_buf_main = fg.storages().buffers.Get(delta_buf).first;
+        const Ren::BufferMain &skin_vtx_main = storages.buffers[skin_vtx].first;
+        const Ren::BufferMain &skin_transforms_main = storages.buffers[skin_transforms].first;
+        const Ren::BufferMain &shape_keys_main = storages.buffers[shape_keys].first;
+        const Ren::BufferMain &delta_main = storages.buffers[delta].first;
 
-        const Ren::BufferMain &vtx_buf1_main = fg.storages().buffers.Get(vtx_buf1).first;
-        const Ren::BufferMain &vtx_buf2_main = fg.storages().buffers.Get(vtx_buf2).first;
+        const Ren::BufferMain &vtx_buf1_main = storages.buffers[vtx_buf1].first;
+        const Ren::BufferMain &vtx_buf2_main = storages.buffers[vtx_buf2].first;
 
         { // update descriptor set
             const VkDescriptorBufferInfo buf_infos[6] = {
-                {skin_vtx_buf_main.buf, 0, VK_WHOLE_SIZE},        // input vertices binding
-                {skin_transforms_buf_main.buf, 0, VK_WHOLE_SIZE}, // input matrices binding
-                {shape_keys_buf_main.buf, 0, VK_WHOLE_SIZE},      // input shape keys binding
-                {delta_buf_main.buf, 0, VK_WHOLE_SIZE},           // input vertex deltas binding
-                {vtx_buf1_main.buf, 0, VK_WHOLE_SIZE},            // output vertices0 binding
-                {vtx_buf2_main.buf, 0, VK_WHOLE_SIZE}             // output vertices1 binding
+                {skin_vtx_main.buf, 0, VK_WHOLE_SIZE},        // input vertices binding
+                {skin_transforms_main.buf, 0, VK_WHOLE_SIZE}, // input matrices binding
+                {shape_keys_main.buf, 0, VK_WHOLE_SIZE},      // input shape keys binding
+                {delta_main.buf, 0, VK_WHOLE_SIZE},           // input vertex deltas binding
+                {vtx_buf1_main.buf, 0, VK_WHOLE_SIZE},        // output vertices0 binding
+                {vtx_buf2_main.buf, 0, VK_WHOLE_SIZE}         // output vertices1 binding
             };
 
             VkWriteDescriptorSet descr_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};

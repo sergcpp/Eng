@@ -28,11 +28,11 @@ Eng::FramebufferPool::FindOrCreate(Ren::Context &ctx, Ren::RenderPassROHandle re
                                    Ren::Span<const Ren::FramebufferAttachment> color_attachments) {
     const auto it =
         partition_point(std::begin(framebuffers_), std::end(framebuffers_), [&](const Ren::FramebufferHandle lhs) {
-            const auto &[fb_main, fb_cold] = ctx.framebuffers().Get(lhs);
+            const auto &[fb_main, fb_cold] = ctx.storages().framebuffers[lhs];
             return Framebuffer_LessThan(fb_main, fb_cold, render_pass, depth, stencil, color_attachments);
         });
     if (it != std::end(framebuffers_)) {
-        const auto &[fb_main, fb_cold] = ctx.framebuffers().Get(*it);
+        const auto &[fb_main, fb_cold] = ctx.storages().framebuffers[*it];
         if (Framebuffer_Equals(fb_main, fb_cold, render_pass, depth, stencil, color_attachments)) {
             return *it;
         }

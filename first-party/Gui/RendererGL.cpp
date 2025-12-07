@@ -20,10 +20,10 @@ Gui::Renderer::~Renderer() {
     if (ctx_.capabilities.persistent_buf_mapping) {
         const Ren::ApiContext &api = ctx_.api();
 
-        const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.buffers().Get(vertex_stage_buf_);
+        const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.storages().buffers[vertex_stage_buf_];
         Buffer_Unmap(api, vtx_stage_main, vtx_stage_cold);
 
-        const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.buffers().Get(index_stage_buf_);
+        const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.storages().buffers[index_stage_buf_];
         Buffer_Unmap(api, ndx_stage_main, ndx_stage_cold);
     }
 
@@ -43,6 +43,8 @@ Gui::Renderer::~Renderer() {
 }
 
 void Gui::Renderer::Draw(const int w, const int h) {
+    const Ren::StoragesRef &storages = ctx_.storages();
+
     const std::string label_name = name_ + "::Draw";
     glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, GLsizei(label_name.length()), label_name.c_str());
 
@@ -57,7 +59,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
         //
         // Update stage buffer
         //
-        glBindBuffer(GL_COPY_READ_BUFFER, ctx_.buffers().Get(vertex_stage_buf_).first.buf);
+        glBindBuffer(GL_COPY_READ_BUFFER, storages.buffers[vertex_stage_buf_].first.buf);
 
         const size_t vertex_buf_mem_offset = GLintptr(stage_frame) * MaxVerticesPerRange * sizeof(vertex_t);
         const size_t vertex_buf_mem_size = vtx_count_[stage_frame] * sizeof(vertex_t);
@@ -75,7 +77,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
         //
         // Copy stage buffer contents to actual vertex buffer
         //
-        glBindBuffer(GL_COPY_WRITE_BUFFER, ctx_.buffers().Get(vertex_buf_).first.buf);
+        glBindBuffer(GL_COPY_WRITE_BUFFER, storages.buffers[vertex_buf_].first.buf);
         glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, vertex_buf_mem_offset /* read_offset */,
                             0 /* write_offset */, vertex_buf_mem_size);
 
@@ -89,7 +91,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
         //
         // Update stage buffer
         //
-        glBindBuffer(GL_COPY_READ_BUFFER, ctx_.buffers().Get(index_stage_buf_).first.buf);
+        glBindBuffer(GL_COPY_READ_BUFFER, storages.buffers[index_stage_buf_].first.buf);
 
         const size_t index_buf_mem_size = ndx_count_[stage_frame] * sizeof(uint16_t);
         if (!ctx_.capabilities.persistent_buf_mapping) {
@@ -106,7 +108,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
         //
         // Copy stage buffer contents to actual index buffer
         //
-        glBindBuffer(GL_COPY_WRITE_BUFFER, ctx_.buffers().Get(index_buf_).first.buf);
+        glBindBuffer(GL_COPY_WRITE_BUFFER, storages.buffers[index_buf_].first.buf);
         glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, index_buf_mem_offset /* read_offset */,
                             0 /* write_offset */, index_buf_mem_size);
 
@@ -117,9 +119,9 @@ void Gui::Renderer::Draw(const int w, const int h) {
     //
     // Submit draw call
     //
-    const Ren::PipelineMain &pi_main = ctx_.pipelines().Get(pipeline_).first;
-    const Ren::ProgramMain &pr_main = ctx_.programs().Get(pi_main.prog).first;
-    const Ren::VertexInput &vi = ctx_.vtx_inputs().Get(pi_main.vtx_input);
+    const Ren::PipelineMain &pi_main = storages.pipelines[pipeline_].first;
+    const Ren::ProgramMain &pr_main = storages.programs[pi_main.prog].first;
+    const Ren::VertexInput &vi = storages.vtx_inputs[pi_main.vtx_input];
 
     pi_main.rast_state.viewport[2] = w;
     pi_main.rast_state.viewport[3] = h;
@@ -128,7 +130,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     const Ren::BufferROHandle attrib_bufs[] = {vertex_buf_};
-    VertexInput_BindBuffers(ctx_.api(), vi, ctx_.buffers(), attrib_bufs, index_buf_);
+    VertexInput_BindBuffers(ctx_.api(), vi, storages.buffers, attrib_bufs, index_buf_);
     glUseProgram(pr_main.id);
 
     glActiveTexture(GL_TEXTURE0 + TexAtlasSlot);

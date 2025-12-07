@@ -11,7 +11,7 @@ class ExVolVoxelize final : public FgExecutor {
   public:
     struct Args {
         FgBufROHandle shared_data;
-        FgImgROHandle stbn_tex;
+        FgImgROHandle stbn;
         FgBufROHandle geo_data;
         FgBufROHandle materials;
         FgBufROHandle tlas_buf;
@@ -21,14 +21,14 @@ class ExVolVoxelize final : public FgExecutor {
         struct {
             uint32_t root_node = 0xffffffff;
             FgBufROHandle rt_blas_buf;
-            FgBufROHandle prim_ndx_buf;
-            FgBufROHandle mesh_instances_buf;
+            FgBufROHandle prim_ndx;
+            FgBufROHandle mesh_instances;
             FgBufROHandle vtx_buf1;
             FgBufROHandle ndx_buf;
         } swrt;
 
-        FgImgRWHandle out_emission_tex;
-        FgImgRWHandle out_scatter_tex;
+        FgImgRWHandle out_emission;
+        FgImgRWHandle out_scatter;
     };
 
     ExVolVoxelize(const DrawList **p_list, const view_state_t *view_state, const Args *args)

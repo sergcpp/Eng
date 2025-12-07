@@ -20,7 +20,7 @@ Ren::MeshHandle Ren::Context::CreateMesh(Ren::String name, std::istream &data,
                                          ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf) {
     const MeshHandle ret = meshes_.Emplace();
 
-    const auto &[mesh_main, mesh_cold] = meshes_.Get(ret);
+    const auto &[mesh_main, mesh_cold] = meshes_[ret];
     if (!Mesh_Init(*api_, mesh_main, mesh_cold, name, data, on_mat_load, vertex_buf1, vertex_buf2, index_buf,
                    skin_vertex_buf, delta_buf, log_)) {
         meshes_.Erase(ret);
@@ -53,7 +53,7 @@ Ren::MaterialHandle Ren::Context::CreateMaterial(Ren::String name, const Bitmask
                                                  Span<const SamplerHandle> samplers, Span<const Vec4f> params) {
     const MaterialHandle ret = materials_.Emplace();
 
-    const auto &[material_main, material_cold] = materials_.Get(ret);
+    const auto &[material_main, material_cold] = materials_[ret];
     if (!Material_Init(material_main, material_cold, name, flags, pipelines, textures, samplers, params, log_)) {
         materials_.Erase(ret);
         return {};
@@ -67,7 +67,7 @@ Ren::MaterialHandle Ren::Context::CreateMaterial(Ren::String name, std::string_v
                                                  const sampler_load_callback &on_sampler_load) {
     const MaterialHandle ret = materials_.Emplace();
 
-    const auto &[material_main, material_cold] = materials_.Get(ret);
+    const auto &[material_main, material_cold] = materials_[ret];
     if (!Material_Init(material_main, material_cold, name, mat_src, on_pipes_load, on_tex_load, on_sampler_load,
                        log_)) {
         materials_.Erase(ret);
@@ -95,7 +95,7 @@ Ren::ShaderHandle Ren::Context::CreateShader(const Ren::String &name, std::strin
                                              const eShaderType type) {
     ShaderHandle ret = shaders_.Emplace();
 
-    const auto &[shader_main, shader_cold] = shaders_.Get(ret);
+    const auto &[shader_main, shader_cold] = shaders_[ret];
     if (!Shader_Init(*api_, shader_main, shader_cold, shader_src, name, type, log_)) {
         shaders_.Erase(ret);
         return {};
@@ -108,7 +108,7 @@ Ren::ShaderHandle Ren::Context::CreateShader(const Ren::String &name, Span<const
                                              const eShaderType type) {
     const ShaderHandle ret = shaders_.Emplace();
 
-    const auto &[shader_main, shader_cold] = shaders_.Get(ret);
+    const auto &[shader_main, shader_cold] = shaders_[ret];
     if (!Shader_Init(*api_, shader_main, shader_cold, spirv_data, name, type, log_)) {
         shaders_.Erase(ret);
         return {};
@@ -120,7 +120,7 @@ void Ren::Context::ReleaseShader(const ShaderHandle handle) {
     if (!handle) {
         return;
     }
-    const auto &[sh_main, sh_cold] = shaders_.Get(handle);
+    const auto &[sh_main, sh_cold] = shaders_[handle];
     Shader_Destroy(*api_, sh_main, sh_cold);
     shaders_.Erase(handle);
 }
@@ -143,7 +143,7 @@ Ren::ProgramHandle Ren::Context::CreateProgram(const ShaderROHandle vs, const Sh
                                                const ShaderROHandle gs) {
     const ProgramHandle ret = programs_.Emplace();
 
-    const auto &[prog_main, prog_cold] = programs_.Get(ret);
+    const auto &[prog_main, prog_cold] = programs_[ret];
     if (!Program_Init(*api_, shaders_, prog_main, prog_cold, vs, fs, tcs, tes, gs, log_)) {
         programs_.Erase(ret);
         return {};
@@ -154,7 +154,7 @@ Ren::ProgramHandle Ren::Context::CreateProgram(const ShaderROHandle vs, const Sh
 Ren::ProgramHandle Ren::Context::CreateProgram(const ShaderROHandle cs) {
     const ProgramHandle ret = programs_.Emplace();
 
-    const auto &[prog_main, prog_cold] = programs_.Get(ret);
+    const auto &[prog_main, prog_cold] = programs_[ret];
     if (!Program_Init(*api_, shaders_, prog_main, prog_cold, cs, log_)) {
         programs_.Erase(ret);
         return {};
@@ -168,7 +168,7 @@ Ren::ProgramHandle Ren::Context::CreateProgram2(const ShaderROHandle rgs, const 
                                                 const ShaderROHandle is) {
     const ProgramHandle ret = programs_.Emplace();
 
-    const auto &[prog_main, prog_cold] = programs_.Get(ret);
+    const auto &[prog_main, prog_cold] = programs_[ret];
     if (!Program_Init2(*api_, shaders_, prog_main, prog_cold, rgs, chs, ahs, ms, is, log_)) {
         programs_.Erase(ret);
         return {};
@@ -181,7 +181,7 @@ void Ren::Context::ReleaseProgram(const ProgramHandle handle) {
     if (!handle) {
         return;
     }
-    const auto &[prog_main, prog_cold] = programs_.Get(handle);
+    const auto &[prog_main, prog_cold] = programs_[handle];
     Program_Destroy(*api_, prog_main, prog_cold);
     programs_.Erase(handle);
 }
@@ -201,7 +201,7 @@ void Ren::Context::ReleasePrograms() {
 Ren::VertexInputHandle Ren::Context::CreateVertexInput(Span<const VtxAttribDesc> attribs) {
     const VertexInputHandle ret = vtx_inputs_.Emplace();
 
-    VertexInput &vtx_input = vtx_inputs_.Get(ret);
+    VertexInput &vtx_input = vtx_inputs_[ret];
     if (!VertexInput_Init(vtx_input, attribs)) {
         vtx_inputs_.Erase(ret);
         return {};
@@ -213,7 +213,7 @@ void Ren::Context::ReleaseVertexInput(const VertexInputHandle handle) {
     if (!handle) {
         return;
     }
-    VertexInput &vtx_input = vtx_inputs_.Get(handle);
+    VertexInput &vtx_input = vtx_inputs_[handle];
     VertexInput_Destroy(vtx_input);
     vtx_inputs_.Erase(handle);
 }
@@ -235,7 +235,7 @@ Ren::RenderPassHandle Ren::Context::CreateRenderPass(const RenderTargetInfo &dep
                                                      Span<const RenderTargetInfo> color_rts) {
     const RenderPassHandle ret = render_passes_.Emplace();
 
-    RenderPass &rp = render_passes_.Get(ret);
+    RenderPass &rp = render_passes_[ret];
     if (!RenderPass_Init(*api_, rp, depth_rt, color_rts, log_)) {
         return {};
     }
@@ -247,14 +247,14 @@ Ren::RenderPassHandle Ren::Context::CreateRenderPass(const RenderTarget &depth_r
     Ren::RenderTargetInfo depth_info;
     { //
         for (int i = 0; i < color_rts.size(); ++i) {
-            const auto &[img_main, img_cold] = images_.Get(color_rts[i].img);
+            const auto &[img_main, img_cold] = images_[color_rts[i].img];
             const Ren::eImageLayout layout = ImageLayoutForState(img_main.resource_state);
             color_infos.emplace_back(img_cold.params.format, uint8_t(img_cold.params.samples), layout,
                                      color_rts[i].load, color_rts[i].store, color_rts[i].stencil_load,
                                      color_rts[i].stencil_store);
         }
         if (depth_rt) {
-            const auto &[img_main, img_cold] = images_.Get(depth_rt.img);
+            const auto &[img_main, img_cold] = images_[depth_rt.img];
             const Ren::eImageLayout layout = ImageLayoutForState(img_main.resource_state);
             depth_info = {img_cold.params.format,
                           uint8_t(img_cold.params.samples),
@@ -272,7 +272,7 @@ void Ren::Context::ReleaseRenderPass(const RenderPassHandle handle, const bool i
     if (!handle) {
         return;
     }
-    RenderPass &rp = render_passes_.Get(handle);
+    RenderPass &rp = render_passes_[handle];
     if (immediately) {
         RenderPass_DestroyImmediately(*api_, rp);
     } else {
@@ -297,7 +297,7 @@ void Ren::Context::ReleaseRenderPasses() {
 Ren::PipelineHandle Ren::Context::CreatePipeline(const ProgramROHandle prog, const int subgroup_size) {
     const PipelineHandle ret = pipelines_.Emplace();
 
-    const auto &[pi_main, pi_cold] = pipelines_.Get(ret);
+    const auto &[pi_main, pi_cold] = pipelines_[ret];
     if (!Pipeline_Init(*api_, shaders_, programs_, buffers_, pi_main, pi_cold, prog, log_)) {
         pipelines_.Erase(ret);
         return {};
@@ -310,7 +310,7 @@ Ren::PipelineHandle Ren::Context::CreatePipeline(const RastState &rast_state, co
                                                  const RenderPassROHandle render_pass, const uint32_t subpass_index) {
     const PipelineHandle ret = pipelines_.Emplace();
 
-    const auto &[pi_main, pi_cold] = pipelines_.Get(ret);
+    const auto &[pi_main, pi_cold] = pipelines_[ret];
     if (!Pipeline_Init(*api_, storages_, pi_main, pi_cold, rast_state, prog, vtx_input, render_pass, subpass_index,
                        log_)) {
         pipelines_.Erase(ret);
@@ -321,7 +321,7 @@ Ren::PipelineHandle Ren::Context::CreatePipeline(const RastState &rast_state, co
 
 Ren::PipelineHandle Ren::Context::CreatePipeline(PipelineMain &&_pi_main, PipelineCold &&_pi_cold) {
     const PipelineHandle ret = pipelines_.Emplace();
-    const auto &[pi_main, pi_cold] = pipelines_.Get(ret);
+    const auto &[pi_main, pi_cold] = pipelines_[ret];
     pi_main = std::move(_pi_main);
     pi_cold = std::move(_pi_cold);
     return ret;
@@ -331,7 +331,7 @@ void Ren::Context::ReleasePipeline(const PipelineHandle handle, const bool immed
     if (!handle) {
         return;
     }
-    const auto &[pi_main, pi_cold] = pipelines_.Get(handle);
+    const auto &[pi_main, pi_cold] = pipelines_[handle];
     if (immediately) {
         Pipeline_DestroyImmediately(*api_, pi_main, pi_cold);
     } else {
@@ -356,7 +356,7 @@ Ren::ImageHandle Ren::Context::CreateImage(const String &name, Span<const uint8_
                                            MemAllocators *mem_allocs) {
     const ImageHandle ret = images_.Emplace();
 
-    const auto &[img_main, img_cold] = images_.Get(ret);
+    const auto &[img_main, img_cold] = images_[ret];
     if (!Image_Init(*api_, img_main, img_cold, name, p, data, mem_allocs, log_)) {
         images_.Erase(ret);
         return {};
@@ -368,7 +368,7 @@ Ren::ImageHandle Ren::Context::CreateImage(const String &name, Span<const uint8_
                                            MemAllocators *mem_allocs) {
     const ImageHandle ret = images_.Emplace();
 
-    const auto &[img_main, img_cold] = images_.Get(ret);
+    const auto &[img_main, img_cold] = images_[ret];
     if (!Image_Init(*api_, img_main, img_cold, name, p, data, mem_allocs, log_)) {
         images_.Erase(ret);
         return {};
@@ -380,7 +380,7 @@ Ren::ImageHandle Ren::Context::CreateImage(const String &name, const ImgParams &
                                            MemAllocation &&alloc) {
     const ImageHandle ret = images_.Emplace();
 
-    const auto &[img_main, img_cold] = images_.Get(ret);
+    const auto &[img_main, img_cold] = images_[ret];
     img_main = _img_main;
     if (!Image_Init(*api_, img_cold, name, p, std::move(alloc), log_)) {
         images_.Erase(ret);
@@ -393,8 +393,8 @@ Ren::ImageHandle Ren::Context::CreateImage(const ImageHandle src, const ImgParam
                                            CommandBuffer cmd_buf) {
     const ImageHandle ret = images_.Emplace();
 
-    const auto &[src_main, src_cold] = images_.Get(src);
-    const auto &[img_main, img_cold] = images_.Get(ret);
+    const auto &[src_main, src_cold] = images_[src];
+    const auto &[img_main, img_cold] = images_[ret];
     if (!Image_Init(*api_, img_main, img_cold, src_cold.name, p, {}, mem_allocs, log_)) {
         images_.Erase(ret);
         return {};
@@ -434,7 +434,7 @@ void Ren::Context::ReleaseImage(const ImageHandle handle, const bool immediately
     if (!handle) {
         return;
     }
-    const auto &[img_main, img_cold] = images_.Get(handle);
+    const auto &[img_main, img_cold] = images_[handle];
     if (immediately) {
         Image_DestroyImmediately(*api_, img_main, img_cold);
     } else {
@@ -445,27 +445,27 @@ void Ren::Context::ReleaseImage(const ImageHandle handle, const bool immediately
 
 int Ren::Context::CreateImageView(const ImageHandle handle, const eFormat format, const int mip_level,
                                   const int mip_count, const int base_layer, const int layer_count) {
-    const auto &[img_main, img_cold] = images_.Get(handle);
+    const auto &[img_main, img_cold] = images_[handle];
     return Image_AddView(*api_, img_main, img_cold, format, mip_level, mip_count, base_layer, layer_count);
 }
 
 void Ren::Context::CmdClearImage(const ImageHandle handle, const ClearColor &col, const CommandBuffer cmd_buf) {
-    const auto &[img_main, img_cold] = images_.Get(handle);
+    const auto &[img_main, img_cold] = images_[handle];
     Image_CmdClear(*api_, img_main, img_cold, col, cmd_buf);
 }
 
 void Ren::Context::CmdCopyImageToBuffer(const ImageROHandle img, const BufferRWHandle buf, const CommandBuffer cmd_buf,
                                         const uint32_t data_off) {
-    const auto &[img_main, img_cold] = images_.Get(img);
-    const auto &[buf_main, buf_cold] = buffers_.Get(buf);
+    const auto &[img_main, img_cold] = images_[img];
+    const auto &[buf_main, buf_cold] = buffers_[buf];
     Image_CmdCopyToBuffer(*api_, img_main, img_cold, buf_main, buf_cold, cmd_buf, data_off);
 }
 
 void Ren::Context::CmdCopyImageToImage(const CommandBuffer cmd_buf, const ImageROHandle src, const uint32_t src_level,
                                        const Vec3i &src_offset, const ImageRWHandle dst, const uint32_t dst_level,
                                        const Vec3i &dst_offset, const uint32_t dst_face, const Vec3i &size) {
-    const auto &[src_main, src_cold] = images_.Get(src);
-    const auto &[dst_main, dst_cold] = images_.Get(dst);
+    const auto &[src_main, src_cold] = images_[src];
+    const auto &[dst_main, dst_cold] = images_[dst];
     Image_CmdCopyToImage(*api_, cmd_buf, src_main, src_cold, src_level, src_offset, dst_main, dst_cold, dst_level,
                          dst_offset, dst_face, size);
 }
@@ -489,7 +489,7 @@ Ren::FramebufferHandle Ren::Context::CreateFramebuffer(const RenderPassROHandle 
                                                        Span<const FramebufferAttachment> color_attachments) {
     const FramebufferHandle ret = framebuffers_.Emplace();
 
-    const auto &[fb_main, fb_cold] = framebuffers_.Get(ret);
+    const auto &[fb_main, fb_cold] = framebuffers_[ret];
     if (!Framebuffer_Init(*api_, fb_main, fb_cold, storages_, render_pass, depth, stencil, color_attachments, log_)) {
         framebuffers_.Erase(ret);
         return {};
@@ -501,7 +501,7 @@ void Ren::Context::ReleaseFramebuffer(const FramebufferHandle handle, const bool
     if (!handle) {
         return;
     }
-    const auto &[fb_main, fb_cold] = framebuffers_.Get(handle);
+    const auto &[fb_main, fb_cold] = framebuffers_[handle];
     if (immediately) {
         Framebuffer_DestroyImmediately(*api_, fb_main, fb_cold);
     } else {
@@ -529,7 +529,7 @@ void Ren::Context::ReleaseAccStruct(const AccStructHandle handle, const bool imm
     if (!handle) {
         return;
     }
-    const auto &[acc_main, acc_cold] = acc_structs_.Get(handle);
+    const auto &[acc_main, acc_cold] = acc_structs_[handle];
     if (immediately) {
         AccStruct_DestroyImmediately(*api_, acc_main, acc_cold);
     } else {
@@ -554,7 +554,7 @@ Ren::ImageRegionHandle Ren::Context::CreateImageRegion(String name, Span<const u
                                                        CommandBuffer cmd_buf) {
     const ImageRegionHandle ret = image_regions_.Emplace();
 
-    const auto &[reg_main, reg_cold] = image_regions_.Get(ret);
+    const auto &[reg_main, reg_cold] = image_regions_[ret];
     if (!ImageRegion_Init(reg_main, reg_cold, name, data, p, cmd_buf, &image_atlas_, log_)) {
         image_regions_.Erase(ret);
         return {};
@@ -566,7 +566,7 @@ Ren::ImageRegionHandle Ren::Context::CreateImageRegion(String name, const Buffer
                                                        const int data_len, const ImgParams &p, CommandBuffer cmd_buf) {
     const ImageRegionHandle ret = image_regions_.Emplace();
 
-    const auto &[reg_main, reg_cold] = image_regions_.Get(ret);
+    const auto &[reg_main, reg_cold] = image_regions_[ret];
     if (!ImageRegion_Init(reg_main, reg_cold, name, sbuf, data_off, data_len, p, cmd_buf, &image_atlas_, log_)) {
         image_regions_.Erase(ret);
         return {};
@@ -596,7 +596,7 @@ void Ren::Context::ReleaseImageRegions() {
 Ren::SamplerHandle Ren::Context::CreateSampler(const SamplingParams params) {
     SamplerHandle ret = samplers_.Emplace();
 
-    Sampler &sampler = samplers_.Get(ret);
+    Sampler &sampler = samplers_[ret];
 
     if (!Sampler_Init(*api_, sampler, params)) {
         samplers_.Erase(ret);
@@ -610,7 +610,7 @@ void Ren::Context::ReleaseSampler(const SamplerHandle handle, const bool immedia
     if (!handle) {
         return;
     }
-    Sampler &sampler = samplers_.Get(handle);
+    Sampler &sampler = samplers_[handle];
     if (immediately) {
         Sampler_DestroyImmediately(*api_, sampler);
     } else {
@@ -635,7 +635,7 @@ void Ren::Context::ReleaseSamplers() {
 Ren::AnimSeqHandle Ren::Context::CreateAnimSequence(const String &name, std::istream &data) {
     AnimSeqHandle ret = anims_.Emplace();
 
-    const auto &[anim_main, anim_cold] = anims_.Get(ret);
+    const auto &[anim_main, anim_cold] = anims_[ret];
 
     if (!AnimSeq_Init(anim_main, anim_cold, name, data, log_)) {
         anims_.Erase(ret);
@@ -663,7 +663,7 @@ Ren::BufferHandle Ren::Context::CreateBuffer(const String &name, const eBufType 
                                              const uint32_t size_alignment, MemAllocators *mem_allocs) {
     BufferHandle ret = buffers_.Emplace();
 
-    const auto &[buf_main, buf_cold] = buffers_.Get(ret);
+    const auto &[buf_main, buf_cold] = buffers_[ret];
 
     if (!Buffer_Init(*api_, buf_main, buf_cold, name, type, initial_size, log_, size_alignment, mem_allocs)) {
         buffers_.Erase(ret);
@@ -678,7 +678,7 @@ Ren::BufferHandle Ren::Context::CreateBuffer(const String &name, const eBufType 
                                              const uint32_t size_alignment) {
     BufferHandle ret = buffers_.Emplace();
 
-    const auto &[buf_main, buf_cold] = buffers_.Get(ret);
+    const auto &[buf_main, buf_cold] = buffers_[ret];
 
     buf_main = _buf_main;
     if (!Buffer_Init(*api_, buf_cold, name, type, std::move(alloc), initial_size, log_, size_alignment)) {
@@ -691,12 +691,12 @@ Ren::BufferHandle Ren::Context::CreateBuffer(const String &name, const eBufType 
 
 bool Ren::Context::ResizeBuffer(const BufferHandle handle, const uint32_t new_size, const bool keep_content,
                                 const bool release_immediately) {
-    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const auto &[buf_main, buf_cold] = buffers_[handle];
     return Buffer_Resize(*api_, buf_main, buf_cold, new_size, log_, keep_content, release_immediately);
 }
 
 int Ren::Context::FindOrCreateBufferView(const BufferHandle handle, const eFormat format) {
-    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const auto &[buf_main, buf_cold] = buffers_[handle];
     for (int i = 0; i < int(buf_main.views.size()); ++i) {
         if (buf_main.views[i].first == format) {
             return i;
@@ -707,17 +707,17 @@ int Ren::Context::FindOrCreateBufferView(const BufferHandle handle, const eForma
 
 uint8_t *Ren::Context::MapBufferRange(const BufferHandle handle, const uint32_t offset, const uint32_t size,
                                       const bool persistent) {
-    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const auto &[buf_main, buf_cold] = buffers_[handle];
     return Buffer_MapRange(*api_, buf_main, buf_cold, offset, size, persistent);
 }
 
 uint8_t *Ren::Context::MapBuffer(const BufferHandle handle, const bool persistent) {
-    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const auto &[buf_main, buf_cold] = buffers_[handle];
     return Buffer_MapRange(*api_, buf_main, buf_cold, 0, buf_cold.size, persistent);
 }
 
 void Ren::Context::UnmapBuffer(const BufferHandle handle) {
-    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const auto &[buf_main, buf_cold] = buffers_[handle];
     Buffer_Unmap(*api_, buf_main, buf_cold);
 }
 
@@ -725,13 +725,13 @@ Ren::SubAllocation Ren::Context::AllocBufferSubRegion(const BufferHandle handle,
                                                       const uint32_t req_alignment, std::string_view tag,
                                                       const BufferMain *init_buf, CommandBuffer cmd_buf,
                                                       const uint32_t init_off) {
-    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const auto &[buf_main, buf_cold] = buffers_[handle];
     return Buffer_AllocSubRegion(*api_, buf_main, buf_cold, req_size, req_alignment, tag, log_, init_buf, cmd_buf,
                                  init_off);
 }
 
 bool Ren::Context::FreeBufferSubRegion(BufferHandle handle, SubAllocation alloc) {
-    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const auto &[buf_main, buf_cold] = buffers_[handle];
     return Buffer_FreeSubRegion(buf_cold, alloc);
 }
 
@@ -739,7 +739,7 @@ void Ren::Context::ReleaseBuffer(const BufferHandle handle, const bool immediate
     if (!handle) {
         return;
     }
-    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const auto &[buf_main, buf_cold] = buffers_[handle];
     if (immediately) {
         Buffer_DestroyImmediately(*api_, buf_main, buf_cold);
     } else {

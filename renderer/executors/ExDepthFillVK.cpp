@@ -69,18 +69,18 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
                      uint32_t i, uint64_t mask);
 } // namespace ExSharedInternal
 
-void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle depth_tex,
-                                 const Ren::ImageRWHandle velocity_tex) {
+void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle depth,
+                                 const Ren::ImageRWHandle velocity) {
     using namespace ExSharedInternal;
 
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
@@ -102,15 +102,15 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
 
     using BDB = basic_draw_batch_t;
 
-    const Ren::PipelineMain *pi_static_solid_main[3] = {&storages.pipelines.Get(pi_static_solid_[0]).first,
-                                                        &storages.pipelines.Get(pi_static_solid_[1]).first,
-                                                        &storages.pipelines.Get(pi_static_solid_[2]).first};
-    const Ren::ProgramMain &pr_static_solid0_main = storages.programs.Get(pi_static_solid_main[0]->prog).first;
+    const Ren::PipelineMain *pi_static_solid_main[3] = {&storages.pipelines[pi_static_solid_[0]].first,
+                                                        &storages.pipelines[pi_static_solid_[1]].first,
+                                                        &storages.pipelines[pi_static_solid_[2]].first};
+    const Ren::ProgramMain &pr_static_solid0_main = storages.programs[pi_static_solid_main[0]->prog].first;
 
-    const Ren::PipelineMain *pi_vege_static_solid_main[2] = {&storages.pipelines.Get(pi_vege_static_solid_[0]).first,
-                                                             &storages.pipelines.Get(pi_vege_static_solid_[1]).first};
+    const Ren::PipelineMain *pi_vege_static_solid_main[2] = {&storages.pipelines[pi_vege_static_solid_[0]].first,
+                                                             &storages.pipelines[pi_vege_static_solid_[1]].first};
     const Ren::ProgramMain &pr_vege_static_solid0_main =
-        storages.programs.Get(pi_vege_static_solid_main[0]->prog).first;
+        storages.programs[pi_vege_static_solid_main[0]->prog].first;
 
     //
     // Prepare descriptor sets
@@ -119,10 +119,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     VkDescriptorSetLayout simple_descr_set_layout = pr_static_solid0_main.descr_set_layouts[0];
     VkDescriptorSet simple_descr_sets[2];
     { // allocate descriptors
-        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
-                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf}};
+        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data},
+                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances},
+                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices},
+                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials}};
         simple_descr_sets[0] =
             PrepareDescriptorSet(api, storages, simple_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         simple_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
@@ -131,11 +131,11 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     VkDescriptorSetLayout vege_descr_set_layout = pr_vege_static_solid0_main.descr_set_layouts[0];
     VkDescriptorSet vege_descr_sets[2];
     { // allocate descriptors
-        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
-                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
-                                         {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex}};
+        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data},
+                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances},
+                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices},
+                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials},
+                                         {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise}};
         vege_descr_sets[0] =
             PrepareDescriptorSet(api, storages, vege_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         vege_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
@@ -150,22 +150,21 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         Ren::DebugMarker _m(api, cmd_buf, "STATIC-SOLID-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth_tex, depth_tex, {});
+        const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth, depth, {});
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_only_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_static_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_static_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -190,17 +189,17 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_moving_solid_main[3] = {&storages.pipelines.Get(pi_moving_solid_[0]).first,
-                                                        &storages.pipelines.Get(pi_moving_solid_[1]).first,
-                                                        &storages.pipelines.Get(pi_moving_solid_[2]).first};
+    const Ren::PipelineMain *pi_moving_solid_main[3] = {&storages.pipelines[pi_moving_solid_[0]].first,
+                                                        &storages.pipelines[pi_moving_solid_[1]].first,
+                                                        &storages.pipelines[pi_moving_solid_[2]].first};
 
     { // moving solid meshes (depth and velocity)
         Ren::DebugMarker _m(api, cmd_buf, "STATIC-SOLID-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -210,12 +209,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_moving_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_moving_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -244,30 +243,29 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_static_transp_main[3] = {&storages.pipelines.Get(pi_static_transp_[0]).first,
-                                                         &storages.pipelines.Get(pi_static_transp_[1]).first,
-                                                         &storages.pipelines.Get(pi_static_transp_[2]).first};
+    const Ren::PipelineMain *pi_static_transp_main[3] = {&storages.pipelines[pi_static_transp_[0]].first,
+                                                         &storages.pipelines[pi_static_transp_[1]].first,
+                                                         &storages.pipelines[pi_static_transp_[2]].first};
 
     { // simple alpha-tested meshes (depth only)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "STATIC-ALPHA-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth_tex, depth_tex, {});
+        const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth, depth, {});
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_only_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_static_transp_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_static_transp_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -298,17 +296,17 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_moving_transp_main[3] = {&storages.pipelines.Get(pi_moving_transp_[0]).first,
-                                                         &storages.pipelines.Get(pi_moving_transp_[1]).first,
-                                                         &storages.pipelines.Get(pi_moving_transp_[2]).first};
+    const Ren::PipelineMain *pi_moving_transp_main[3] = {&storages.pipelines[pi_moving_transp_[0]].first,
+                                                         &storages.pipelines[pi_moving_transp_[1]].first,
+                                                         &storages.pipelines[pi_moving_transp_[2]].first};
 
     { // moving alpha-tested meshes (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "STATIC-ALPHA-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -318,12 +316,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_moving_transp_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_moving_transp_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -360,8 +358,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         Ren::DebugMarker _m(api, cmd_buf, "VEGE-SOLID-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth_tex, depth_tex, {});
+        const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth, depth, {});
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -371,12 +368,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_only_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vege_static_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_vege_static_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -400,16 +397,16 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_vege_moving_solid_main[2] = {&storages.pipelines.Get(pi_vege_moving_solid_[0]).first,
-                                                             &storages.pipelines.Get(pi_vege_moving_solid_[1]).first};
+    const Ren::PipelineMain *pi_vege_moving_solid_main[2] = {&storages.pipelines[pi_vege_moving_solid_[0]].first,
+                                                             &storages.pipelines[pi_vege_moving_solid_[1]].first};
 
     { // moving solid vegetation (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-SOLID-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -419,12 +416,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vege_moving_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_vege_moving_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -449,16 +446,16 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_vege_static_transp_main[2] = {&storages.pipelines.Get(pi_vege_static_transp_[0]).first,
-                                                              &storages.pipelines.Get(pi_vege_static_transp_[1]).first};
+    const Ren::PipelineMain *pi_vege_static_transp_main[2] = {&storages.pipelines[pi_vege_static_transp_[0]].first,
+                                                              &storages.pipelines[pi_vege_static_transp_[1]].first};
 
     { // static alpha-tested vegetation (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-ALPHA-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -468,12 +465,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vege_static_transp_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_vege_static_transp_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -500,16 +497,16 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_vege_moving_transp_main[2] = {&storages.pipelines.Get(pi_vege_moving_transp_[0]).first,
-                                                              &storages.pipelines.Get(pi_vege_moving_transp_[1]).first};
+    const Ren::PipelineMain *pi_vege_moving_transp_main[2] = {&storages.pipelines[pi_vege_moving_transp_[0]].first,
+                                                              &storages.pipelines[pi_vege_moving_transp_[1]].first};
 
     { // moving alpha-tested vegetation (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-ALPHA-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -519,12 +516,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vege_moving_transp_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_vege_moving_transp_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -551,16 +548,16 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_skin_static_solid_main[2] = {&storages.pipelines.Get(pi_skin_static_solid_[0]).first,
-                                                             &storages.pipelines.Get(pi_skin_static_solid_[1]).first};
+    const Ren::PipelineMain *pi_skin_static_solid_main[2] = {&storages.pipelines[pi_skin_static_solid_[0]].first,
+                                                             &storages.pipelines[pi_skin_static_solid_[1]].first};
 
     { // solid skinned meshes (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-SOLID-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -570,12 +567,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_skin_static_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_skin_static_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -599,16 +596,16 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_skin_moving_solid_main[2] = {&storages.pipelines.Get(pi_skin_moving_solid_[0]).first,
-                                                             &storages.pipelines.Get(pi_skin_moving_solid_[1]).first};
+    const Ren::PipelineMain *pi_skin_moving_solid_main[2] = {&storages.pipelines[pi_skin_moving_solid_[0]].first,
+                                                             &storages.pipelines[pi_skin_moving_solid_[1]].first};
 
     { // moving solid skinned (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-SOLID-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -618,12 +615,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_skin_moving_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_skin_moving_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -648,16 +645,16 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_skin_static_transp_main[2] = {&storages.pipelines.Get(pi_skin_static_transp_[0]).first,
-                                                              &storages.pipelines.Get(pi_skin_static_transp_[1]).first};
+    const Ren::PipelineMain *pi_skin_static_transp_main[2] = {&storages.pipelines[pi_skin_static_transp_[0]].first,
+                                                              &storages.pipelines[pi_skin_static_transp_[1]].first};
 
     { // static alpha-tested skinned (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-ALPHA-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -667,12 +664,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_skin_static_transp_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_skin_static_transp_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -699,16 +696,16 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         api.vkCmdEndRenderPass(cmd_buf);
     }
 
-    const Ren::PipelineMain *pi_skin_moving_transp_main[2] = {&storages.pipelines.Get(pi_skin_moving_transp_[0]).first,
-                                                              &storages.pipelines.Get(pi_skin_moving_transp_[1]).first};
+    const Ren::PipelineMain *pi_skin_moving_transp_main[2] = {&storages.pipelines[pi_skin_moving_transp_[0]].first,
+                                                              &storages.pipelines[pi_skin_moving_transp_[1]].first};
 
     { // moving alpha-tested skinned (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-ALPHA-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
-        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::ImageRWHandle velocity_target[] = {velocity};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth, depth, velocity_target);
 
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
@@ -718,12 +715,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_depth_velocity_[rp_index]].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_skin_moving_transp_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_skin_moving_transp_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 

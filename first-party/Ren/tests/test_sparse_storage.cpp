@@ -31,10 +31,10 @@ void test_sparse_storage() {
 
         const Handle<void> opaque_handle{handle0};
 
-        [[maybe_unused]] const DataMain &data0 = new_storage.Get(handle0);
-        [[maybe_unused]] const DataMain &data1 = new_storage.Get(handle1);
-        [[maybe_unused]] const DataMain &data2 = new_storage.Get(handle2);
-        [[maybe_unused]] const DataMain &data3 = new_storage.Get(handle3);
+        [[maybe_unused]] const DataMain &data0 = new_storage[handle0];
+        [[maybe_unused]] const DataMain &data1 = new_storage[handle1];
+        [[maybe_unused]] const DataMain &data2 = new_storage[handle2];
+        [[maybe_unused]] const DataMain &data3 = new_storage[handle3];
 
         new_storage.Erase(handle0);
         new_storage.Erase(handle1);
@@ -87,10 +87,10 @@ void test_sparse_storage() {
         require(handle2.index == 2 && handle2.generation == 0);
         require(handle3.index == 3 && handle3.generation == 0);
 
-        const std::pair<DataMain &, DataCold &> data0 = new_storage.Get(handle0);
-        const std::pair<DataMain &, DataCold &> data1 = new_storage.Get(handle1);
-        const std::pair<DataMain &, DataCold &> data2 = new_storage.Get(handle2);
-        const std::pair<DataMain &, DataCold &> data3 = new_storage.Get(handle3);
+        const std::pair<DataMain &, DataCold &> data0 = new_storage[handle0];
+        const std::pair<DataMain &, DataCold &> data1 = new_storage[handle1];
+        const std::pair<DataMain &, DataCold &> data2 = new_storage[handle2];
+        const std::pair<DataMain &, DataCold &> data3 = new_storage[handle3];
 
         data0.first.light = 0;
         data1.first.light = 1;

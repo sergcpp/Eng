@@ -14,13 +14,13 @@ class ExSkydomeCube final : public FgExecutor {
         FgBufROHandle shared_data;
         FgImgROHandle transmittance_lut;
         FgImgROHandle multiscatter_lut;
-        FgImgROHandle moon_tex;
-        FgImgROHandle weather_tex;
-        FgImgROHandle cirrus_tex;
-        FgImgROHandle curl_tex;
-        FgImgROHandle noise3d_tex;
+        FgImgROHandle moon;
+        FgImgROHandle weather;
+        FgImgROHandle cirrus;
+        FgImgROHandle curl;
+        FgImgROHandle noise3d;
 
-        FgImgRWHandle color_tex;
+        FgImgRWHandle color;
     };
 
     ExSkydomeCube(PrimDraw &prim_draw, const view_state_t *view_state, const Args *args)
@@ -51,20 +51,20 @@ class ExSkydomeScreen final : public FgExecutor {
         eSkyQuality sky_quality = eSkyQuality::Medium;
 
         FgBufROHandle shared_data;
-        FgImgROHandle env_tex;
+        FgImgROHandle env;
         struct {
             FgImgROHandle transmittance_lut;
             FgImgROHandle multiscatter_lut;
-            FgImgROHandle moon_tex;
-            FgImgROHandle weather_tex;
-            FgImgROHandle cirrus_tex;
-            FgImgROHandle curl_tex;
-            FgImgROHandle noise3d_tex;
+            FgImgROHandle moon;
+            FgImgROHandle weather;
+            FgImgROHandle cirrus;
+            FgImgROHandle curl;
+            FgImgROHandle noise3d;
         } phys;
 
-        FgImgROHandle depth_ro_tex;
-        FgImgRWHandle depth_rw_tex;
-        FgImgRWHandle color_tex;
+        FgImgROHandle depth_ro;
+        FgImgRWHandle depth_rw;
+        FgImgRWHandle color;
     };
 
     ExSkydomeScreen(PrimDraw &prim_draw, const view_state_t *view_state, const Args *args)

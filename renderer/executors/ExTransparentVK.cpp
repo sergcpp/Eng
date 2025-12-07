@@ -9,12 +9,11 @@
 #include "../framegraph/FgBuilder.h"
 
 void Eng::ExTransparent::DrawTransparent_Simple(
-    const FgContext &fg, const Ren::BufferROHandle instances_buf, const Ren::BufferROHandle instance_indices_buf,
-    const Ren::BufferROHandle unif_shared_data_buf, const Ren::BufferROHandle materials_buf,
-    const Ren::BufferROHandle cells_buf, const Ren::BufferROHandle items_buf, const Ren::BufferROHandle lights_buf,
-    const Ren::BufferROHandle decals_buf, const Ren::ImageROHandle shad_tex, const Ren::ImageRWHandle color_tex,
-    const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex, const Ren::ImageRWHandle depth_tex,
-    const Ren::ImageROHandle ssao_tex) {
+    const FgContext &fg, const Ren::BufferROHandle instances, const Ren::BufferROHandle instance_indices,
+    const Ren::BufferROHandle unif_shared_data, const Ren::BufferROHandle materials, const Ren::BufferROHandle cells,
+    const Ren::BufferROHandle items, const Ren::BufferROHandle lights, const Ren::BufferROHandle decals,
+    const Ren::ImageROHandle shad, const Ren::ImageRWHandle color, const Ren::ImageRWHandle normal,
+    const Ren::ImageRWHandle spec, const Ren::ImageRWHandle depth, const Ren::ImageROHandle ssao) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
@@ -22,7 +21,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     [[maybe_unused]] const Ren::ImageROHandle brdf_lut = fg.AccessROImage(brdf_lut_);
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
     [[maybe_unused]] const Ren::ImageROHandle cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
     const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
 
@@ -47,10 +46,10 @@ void Eng::ExTransparent::DrawTransparent_Simple(
     const VkDescriptorSet res_descr_set = fg.descr_alloc().Alloc(descr_sizes, descr_set_layout_);
 
     { // update descriptor set
-        const Ren::ImageMain &dummy_black_main = storages.images.Get(dummy_black).first;
-        const Ren::ImageMain &ssao_main = storages.images.Get(ssao_tex).first;
-        const Ren::ImageMain &noise_main = storages.images.Get(noise_tex).first;
-        const Ren::ImageMain &shad_main = storages.images.Get(shad_tex).first;
+        const Ren::ImageMain &dummy_black_main = storages.images[dummy_black].first;
+        const Ren::ImageMain &ssao_main = storages.images[ssao].first;
+        const Ren::ImageMain &noise_main = storages.images[noise].first;
+        const Ren::ImageMain &shad_main = storages.images[shad].first;
 
         const VkDescriptorImageInfo shad_info = Image_GetDescriptorImageInfo(api, shad_main);
         VkDescriptorImageInfo lm_infos[4];
@@ -75,20 +74,20 @@ void Eng::ExTransparent::DrawTransparent_Simple(
         // const VkDescriptorImageInfo cone_rt_info = cone_rt_lut.ref->vk_desc_image_info();
         // const VkDescriptorImageInfo brdf_info = brdf_lut.ref->vk_desc_image_info();
 
-        const VkBufferView lights_buf_view = storages.buffers.Get(lights_buf).first.views[0].second;
-        const VkBufferView decals_buf_view = storages.buffers.Get(decals_buf).first.views[0].second;
-        const VkBufferView cells_buf_view = storages.buffers.Get(cells_buf).first.views[0].second;
-        const VkBufferView items_buf_view = storages.buffers.Get(items_buf).first.views[0].second;
+        const VkBufferView lights_view = storages.buffers[lights].first.views[0].second;
+        const VkBufferView decals_view = storages.buffers[decals].first.views[0].second;
+        const VkBufferView cells_view = storages.buffers[cells].first.views[0].second;
+        const VkBufferView items_view = storages.buffers[items].first.views[0].second;
 
-        const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
-        const VkDescriptorBufferInfo ubuf_info = {unif_shared_data_buf_main.buf, 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &unif_shared_data_main = storages.buffers[unif_shared_data].first;
+        const VkDescriptorBufferInfo ubuf_info = {unif_shared_data_main.buf, 0, VK_WHOLE_SIZE};
 
-        const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
-        const VkBufferView instances_buf_view = instances_buf_main.views[0].second;
-        const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
-        const VkDescriptorBufferInfo instance_indices_buf_info = {instance_indices_buf_main.buf, 0, VK_WHOLE_SIZE};
-        const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
-        const VkDescriptorBufferInfo mat_buf_info = {materials_buf_main.buf, 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &instances_main = storages.buffers[instances].first;
+        const VkBufferView instances_view = instances_main.views[0].second;
+        const Ren::BufferMain &instance_indices_main = storages.buffers[instance_indices].first;
+        const VkDescriptorBufferInfo instance_indices_info = {instance_indices_main.buf, 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &materials_main = storages.buffers[materials].first;
+        const VkDescriptorBufferInfo mat_info = {materials_main.buf, 0, VK_WHOLE_SIZE};
 
         Ren::SmallVector<VkWriteDescriptorSet, 16> descr_writes;
 
@@ -180,7 +179,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
             descr_write.dstArrayElement = 0;
             descr_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
             descr_write.descriptorCount = 1;
-            descr_write.pTexelBufferView = &lights_buf_view;
+            descr_write.pTexelBufferView = &lights_view;
         }
         { // decals tbuf
             auto &descr_write = descr_writes.emplace_back();
@@ -190,7 +189,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
             descr_write.dstArrayElement = 0;
             descr_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
             descr_write.descriptorCount = 1;
-            descr_write.pTexelBufferView = &decals_buf_view;
+            descr_write.pTexelBufferView = &decals_view;
         }
         { // cells tbuf
             auto &descr_write = descr_writes.emplace_back();
@@ -200,7 +199,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
             descr_write.dstArrayElement = 0;
             descr_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
             descr_write.descriptorCount = 1;
-            descr_write.pTexelBufferView = &cells_buf_view;
+            descr_write.pTexelBufferView = &cells_view;
         }
         { // items tbuf
             auto &descr_write = descr_writes.emplace_back();
@@ -210,7 +209,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
             descr_write.dstArrayElement = 0;
             descr_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
             descr_write.descriptorCount = 1;
-            descr_write.pTexelBufferView = &items_buf_view;
+            descr_write.pTexelBufferView = &items_view;
         }
         { // instances tbuf
             auto &descr_write = descr_writes.emplace_back();
@@ -220,7 +219,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
             descr_write.dstArrayElement = 0;
             descr_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
             descr_write.descriptorCount = 1;
-            descr_write.pTexelBufferView = &instances_buf_view;
+            descr_write.pTexelBufferView = &instances_view;
         }
         { // instance indices sbuf
             auto &descr_write = descr_writes.emplace_back();
@@ -230,7 +229,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
             descr_write.dstArrayElement = 0;
             descr_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             descr_write.descriptorCount = 1;
-            descr_write.pBufferInfo = &instance_indices_buf_info;
+            descr_write.pBufferInfo = &instance_indices_info;
         }
         { // shared data ubuf
             auto &descr_write = descr_writes.emplace_back();
@@ -250,7 +249,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
             descr_write.dstArrayElement = 0;
             descr_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             descr_write.descriptorCount = 1;
-            descr_write.pBufferInfo = &mat_buf_info;
+            descr_write.pBufferInfo = &mat_info;
         }
 
         api.vkUpdateDescriptorSets(api.device, descr_writes.size(), descr_writes.cdata(), 0, nullptr);
@@ -278,17 +277,16 @@ void Eng::ExTransparent::DrawTransparent_Simple(
         uint64_t cur_mat_id = 0xffffffffffffffff;
         uint32_t bound_descr_id = 0xffffffff;
 
-        const Ren::ImageRWHandle color_targets[] = {color_tex, normal_tex, spec_tex};
-        const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(rp_transparent_, depth_tex, depth_tex, color_targets);
+        const Ren::ImageRWHandle color_targets[] = {color, normal, spec};
+        const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_transparent_, depth, depth, color_targets);
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_transparent_).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_transparent_].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(draw_pass_vi_);
+        const Ren::VertexInput &vi = storages.vtx_inputs[draw_pass_vi_];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         for (int j = int((*p_list_)->custom_batch_indices.size()) - 1; j >= (*p_list_)->alpha_blend_start_index; j--) {

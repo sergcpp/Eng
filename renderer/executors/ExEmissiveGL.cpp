@@ -50,12 +50,12 @@ void Eng::ExEmissive::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle c
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
 
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
     const Ren::ImageROHandle dummy_white = fg.AccessROImage(dummy_white_);
 
     if ((*p_list_)->emissive_start_index == -1) {
@@ -68,28 +68,28 @@ void Eng::ExEmissive::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle c
     const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer({}, depth_tex, depth_tex, color_targets);
 
     // Bind main buffer for drawing
-    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb).first.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[fb].first.id);
 
-    const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
+    const Ren::BufferMain &materials_buf_main = storages.buffers[materials].first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
     if (fg.ren_ctx().capabilities.bindless_texture) {
-        const Ren::BufferMain &buf_main = storages.buffers.Get(bindless_tex_->rt_inline_textures.buf).first;
+        const Ren::BufferMain &buf_main = storages.buffers[bindless_tex_->rt_inline_textures.buf].first;
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX, GLuint(buf_main.buf));
     }
 
-    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
+    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers[unif_shared_data].first;
     glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
 
     if ((*p_list_)->decals_atlas) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_DECAL_TEX, (*p_list_)->decals_atlas->tex_id(0));
     }
 
-    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
+    const Ren::ImageMain &noise_main = storages.images[noise].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_main.img);
 
-    const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
+    const Ren::BufferMain &instances_buf_main = storages.buffers[instances].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
-    const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
+    const Ren::BufferMain &instance_indices_buf_main = storages.buffers[instance_indices].first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
 
     const Ren::Span<const basic_draw_batch_t> batches = (*p_list_)->basic_batches;
@@ -101,20 +101,20 @@ void Eng::ExEmissive::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle c
 
     using BDB = basic_draw_batch_t;
 
-    const Ren::PipelineMain &pi_simple0_main = storages.pipelines.Get(pi_simple_[0]).first;
-    const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
-    const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
+    const Ren::PipelineMain &pi_simple0_main = storages.pipelines[pi_simple_[0]].first;
+    const Ren::PipelineMain &pi_simple1_main = storages.pipelines[pi_simple_[1]].first;
+    const Ren::PipelineMain &pi_simple2_main = storages.pipelines[pi_simple_[2]].first;
 
-    const Ren::ImageMain &dummy_white_main = storages.images.Get(dummy_white).first;
+    const Ren::ImageMain &dummy_white_main = storages.images[dummy_white].first;
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
 
     { // Simple meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SIMPLE");
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_simple0_main.vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-        glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
+        glUseProgram(storages.programs[pi_simple0_main.prog].first.id);
 
         { // solid one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "SOLID-ONE-SIDED");
@@ -225,12 +225,12 @@ void Eng::ExEmissive::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle c
     { // Vegetation meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGETATION");
 
-        const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines.Get(pi_vegetation_[0]).first;
-        const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines.Get(pi_vegetation_[1]).first;
+        const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines[pi_vegetation_[0]].first;
+        const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines[pi_vegetation_[1]].first;
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_vegetation0_main.vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-        glUseProgram(storages.programs.Get(pi_vegetation0_main.prog).first.id);
+        glUseProgram(storages.programs[pi_vegetation0_main.prog].first.id);
 
         { // vegetation solid one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-SOLID-ONE-SIDED");
@@ -334,9 +334,9 @@ void Eng::ExEmissive::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle c
     { // Skinned meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKINNED");
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_simple0_main.vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-        glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
+        glUseProgram(storages.programs[pi_simple0_main.prog].first.id);
 
         { // skinned solid one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-SOLID-ONE-SIDED");

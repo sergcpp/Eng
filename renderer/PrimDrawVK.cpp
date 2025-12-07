@@ -28,7 +28,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
     const Ren::ApiContext &api = ctx.api();
     const Ren::StoragesRef &storages = ctx.storages();
 
-    const Ren::ProgramMain &p_main = storages.programs.Get(p).first;
+    const Ren::ProgramMain &p_main = storages.programs[p].first;
 
     VkDescriptorSet descr_set = {};
     if (!p_main.descr_set_layouts.empty()) {
@@ -46,7 +46,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
 #ifndef NDEBUG
         for (const auto &b : bindings) {
             if (b.trg == Ren::eBindTarget::Tex || b.trg == Ren::eBindTarget::TexSampled) {
-                const Ren::ImageMain &img_main = storages.images.Get(b.handle.img).first;
+                const Ren::ImageMain &img_main = storages.images[b.handle.img].first;
                 assert(img_main.resource_state == Ren::eResState::ShaderResource ||
                        img_main.resource_state == Ren::eResState::DepthRead ||
                        img_main.resource_state == Ren::eResState::StencilTestDepthFetch);
@@ -55,7 +55,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
 #endif
 
         for (const auto &rt : color_rts) {
-            const Ren::ImageMain &rt_main = storages.images.Get(rt.img).first;
+            const Ren::ImageMain &rt_main = storages.images[rt.img].first;
             if (rt_main.resource_state != Ren::eResState::RenderTarget) {
                 auto &new_barrier = img_barriers.emplace_back();
                 new_barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -80,7 +80,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
         }
 
         if (depth_rt) {
-            const Ren::ImageMain &depth_rt_main = storages.images.Get(depth_rt.img).first;
+            const Ren::ImageMain &depth_rt_main = storages.images[depth_rt.img].first;
             if (depth_rt_main.resource_state != Ren::eResState::DepthWrite &&
                 depth_rt_main.resource_state != Ren::eResState::DepthRead &&
                 depth_rt_main.resource_state != Ren::eResState::StencilTestDepthFetch) {
@@ -175,14 +175,14 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
         (framebuffers ? *framebuffers : framebuffers_)
             .FindOrCreate(ctx, rp, new_rast_state.depth.test_enabled ? depth_rt : Ren::RenderTarget{},
                           new_rast_state.stencil.enabled ? depth_rt : Ren::RenderTarget{}, color_rts);
-    const Ren::FramebufferMain &fb_main = storages.framebuffers.Get(fb).first;
+    const Ren::FramebufferMain &fb_main = storages.framebuffers[fb].first;
 
     const Ren::VertexInputHandle vi = (prim == ePrim::Quad) ? fs_quad_vtx_input_ : sphere_vtx_input_;
     const Ren::PipelineHandle pipeline = sh_->FindOrCreatePipeline(new_rast_state, p, vi, rp, 0);
-    const Ren::PipelineMain &pi_main = storages.pipelines.Get(pipeline).first;
+    const Ren::PipelineMain &pi_main = storages.pipelines[pipeline].first;
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    render_pass_begin_info.renderPass = storages.render_passes.Get(rp).handle;
+    render_pass_begin_info.renderPass = storages.render_passes[rp].handle;
     render_pass_begin_info.framebuffer = fb_main.handle;
     render_pass_begin_info.renderArea = {{0, 0}, {uint32_t(fb_main.w), uint32_t(fb_main.h)}};
 
@@ -222,7 +222,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
                                                   ctx.default_vertex_buf2().handle()};
     const Ren::BufferROHandle indices_buf = ctx.default_indices_buf().handle();
 
-    const Ren::VertexInput &vtx_input_main = storages.vtx_inputs.Get(pi_main.vtx_input);
+    const Ren::VertexInput &vtx_input_main = storages.vtx_inputs[pi_main.vtx_input];
     if (prim == ePrim::Quad) {
         VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_buffers, indices_buf, cmd_buf,
                                 quad_ndx_.offset, VK_INDEX_TYPE_UINT16);
@@ -252,10 +252,10 @@ void Eng::PrimDraw::ClearTarget(Ren::CommandBuffer cmd_buf, const Ren::RenderTar
     const Ren::RenderPassHandle rp = sh_->FindOrCreateRenderPass(depth_rt, color_rts);
     const Ren::FramebufferHandle fb =
         (framebuffers ? *framebuffers : framebuffers_).FindOrCreate(ctx, rp, depth_rt, depth_rt, color_rts);
-    const Ren::FramebufferMain &fb_main = ctx.framebuffers().Get(fb).first;
+    const Ren::FramebufferMain &fb_main = ctx.storages().framebuffers[fb].first;
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    render_pass_begin_info.renderPass = ctx.render_passes().Get(rp).handle;
+    render_pass_begin_info.renderPass = ctx.storages().render_passes[rp].handle;
     render_pass_begin_info.framebuffer = fb_main.handle;
     render_pass_begin_info.renderArea = {{0, 0}, {uint32_t(fb_main.w), uint32_t(fb_main.h)}};
 

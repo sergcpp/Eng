@@ -11,17 +11,16 @@
 #include "../shaders/depth_hierarchy_interface.h"
 
 void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
-    const Ren::ImageROHandle depth_tex = fg.AccessROImage(depth_tex_);
-
-    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(output_tex_);
-
-    const auto &[depth_main, depth_cold] = fg.storages().images.Get(depth_tex);
-    const auto &[output_main, output_cold] = fg.storages().images.Get(output_tex);
-
     const Ren::StoragesRef &storages = fg.storages();
 
-    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_depth_hierarchy_).first;
-    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
+    const Ren::ImageROHandle depth = fg.AccessROImage(depth_);
+    const Ren::ImageRWHandle output = fg.AccessRWImage(output_);
+
+    const auto &[depth_main, depth_cold] = storages.images[depth];
+    const auto &[output_main, output_cold] = storages.images[output];
+
+    const Ren::PipelineMain &pi = storages.pipelines[pi_depth_hierarchy_].first;
+    const Ren::ProgramMain &pr = storages.programs[pi.prog].first;
 
     glUseProgram(pr.id);
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, DepthHierarchy::DEPTH_TEX_SLOT, depth_main.img);

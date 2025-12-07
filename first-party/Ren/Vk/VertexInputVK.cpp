@@ -39,20 +39,20 @@ void Ren::VertexInput_BindBuffers(const ApiContext &api, const VertexInput &vtx_
     for (const VtxAttribDesc &attr : vtx_input.attribs) {
         int bound_index = -1;
         for (int i = 0; i < int(buffers_to_bind.size()); ++i) {
-            if (buffers_to_bind[i] == buffers.Get(attrib_bufs[attr.buf]).first.buf &&
+            if (buffers_to_bind[i] == buffers[attrib_bufs[attr.buf]].first.buf &&
                 buffer_offsets[i] == attr.base_offset) {
                 bound_index = i;
                 break;
             }
         }
         if (bound_index == -1) {
-            buffers_to_bind.push_back(buffers.Get(attrib_bufs[attr.buf]).first.buf);
+            buffers_to_bind.push_back(buffers[attrib_bufs[attr.buf]].first.buf);
             buffer_offsets.push_back(attr.base_offset);
         }
     }
     api.vkCmdBindVertexBuffers(cmd_buf, 0, buffers_to_bind.size(), buffers_to_bind.cdata(), buffer_offsets.cdata());
     if (elem_buf) {
-        api.vkCmdBindIndexBuffer(cmd_buf, buffers.Get(elem_buf).first.buf, VkDeviceSize(index_offset),
+        api.vkCmdBindIndexBuffer(cmd_buf, buffers[elem_buf].first.buf, VkDeviceSize(index_offset),
                                  VkIndexType(index_type));
     }
 }

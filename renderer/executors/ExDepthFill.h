@@ -26,17 +26,17 @@ class ExDepthFill final : public FgExecutor {
     FgBufROHandle vtx_buf1_;
     FgBufROHandle vtx_buf2_;
     FgBufROHandle ndx_buf_;
-    FgBufROHandle instances_buf_;
-    FgBufROHandle instance_indices_buf_;
-    FgBufROHandle shared_data_buf_;
-    FgBufROHandle materials_buf_;
-    FgImgROHandle noise_tex_;
+    FgBufROHandle instances_;
+    FgBufROHandle instance_indices_;
+    FgBufROHandle shared_data_;
+    FgBufROHandle materials_;
+    FgImgROHandle noise_;
 
-    FgImgRWHandle depth_tex_;
-    FgImgRWHandle velocity_tex_;
+    FgImgRWHandle depth_;
+    FgImgRWHandle velocity_;
 
-    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle depth_tex, Ren::ImageRWHandle velocity_tex);
-    void DrawDepth(const FgContext &fg, Ren::ImageRWHandle depth_tex, Ren::ImageRWHandle velocity_tex);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle depth, Ren::ImageRWHandle velocity);
+    void DrawDepth(const FgContext &fg, Ren::ImageRWHandle depth, Ren::ImageRWHandle velocity);
 
     Ren::RenderPassHandle rp_depth_only_[2], rp_depth_velocity_[2];
 
@@ -49,10 +49,10 @@ class ExDepthFill final : public FgExecutor {
 
   public:
     ExDepthFill(const DrawList **list, const view_state_t *view_state, bool clear_depth, const FgBufROHandle vtx_buf1,
-                const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
-                const BindlessTextureData *bindless_tex, const FgBufROHandle instances_buf,
-                const FgBufROHandle instance_indices_buf, const FgBufROHandle shared_data_buf,
-                const FgImgROHandle noise_tex, const FgImgRWHandle depth_tex, const FgImgRWHandle velocity_tex) {
+                const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials,
+                const BindlessTextureData *bindless_tex, const FgBufROHandle instances,
+                const FgBufROHandle instance_indices, const FgBufROHandle shared_data, const FgImgROHandle noise,
+                const FgImgRWHandle depth, const FgImgRWHandle velocity) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;
         clear_depth_ = clear_depth;
@@ -62,15 +62,15 @@ class ExDepthFill final : public FgExecutor {
         vtx_buf1_ = vtx_buf1;
         vtx_buf2_ = vtx_buf2;
         ndx_buf_ = ndx_buf;
-        instances_buf_ = instances_buf;
-        instance_indices_buf_ = instance_indices_buf;
-        shared_data_buf_ = shared_data_buf;
-        materials_buf_ = materials_buf;
+        instances_ = instances;
+        instance_indices_ = instance_indices;
+        shared_data_ = shared_data;
+        materials_ = materials;
 
-        noise_tex_ = noise_tex;
+        noise_ = noise;
 
-        depth_tex_ = depth_tex;
-        velocity_tex_ = velocity_tex;
+        depth_ = depth;
+        velocity_ = velocity;
     }
 
     void Execute(const FgContext &fg) override;

@@ -18,9 +18,9 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
                      uint32_t i, uint64_t mask);
 } // namespace ExSharedInternal
 
-void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle albedo_tex,
-                                    const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex,
-                                    const Ren::ImageRWHandle depth_tex) {
+void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle albedo,
+                                    const Ren::ImageRWHandle normal, const Ren::ImageRWHandle spec,
+                                    const Ren::ImageRWHandle depth) {
     using namespace ExSharedInternal;
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
@@ -32,30 +32,30 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
+    const Ren::BufferROHandle cells = fg.AccessROBuffer(cells_);
+    const Ren::BufferROHandle items = fg.AccessROBuffer(items_);
+    const Ren::BufferROHandle decals = fg.AccessROBuffer(decals_);
 
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
     const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
 
     VkDescriptorSet descr_sets[2];
     { // allocate descriptors
-        const Ren::PipelineMain &pi_vegetation_main = storages.pipelines.Get(pi_vegetation_[0]).first;
-        const Ren::ProgramMain &pr_main = storages.programs.Get(pi_vegetation_main.prog).first;
+        const Ren::PipelineMain &pi_vegetation_main = storages.pipelines[pi_vegetation_[0]].first;
+        const Ren::ProgramMain &pr_main = storages.programs[pi_vegetation_main.prog].first;
 
-        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
-                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances_buf},
-                                         {Ren::eBindTarget::UTBuf, BIND_DECAL_BUF, decals_buf},
-                                         {Ren::eBindTarget::UTBuf, BIND_CELLS_BUF, cells_buf},
-                                         {Ren::eBindTarget::UTBuf, BIND_ITEMS_BUF, items_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
-                                         {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex},
+        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data},
+                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances},
+                                         {Ren::eBindTarget::UTBuf, BIND_DECAL_BUF, decals},
+                                         {Ren::eBindTarget::UTBuf, BIND_CELLS_BUF, cells},
+                                         {Ren::eBindTarget::UTBuf, BIND_ITEMS_BUF, items},
+                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices},
+                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials},
+                                         {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise},
                                          {Ren::eBindTarget::TexSampled, BIND_DECAL_TEX, dummy_black}};
         descr_sets[0] =
             PrepareDescriptorSet(api, storages, pr_main.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
@@ -81,19 +81,19 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
     uint32_t i = 0;
 
     { // solid meshes
-        const Ren::PipelineMain &pi_simple0_main = storages.pipelines.Get(pi_simple_[0]).first;
-        const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
-        const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
+        const Ren::PipelineMain &pi_simple0_main = storages.pipelines[pi_simple_[0]].first;
+        const Ren::PipelineMain &pi_simple1_main = storages.pipelines[pi_simple_[1]].first;
+        const Ren::PipelineMain &pi_simple2_main = storages.pipelines[pi_simple_[2]].first;
 
-        const Ren::RenderPass &rp = storages.render_passes.Get(pi_simple0_main.render_pass);
+        const Ren::RenderPass &rp = storages.render_passes[pi_simple0_main.render_pass];
 
-        const Ren::ImageRWHandle color_targets[] = {albedo_tex, normal_tex, spec_tex};
+        const Ren::ImageRWHandle color_targets[] = {albedo, normal, spec};
         const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth_tex, depth_tex, color_targets);
+            fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth, depth, color_targets);
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         rp_begin_info.renderPass = rp.handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         const VkClearValue clear_values[4] = {{}, {}, {}, {}};
         rp_begin_info.pClearValues = clear_values;
@@ -103,7 +103,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
         { // Simple meshes
             Ren::DebugMarker _m(api, cmd_buf, "SIMPLE");
 
-            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_simple0_main.vtx_input];
             VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 
@@ -198,10 +198,10 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
         { // Vegetation meshes
             Ren::DebugMarker _m(api, cmd_buf, "VEGETATION");
 
-            const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines.Get(pi_vegetation_[0]).first;
-            const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines.Get(pi_vegetation_[1]).first;
+            const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines[pi_vegetation_[0]].first;
+            const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines[pi_vegetation_[1]].first;
 
-            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input);
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_vegetation0_main.vtx_input];
             VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 
@@ -288,7 +288,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
         { // Skinned meshes
             Ren::DebugMarker _m(api, cmd_buf, "SKINNED");
 
-            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_simple0_main.vtx_input];
             VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 

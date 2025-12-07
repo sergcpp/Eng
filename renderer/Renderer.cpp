@@ -257,10 +257,9 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         p.usage = Ren::Bitmask(Ren::eImgUsage::Transfer) | Ren::eImgUsage::Sampled;
         p.sampling.filter = Ren::eFilter::Bilinear;
 
-        noise_tex_ =
-            ctx_.CreateImage(Ren::String{"noise"}, {(const uint8_t *)&__noise[0], __noise_res * __noise_res * 4}, p,
-                             ctx_.default_mem_allocs());
-        assert(noise_tex_);
+        noise_ = ctx_.CreateImage(Ren::String{"noise"}, {(const uint8_t *)&__noise[0], __noise_res * __noise_res * 4},
+                                  p, ctx_.default_mem_allocs());
+        assert(noise_);
     }
 
     /*{
@@ -337,7 +336,7 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         const uint32_t buf_size = 8 * (SampleSizePerDimPair + ScramblingSizePerDimPair + SortingSizePerDimPair);
         bn_pmj_2D_64spp_seq_buf_ = ctx_.CreateBuffer(Ren::String{"BN_PMJ_2D_64SPP"}, Ren::eBufType::Texture, buf_size);
         { // Add view
-            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(bn_pmj_2D_64spp_seq_buf_);
+            const auto &[buf_main, buf_cold] = ctx_.storages().buffers[bn_pmj_2D_64spp_seq_buf_];
             Ren::Buffer_AddView(ctx_.api(), buf_main, buf_cold, Ren::eFormat::R32UI);
         }
 
@@ -411,7 +410,7 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
 
         Ren::CommandBuffer cmd_buf = ctx_.BegTempSingleTimeCommands();
 
-        const auto &[dst_buf_main, dst_buf_cold] = ctx_.buffers().Get(bn_pmj_2D_64spp_seq_buf_);
+        const auto &[dst_buf_main, dst_buf_cold] = ctx_.storages().buffers[bn_pmj_2D_64spp_seq_buf_];
         CopyBufferToBuffer(ctx_.api(), stage_buf_main, 0, dst_buf_main, 0,
                            8 * (SampleSizePerDimPair + ScramblingSizePerDimPair + SortingSizePerDimPair), cmd_buf);
 
@@ -424,7 +423,7 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         const uint32_t buf_size = __pmj02_sample_count * __pmj02_dims_count * sizeof(uint32_t);
         pmj_samples_buf_ = ctx_.CreateBuffer(Ren::String{"PMJSamples"}, Ren::eBufType::Texture, buf_size);
         { // Add view
-            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(pmj_samples_buf_);
+            const auto &[buf_main, buf_cold] = ctx_.storages().buffers[pmj_samples_buf_];
             Buffer_AddView(ctx_.api(), buf_main, buf_cold, Ren::eFormat::R32UI);
         }
 
@@ -444,7 +443,7 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
 
         Ren::CommandBuffer cmd_buf = ctx_.BegTempSingleTimeCommands();
 
-        const auto &[buf_main, buf_cold] = ctx_.buffers().Get(pmj_samples_buf_);
+        const auto &[buf_main, buf_cold] = ctx_.storages().buffers[pmj_samples_buf_];
         CopyBufferToBuffer(ctx_.api(), stage_buf_main, 0, buf_main, 0,
                            __pmj02_sample_count * __pmj02_dims_count * sizeof(uint32_t), cmd_buf);
 
@@ -576,10 +575,23 @@ Eng::Renderer::~Renderer() {
     ctx_.ReleaseBuffer(bn_pmj_2D_64spp_seq_buf_);
     ctx_.ReleaseBuffer(pmj_samples_buf_);
 
-    const Ren::ImageHandle images_to_release[] = {
-        shadow_depth_, shadow_color_,    noise_tex_,      dummy_black_,  dummy_white_,           brdf_lut_,
-        ltc_luts_,     stbn_1D_64spp_,   cone_rt_lut_,    tonemap_lut_,  sky_transmittance_lut_, sky_multiscatter_lut_,
-        sky_moon_tex_, sky_weather_tex_, sky_cirrus_tex_, sky_curl_tex_, sky_noise3d_tex_};
+    const Ren::ImageHandle images_to_release[] = {shadow_depth_,
+                                                  shadow_color_,
+                                                  noise_,
+                                                  dummy_black_,
+                                                  dummy_white_,
+                                                  brdf_lut_,
+                                                  ltc_luts_,
+                                                  stbn_1D_64spp_,
+                                                  cone_rt_lut_,
+                                                  tonemap_lut_,
+                                                  sky_transmittance_lut_,
+                                                  sky_multiscatter_lut_,
+                                                  sky_moon_,
+                                                  sky_weather_,
+                                                  sky_cirrus_,
+                                                  sky_curl_,
+                                                  sky_noise3d_};
     for (const Ren::ImageHandle img : images_to_release) {
         ctx_.ReleaseImage(img);
     }
@@ -714,7 +726,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         view_state_.ren_res[0] = int(float(view_state_.out_res[0]) / list.render_settings.resolution_scale);
         view_state_.ren_res[1] = int(float(view_state_.out_res[1]) / list.render_settings.resolution_scale);
     } else {
-        const auto &[trg_main, trg_cold] = ctx_.images().Get(target);
+        const auto &[trg_main, trg_cold] = ctx_.storages().images[target];
         view_state_.ren_res[0] = int(float(trg_cold.params.w) / list.render_settings.resolution_scale);
         view_state_.ren_res[1] = int(float(trg_cold.params.h) / list.render_settings.resolution_scale);
     }
@@ -726,12 +738,12 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
     view_state_.frame_index = list.frame_index;
     view_state_.volume_to_update = list.volume_to_update;
     view_state_.stochastic_lights_count = view_state_.stochastic_lights_count_cache = 0;
-    if (persistent_data.stoch_lights_buf) {
-        const auto &[lights_buf_main, lights_buf_cold] = ctx_.buffers().Get(persistent_data.stoch_lights_buf);
+    if (persistent_data.stoch_lights) {
+        const auto &[lights_buf_main, lights_buf_cold] = ctx_.storages().buffers[persistent_data.stoch_lights];
         view_state_.stochastic_lights_count_cache = lights_buf_cold.size / sizeof(light_item_t);
     }
-    if (persistent_data.stoch_lights_buf && list.render_settings.gi_quality > eGIQuality::Medium) {
-        const auto &[lights_buf_main, lights_buf_cold] = ctx_.buffers().Get(persistent_data.stoch_lights_buf);
+    if (persistent_data.stoch_lights && list.render_settings.gi_quality > eGIQuality::Medium) {
+        const auto &[lights_buf_main, lights_buf_cold] = ctx_.storages().buffers[persistent_data.stoch_lights];
         view_state_.stochastic_lights_count = lights_buf_cold.size / sizeof(light_item_t);
     }
 
@@ -828,16 +840,15 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             common_buffers.skin_vertex_buf = fg_builder_.ImportResource(persistent_data.skin_vertex_buf->handle());
             common_buffers.delta_buf = fg_builder_.ImportResource(persistent_data.delta_buf->handle());
 
-            common_buffers.instance_buf = fg_builder_.ImportResource(persistent_data.instance_buf);
-            common_buffers.materials_buf = fg_builder_.ImportResource(persistent_data.materials_buf);
+            common_buffers.instances = fg_builder_.ImportResource(persistent_data.instances);
+            common_buffers.materials = fg_builder_.ImportResource(persistent_data.materials);
 
-            common_buffers.pmj_samples_buf = fg_builder_.ImportResource(pmj_samples_buf_);
-            common_buffers.bn_pmj_2D_64spp_seq_buf = fg_builder_.ImportResource(bn_pmj_2D_64spp_seq_buf_);
+            common_buffers.pmj_samples = fg_builder_.ImportResource(pmj_samples_buf_);
+            common_buffers.bn_pmj_2D_64spp_seq = fg_builder_.ImportResource(bn_pmj_2D_64spp_seq_buf_);
 
-            if (persistent_data.stoch_lights_buf) {
-                common_buffers.stoch_lights_buf = fg_builder_.ImportResource(persistent_data.stoch_lights_buf);
-                common_buffers.stoch_lights_nodes_buf =
-                    fg_builder_.ImportResource(persistent_data.stoch_lights_nodes_buf);
+            if (persistent_data.stoch_lights) {
+                common_buffers.stoch_lights = fg_builder_.ImportResource(persistent_data.stoch_lights);
+                common_buffers.stoch_lights_nodes = fg_builder_.ImportResource(persistent_data.stoch_lights_nodes);
             }
         }
 
@@ -852,7 +863,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             frame_textures.shadow_depth = fg_builder_.ImportResource(shadow_depth_);
             frame_textures.shadow_color = fg_builder_.ImportResource(shadow_color_);
 
-            frame_textures.noise_tex = fg_builder_.ImportResource(noise_tex_);
+            frame_textures.noise = fg_builder_.ImportResource(noise_);
             frame_textures.dummy_white = fg_builder_.ImportResource(dummy_white_);
             frame_textures.dummy_black = fg_builder_.ImportResource(dummy_black_);
             frame_textures.ltc_luts = fg_builder_.ImportResource(ltc_luts_);
@@ -866,11 +877,11 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             if (sky_transmittance_lut_) {
                 frame_textures.sky_transmittance_lut = fg_builder_.ImportResource(sky_transmittance_lut_);
                 frame_textures.sky_multiscatter_lut = fg_builder_.ImportResource(sky_multiscatter_lut_);
-                frame_textures.sky_moon_tex = fg_builder_.ImportResource(sky_moon_tex_);
-                frame_textures.sky_weather_tex = fg_builder_.ImportResource(sky_weather_tex_);
-                frame_textures.sky_cirrus_tex = fg_builder_.ImportResource(sky_cirrus_tex_);
-                frame_textures.sky_curl_tex = fg_builder_.ImportResource(sky_curl_tex_);
-                frame_textures.sky_noise3d_tex = fg_builder_.ImportResource(sky_noise3d_tex_);
+                frame_textures.sky_moon = fg_builder_.ImportResource(sky_moon_);
+                frame_textures.sky_weather = fg_builder_.ImportResource(sky_weather_);
+                frame_textures.sky_cirrus = fg_builder_.ImportResource(sky_cirrus_);
+                frame_textures.sky_curl = fg_builder_.ImportResource(sky_curl_);
+                frame_textures.sky_noise3d = fg_builder_.ImportResource(sky_noise3d_);
             }
         }
 
@@ -914,7 +925,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             acc_structs.swrt.rt_blas_buf = fg_builder_.ImportResource(persistent_data.swrt.rt_blas_buf->handle());
         }
         if (persistent_data.swrt.rt_prim_indices_buf) {
-            acc_structs.swrt.rt_prim_indices_buf =
+            acc_structs.swrt.rt_prim_indices =
                 fg_builder_.ImportResource(persistent_data.swrt.rt_prim_indices_buf->handle());
         }
         acc_structs.swrt.rt_root_node = persistent_data.swrt.rt_root_node;
@@ -1184,22 +1195,20 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             const FgBufROHandle shared_data_res = shadow_depth.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
-            const FgBufROHandle instances_res =
-                shadow_depth.AddStorageReadonlyInput(common_buffers.instance_buf, Ren::eStage::VertexShader);
-            const FgBufROHandle instance_indices_res =
+            const FgBufROHandle instances =
+                shadow_depth.AddStorageReadonlyInput(common_buffers.instances, Ren::eStage::VertexShader);
+            const FgBufROHandle instance_indices =
                 shadow_depth.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
-            const FgBufROHandle materials_buf =
-                shadow_depth.AddStorageReadonlyInput(common_buffers.materials_buf, Ren::eStage::VertexShader);
-            const FgImgROHandle noise_tex_res =
-                shadow_depth.AddTextureInput(frame_textures.noise_tex, Ren::eStage::VertexShader);
+            const FgBufROHandle materials =
+                shadow_depth.AddStorageReadonlyInput(common_buffers.materials, Ren::eStage::VertexShader);
+            const FgImgROHandle noise = shadow_depth.AddTextureInput(frame_textures.noise, Ren::eStage::VertexShader);
 
             frame_textures.shadow_depth = shadow_depth.AddDepthOutput(frame_textures.shadow_depth);
 
-            shadow_depth.make_executor<ExShadowDepth>(SHADOWMAP_WIDTH, SHADOWMAP_HEIGHT, &p_list_, vtx_buf1_res,
-                                                      vtx_buf2_res, ndx_buf_res, materials_buf, &bindless_tex,
-                                                      instances_res, instance_indices_res, shared_data_res,
-                                                      noise_tex_res, frame_textures.shadow_depth);
+            shadow_depth.make_executor<ExShadowDepth>(
+                SHADOWMAP_WIDTH, SHADOWMAP_HEIGHT, &p_list_, vtx_buf1_res, vtx_buf2_res, ndx_buf_res, materials,
+                &bindless_tex, instances, instance_indices, shared_data_res, noise, frame_textures.shadow_depth);
         }
         { // Shadow color
             auto &shadow_color = fg_builder_.AddNode("SHADOW COLOR");
@@ -1210,22 +1219,21 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             const FgBufROHandle shared_data_res = shadow_color.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
             const FgBufROHandle instances_res =
-                shadow_color.AddStorageReadonlyInput(common_buffers.instance_buf, Ren::eStage::VertexShader);
+                shadow_color.AddStorageReadonlyInput(common_buffers.instances, Ren::eStage::VertexShader);
             const FgBufROHandle instance_indices_res =
                 shadow_color.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
             const FgBufROHandle materials_buf =
-                shadow_color.AddStorageReadonlyInput(common_buffers.materials_buf, Ren::eStage::VertexShader);
-            const FgImgROHandle noise_tex_res =
-                shadow_color.AddTextureInput(frame_textures.noise_tex, Ren::eStage::VertexShader);
+                shadow_color.AddStorageReadonlyInput(common_buffers.materials, Ren::eStage::VertexShader);
+            const FgImgROHandle noise = shadow_color.AddTextureInput(frame_textures.noise, Ren::eStage::VertexShader);
 
             frame_textures.shadow_depth = shadow_color.AddDepthOutput(frame_textures.shadow_depth);
             frame_textures.shadow_color = shadow_color.AddColorOutput(frame_textures.shadow_color);
 
-            shadow_color.make_executor<ExShadowColor>(
-                SHADOWMAP_WIDTH, SHADOWMAP_HEIGHT, &p_list_, vtx_buf1_res, vtx_buf2_res, ndx_buf_res, materials_buf,
-                &bindless_tex, instances_res, instance_indices_res, shared_data_res, noise_tex_res,
-                frame_textures.shadow_depth, frame_textures.shadow_color);
+            shadow_color.make_executor<ExShadowColor>(SHADOWMAP_WIDTH, SHADOWMAP_HEIGHT, &p_list_, vtx_buf1_res,
+                                                      vtx_buf2_res, ndx_buf_res, materials_buf, &bindless_tex,
+                                                      instances_res, instance_indices_res, shared_data_res, noise,
+                                                      frame_textures.shadow_depth, frame_textures.shadow_color);
         }
 
         frame_textures.depth_desc.w = view_state_.ren_res[0];
@@ -1287,15 +1295,14 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             const FgBufROHandle shared_data_res = depth_fill.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
-            const FgBufROHandle instances_res =
-                depth_fill.AddStorageReadonlyInput(common_buffers.instance_buf, Ren::eStage::VertexShader);
-            const FgBufROHandle instance_indices_res =
+            const FgBufROHandle instances =
+                depth_fill.AddStorageReadonlyInput(common_buffers.instances, Ren::eStage::VertexShader);
+            const FgBufROHandle instance_indices =
                 depth_fill.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
-            const FgBufROHandle materials_buf =
-                depth_fill.AddStorageReadonlyInput(common_buffers.materials_buf, Ren::eStage::VertexShader);
-            const FgImgROHandle noise_tex_res =
-                depth_fill.AddTextureInput(frame_textures.noise_tex, Ren::eStage::VertexShader);
+            const FgBufROHandle materials =
+                depth_fill.AddStorageReadonlyInput(common_buffers.materials, Ren::eStage::VertexShader);
+            const FgImgROHandle noise = depth_fill.AddTextureInput(frame_textures.noise, Ren::eStage::VertexShader);
 
             frame_textures.depth = depth_fill.AddDepthOutput(MAIN_DEPTH_TEX, frame_textures.depth_desc);
 
@@ -1310,16 +1317,16 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             }
 
             depth_fill.make_executor<ExDepthFill>(&p_list_, &view_state_, deferred_shading /* clear_depth */, vtx_buf1,
-                                                  vtx_buf2, ndx_buf, materials_buf, &bindless_tex, instances_res,
-                                                  instance_indices_res, shared_data_res, noise_tex_res,
-                                                  frame_textures.depth, frame_textures.velocity);
+                                                  vtx_buf2, ndx_buf, materials, &bindless_tex, instances,
+                                                  instance_indices, shared_data_res, noise, frame_textures.depth,
+                                                  frame_textures.velocity);
         }
 
         //
         // Downsample depth
         //
         FgImgRWHandle depth_down_2x;
-        FgImgRWHandle depth_hierarchy_tex;
+        FgImgRWHandle depth_hierarchy;
 
         if ((list.render_settings.ssao_quality != eSSAOQuality::Off ||
              list.render_settings.reflections_quality != eReflectionsQuality::Off) &&
@@ -1327,11 +1334,10 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             // TODO: get rid of this (or use on low spec only)
             depth_down_2x = AddDownsampleDepthPass(common_buffers, frame_textures.depth);
 
-            auto &depth_hierarchy = fg_builder_.AddNode("DEPTH HIERARCHY");
-            const FgImgROHandle depth_tex =
-                depth_hierarchy.AddTextureInput(frame_textures.depth, Ren::eStage::ComputeShader);
-            const FgBufRWHandle atomic_buf =
-                depth_hierarchy.AddStorageOutput(common_buffers.atomic_cnt, Ren::eStage::ComputeShader);
+            auto &depth_h = fg_builder_.AddNode("DEPTH HIERARCHY");
+            const FgImgROHandle depth = depth_h.AddTextureInput(frame_textures.depth, Ren::eStage::ComputeShader);
+            const FgBufRWHandle atomic_cnt =
+                depth_h.AddStorageOutput(common_buffers.atomic_cnt, Ren::eStage::ComputeShader);
 
             { // 32-bit float depth hierarchy
                 FgImgDesc desc;
@@ -1349,12 +1355,10 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                     desc.views.push_back({desc.format, i, 1, 0, 1});
                 }
 
-                depth_hierarchy_tex =
-                    depth_hierarchy.AddStorageImageOutput("Depth Hierarchy", desc, Ren::eStage::ComputeShader);
+                depth_hierarchy = depth_h.AddStorageImageOutput("Depth Hierarchy", desc, Ren::eStage::ComputeShader);
             }
 
-            depth_hierarchy.make_executor<ExDepthHierarchy>(sh_, &view_state_, depth_tex, atomic_buf,
-                                                            depth_hierarchy_tex);
+            depth_h.make_executor<ExDepthHierarchy>(sh_, &view_state_, depth, atomic_cnt, depth_hierarchy);
         }
 
         if (!list.render_settings.debug_wireframe /*&& list.render_settings.taa_mode != eTAAMode::Static*/) {
@@ -1391,7 +1395,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             // GI
             AddDiffusePasses(list.render_settings.debug_denoise == eDebugDenoise::GI, common_buffers, acc_structs,
-                             bindless_tex, depth_hierarchy_tex, rt_geo_instances_res[int(eTLASIndex::Main)],
+                             bindless_tex, depth_hierarchy, rt_geo_instances_res[int(eTLASIndex::Main)],
                              rt_obj_instances_res[int(eTLASIndex::Main)], frame_textures);
 
             // GBuffer shading pass
@@ -1421,7 +1425,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             !list.render_settings.debug_wireframe) {
             if (cur_hq_ssr_enabled) {
                 AddHQSpecularPasses(deferred_shading, list.render_settings.debug_denoise == eDebugDenoise::Reflection,
-                                    common_buffers, acc_structs, bindless_tex, depth_hierarchy_tex,
+                                    common_buffers, acc_structs, bindless_tex, depth_hierarchy,
                                     rt_geo_instances_res[int(eTLASIndex::Main)],
                                     rt_obj_instances_res[int(eTLASIndex::Main)], frame_textures);
             } else {
@@ -1433,7 +1437,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         // Transparency
         //
         if (deferred_shading) {
-            AddOITPasses(common_buffers, acc_structs, bindless_tex, depth_hierarchy_tex,
+            AddOITPasses(common_buffers, acc_structs, bindless_tex, depth_hierarchy,
                          rt_geo_instances_res[int(eTLASIndex::Main)], rt_obj_instances_res[int(eTLASIndex::Main)],
                          frame_textures);
         } else {
@@ -1457,17 +1461,17 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             auto *data = fg_builder_.AllocTempData<ExDebugProbes::Args>();
             data->shared_data =
                 debug_probes.AddUniformBufferInput(common_buffers.shared_data, Ren::eStage::VertexShader);
-            data->offset_tex = debug_probes.AddTextureInput(frame_textures.gi_cache_offset, Ren::eStage::VertexShader);
-            data->irradiance_tex =
+            data->offset = debug_probes.AddTextureInput(frame_textures.gi_cache_offset, Ren::eStage::VertexShader);
+            data->irradiance =
                 debug_probes.AddTextureInput(frame_textures.gi_cache_irradiance, Ren::eStage::FragmentShader);
-            data->distance_tex =
+            data->distance =
                 debug_probes.AddTextureInput(frame_textures.gi_cache_distance, Ren::eStage::FragmentShader);
 
             data->volume_to_debug = list.render_settings.debug_probes;
             data->probe_volumes = persistent_data.probe_volumes;
 
-            frame_textures.depth = data->depth_tex = debug_probes.AddDepthOutput(frame_textures.depth);
-            frame_textures.color = data->output_tex = debug_probes.AddColorOutput(frame_textures.color);
+            frame_textures.depth = data->depth = debug_probes.AddDepthOutput(frame_textures.depth);
+            frame_textures.color = data->output = debug_probes.AddColorOutput(frame_textures.color);
 
             debug_probes.make_executor<ExDebugProbes>(prim_draw_, sh_, &view_state_, data);
         }
@@ -1477,9 +1481,8 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             auto *data = fg_builder_.AllocTempData<ExDebugOIT::Args>();
             data->layer_index = list.render_settings.debug_oit_layer;
-            data->oit_depth_buf =
-                debug_oit.AddStorageReadonlyInput(frame_textures.oit_depth_buf, Ren::eStage::ComputeShader);
-            frame_textures.color = data->output_tex =
+            data->oit_depth = debug_oit.AddStorageReadonlyInput(frame_textures.oit_depth, Ren::eStage::ComputeShader);
+            frame_textures.color = data->output =
                 debug_oit.AddStorageImageOutput(frame_textures.color, Ren::eStage::ComputeShader);
 
             debug_oit.make_executor<ExDebugOIT>(sh_, &view_state_, data);
@@ -1493,18 +1496,18 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             auto *data = fg_builder_.AllocTempData<ExDebugRT::Args>();
             data->shared_data = debug_rt.AddUniformBufferInput(common_buffers.shared_data, stage);
-            data->geo_data_buf =
+            data->geo_data =
                 debug_rt.AddStorageReadonlyInput(rt_geo_instances_res[int(list.render_settings.debug_rt) - 1], stage);
-            data->materials_buf = debug_rt.AddStorageReadonlyInput(common_buffers.materials_buf, stage);
+            data->materials = debug_rt.AddStorageReadonlyInput(common_buffers.materials, stage);
             data->vtx_buf1 = debug_rt.AddStorageReadonlyInput(common_buffers.vertex_buf1, stage);
             data->vtx_buf2 = debug_rt.AddStorageReadonlyInput(common_buffers.vertex_buf2, stage);
             data->ndx_buf = debug_rt.AddStorageReadonlyInput(common_buffers.indices_buf, stage);
-            data->lights_buf = debug_rt.AddStorageReadonlyInput(common_buffers.lights, stage);
+            data->lights = debug_rt.AddStorageReadonlyInput(common_buffers.lights, stage);
             data->shadow_depth = debug_rt.AddTextureInput(frame_textures.shadow_depth, stage);
             data->shadow_color = debug_rt.AddTextureInput(frame_textures.shadow_color, stage);
             data->ltc_luts = debug_rt.AddTextureInput(frame_textures.ltc_luts, stage);
-            data->cells_buf = debug_rt.AddStorageReadonlyInput(common_buffers.rt_cells, stage);
-            data->items_buf = debug_rt.AddStorageReadonlyInput(common_buffers.rt_items, stage);
+            data->cells = debug_rt.AddStorageReadonlyInput(common_buffers.rt_cells, stage);
+            data->items = debug_rt.AddStorageReadonlyInput(common_buffers.rt_items, stage);
 
             data->tlas_buf = debug_rt.AddStorageReadonlyInput(
                 acc_structs.rt_tlas_buf[int(list.render_settings.debug_rt) - 1], stage);
@@ -1512,19 +1515,19 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             if (!ctx_.capabilities.hwrt) {
                 data->swrt.root_node = acc_structs.swrt.rt_root_node;
-                data->swrt.rt_blas_buf = debug_rt.AddStorageReadonlyInput(acc_structs.swrt.rt_blas_buf, stage);
-                data->swrt.prim_ndx_buf = debug_rt.AddStorageReadonlyInput(acc_structs.swrt.rt_prim_indices_buf, stage);
-                data->swrt.mesh_instances_buf = debug_rt.AddStorageReadonlyInput(
+                data->swrt.rt_blas = debug_rt.AddStorageReadonlyInput(acc_structs.swrt.rt_blas_buf, stage);
+                data->swrt.prim_ndx = debug_rt.AddStorageReadonlyInput(acc_structs.swrt.rt_prim_indices, stage);
+                data->swrt.mesh_instances = debug_rt.AddStorageReadonlyInput(
                     rt_obj_instances_res[int(list.render_settings.debug_rt) - 1], stage);
             }
 
-            data->env_tex = debug_rt.AddTextureInput(frame_textures.envmap, stage);
+            data->env = debug_rt.AddTextureInput(frame_textures.envmap, stage);
 
-            data->irradiance_tex = debug_rt.AddTextureInput(frame_textures.gi_cache_irradiance, stage);
-            data->distance_tex = debug_rt.AddTextureInput(frame_textures.gi_cache_distance, stage);
-            data->offset_tex = debug_rt.AddTextureInput(frame_textures.gi_cache_offset, stage);
+            data->irradiance = debug_rt.AddTextureInput(frame_textures.gi_cache_irradiance, stage);
+            data->distance = debug_rt.AddTextureInput(frame_textures.gi_cache_distance, stage);
+            data->offset = debug_rt.AddTextureInput(frame_textures.gi_cache_offset, stage);
 
-            frame_textures.color = data->output_tex = debug_rt.AddStorageImageOutput(frame_textures.color, stage);
+            frame_textures.color = data->output = debug_rt.AddStorageImageOutput(frame_textures.color, stage);
 
             debug_rt.make_executor<ExDebugRT>(sh_, &view_state_, &bindless_tex, data);
         }
@@ -1589,9 +1592,9 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         //
         // Bloom
         //
-        FgImgRWHandle bloom_tex;
+        FgImgRWHandle bloom;
         if (list.render_settings.enable_bloom && !list.render_settings.debug_wireframe) {
-            bloom_tex = AddBloomPasses(resolved_color, frame_textures.exposure, true);
+            bloom = AddBloomPasses(resolved_color, frame_textures.exposure, true);
         }
 
         //
@@ -1599,35 +1602,35 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         //
         if (list.render_settings.debug_motion) {
             resolved_color = AddDebugVelocityPass(frame_textures.velocity);
-            bloom_tex = {};
+            bloom = {};
         }
         if (list.render_settings.debug_disocclusion) {
             resolved_color = frame_textures.disocclusion_mask;
-            bloom_tex = {};
+            bloom = {};
         }
         if (list.render_settings.debug_ssao) {
             resolved_color = frame_textures.ssao;
-            bloom_tex = {};
+            bloom = {};
         }
         if (list.render_settings.debug_depth) {
             resolved_color = AddDebugGBufferPass(frame_textures, 0);
-            bloom_tex = {};
+            bloom = {};
         }
         if (list.render_settings.debug_albedo) {
             resolved_color = frame_textures.albedo;
-            bloom_tex = {};
+            bloom = {};
         }
         if (list.render_settings.debug_normals) {
             resolved_color = AddDebugGBufferPass(frame_textures, 1);
-            bloom_tex = {};
+            bloom = {};
         }
         if (list.render_settings.debug_roughness) {
             resolved_color = AddDebugGBufferPass(frame_textures, 2);
-            bloom_tex = {};
+            bloom = {};
         }
         if (list.render_settings.debug_metallic) {
             resolved_color = AddDebugGBufferPass(frame_textures, 3);
-            bloom_tex = {};
+            bloom = {};
         }
 
         bool apply_dof = false;
@@ -1636,22 +1639,22 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         // Combine with blurred and tonemap
         //
         {
-            FgImgRWHandle color_tex;
+            FgImgRWHandle color;
             const char *output_tex = nullptr;
 
             if ((list.render_settings.taa_mode != eTAAMode::Off && !list.render_settings.debug_wireframe) ||
                 apply_dof) {
                 if (apply_dof) {
                     if (list.render_settings.taa_mode != eTAAMode::Off) {
-                        color_tex = frame_textures.color;
+                        color = frame_textures.color;
                     } else {
                         // color_tex = DOF_COLOR_TEX;
                     }
                 } else {
-                    color_tex = resolved_color;
+                    color = resolved_color;
                 }
             } else {
-                color_tex = frame_textures.color;
+                color = frame_textures.color;
             }
 
             if (/*(list.render_flags & EnableFxaa) && !list.render_settings.debug_wireframe*/ false) {
@@ -1669,17 +1672,17 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             auto &postprocess = fg_builder_.AddNode("POSTPROCESS");
 
             ex_postprocess_args_ = {};
-            ex_postprocess_args_.exposure_tex =
+            ex_postprocess_args_.exposure =
                 postprocess.AddTextureInput(frame_textures.exposure, Ren::eStage::FragmentShader);
-            ex_postprocess_args_.color_tex = postprocess.AddTextureInput(color_tex, Ren::eStage::FragmentShader);
-            if (list.render_settings.enable_bloom && bloom_tex) {
-                ex_postprocess_args_.bloom_tex = postprocess.AddTextureInput(bloom_tex, Ren::eStage::FragmentShader);
+            ex_postprocess_args_.color = postprocess.AddTextureInput(color, Ren::eStage::FragmentShader);
+            if (list.render_settings.enable_bloom && bloom) {
+                ex_postprocess_args_.bloom = postprocess.AddTextureInput(bloom, Ren::eStage::FragmentShader);
             } else {
-                ex_postprocess_args_.bloom_tex =
+                ex_postprocess_args_.bloom =
                     postprocess.AddTextureInput(frame_textures.dummy_black, Ren::eStage::FragmentShader);
             }
             if (tonemap_lut_) {
-                ex_postprocess_args_.lut_tex =
+                ex_postprocess_args_.lut =
                     postprocess.AddTextureInput(frame_textures.tonemap_lut, Ren::eStage::FragmentShader);
             }
             if (output_tex) {
@@ -1690,17 +1693,17 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 desc.sampling.filter = Ren::eFilter::Bilinear;
                 desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
-                ex_postprocess_args_.output_tex = postprocess.AddColorOutput(output_tex, desc);
+                ex_postprocess_args_.output = postprocess.AddColorOutput(output_tex, desc);
             } else if (target) {
                 const FgImgRWHandle target_ref = fg_builder_.ImportResource(target);
-                ex_postprocess_args_.output_tex = postprocess.AddColorOutput(target_ref);
+                ex_postprocess_args_.output = postprocess.AddColorOutput(target_ref);
                 if (blit_to_backbuffer) {
                     const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-                    ex_postprocess_args_.output_tex2 = postprocess.AddColorOutput(backbuffer_ref);
+                    ex_postprocess_args_.output2 = postprocess.AddColorOutput(backbuffer_ref);
                 }
             } else {
                 const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-                ex_postprocess_args_.output_tex = postprocess.AddColorOutput(backbuffer_ref);
+                ex_postprocess_args_.output = postprocess.AddColorOutput(backbuffer_ref);
             }
             ex_postprocess_args_.linear_sampler = linear_sampler_;
             ex_postprocess_args_.tonemap_mode = int(list.render_settings.tonemap_mode);
@@ -1709,7 +1712,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             ex_postprocess_args_.aberration = list.render_settings.enable_aberration ? 1.0f : 0.0f;
             ex_postprocess_args_.purkinje = list.render_settings.enable_purkinje ? 1.0f : 0.0f;
 
-            backbuffer_sources_.push_back(ex_postprocess_args_.output_tex);
+            backbuffer_sources_.push_back(ex_postprocess_args_.output);
 
             postprocess.make_executor<ExPostprocess>(prim_draw_, sh_, &view_state_, &ex_postprocess_args_);
         }
@@ -1718,14 +1721,14 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             auto &read_exposure = fg_builder_.AddNode("READ EXPOSURE");
 
             auto *data = fg_builder_.AllocTempData<ExReadExposure::Args>();
-            data->input_tex = read_exposure.AddTransferImageInput(frame_textures.exposure);
+            data->input = read_exposure.AddTransferImageInput(frame_textures.exposure);
 
             FgBufDesc desc;
             desc.type = Ren::eBufType::Readback;
             desc.size = Ren::MaxFramesInFlight * sizeof(float);
-            data->output_buf = read_exposure.AddTransferOutput("Exposure Readback", desc);
+            data->output = read_exposure.AddTransferOutput("Exposure Readback", desc);
 
-            backbuffer_sources_.push_back(data->output_buf);
+            backbuffer_sources_.push_back(data->output);
 
             ex_read_exposure_.Setup(data);
             read_exposure.set_executor(&ex_read_exposure_);
@@ -1747,16 +1750,16 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         auto &postprocess = *fg_builder_.FindNode("POSTPROCESS");
         if (target) {
             const FgImgRWHandle target_ref = fg_builder_.ImportResource(target);
-            ex_postprocess_args_.output_tex = postprocess.ReplaceColorOutput(0, target_ref);
-            ex_postprocess_args_.output_tex2 = {};
+            ex_postprocess_args_.output = postprocess.ReplaceColorOutput(0, target_ref);
+            ex_postprocess_args_.output2 = {};
             if (blit_to_backbuffer) {
                 const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-                ex_postprocess_args_.output_tex2 = postprocess.ReplaceColorOutput(1, backbuffer_ref);
+                ex_postprocess_args_.output2 = postprocess.ReplaceColorOutput(1, backbuffer_ref);
             }
         } else {
             const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-            ex_postprocess_args_.output_tex = postprocess.ReplaceColorOutput(0, backbuffer_ref);
-            ex_postprocess_args_.output_tex2 = {};
+            ex_postprocess_args_.output = postprocess.ReplaceColorOutput(0, backbuffer_ref);
+            ex_postprocess_args_.output2 = {};
         }
 
         ex_postprocess_args_.fade = list.draw_cam.fade;
@@ -1840,7 +1843,7 @@ void Eng::Renderer::SetTonemapLUT(const int res, const Ren::eFormat format, Ren:
         TransitionResourceStates(ctx_.api(), ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages,
                                  res_transitions1);
 
-        const auto &[img_main, img_cold] = ctx_.images().Get(tonemap_lut_);
+        const auto &[img_main, img_cold] = ctx_.storages().images[tonemap_lut_];
 
         Image_SetSubImage(ctx_.api(), img_main, img_cold, 0, 0, Ren::Vec3i{0}, Ren::Vec3i{res}, Ren::eFormat::RGB10_A2,
                           temp_upload_buf_main, cmd_buf, 0, data_len);
@@ -1927,7 +1930,7 @@ void Eng::Renderer::InitBackendInfo() {
             info.name = std::string("[Buf] ") + fgbuf_cold.name.c_str();
             fg_builder_.GetResourceFrameLifetime(fgbuf_cold, info.lifetime);
 
-            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+            const auto &[buf_main, buf_cold] = ctx_.storages().buffers[fgbuf_main.handle];
 
             const Ren::MemAllocation &alloc = buf_cold.alloc;
             if (alloc.pool != 0xffff && alloc.owner == nullptr) {
@@ -1955,7 +1958,7 @@ void Eng::Renderer::InitBackendInfo() {
             info.name = std::string("[Buf] ") + fgbuf_cold.name.c_str();
             fg_builder_.GetResourceFrameLifetime(fgbuf_cold, info.lifetime);
 
-            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+            const auto &[buf_main, buf_cold] = ctx_.storages().buffers[fgbuf_main.handle];
 
             const Ren::MemAllocation &alloc = buf_cold.alloc;
             if (alloc.pool != 0xffff && alloc.owner == nullptr) {
@@ -1985,7 +1988,7 @@ void Eng::Renderer::InitBackendInfo() {
             info.name = std::string("[Img] ") + fgimg_cold.name.c_str();
             fg_builder_.GetResourceFrameLifetime(fgimg_cold, info.lifetime);
 
-            const auto &[img_main, img_cold] = ctx_.images().Get(fgimg_main.handle_to_own);
+            const auto &[img_main, img_cold] = ctx_.storages().images[fgimg_main.handle_to_own];
 
             const Ren::MemAllocation &alloc = img_cold.alloc;
             if (alloc.pool != 0xffff && alloc.owner == nullptr) {
@@ -2012,7 +2015,7 @@ void Eng::Renderer::InitBackendInfo() {
             info.name = std::string("[Img] ") + fgimg_cold.name.c_str();
             fg_builder_.GetResourceFrameLifetime(fgimg_cold, info.lifetime);
 
-            const auto &[img_main, img_cold] = ctx_.images().Get(fgimg_main.handle_to_own);
+            const auto &[img_main, img_cold] = ctx_.storages().images[fgimg_main.handle_to_own];
 
             const Ren::MemAllocation &alloc = img_cold.alloc;
             if (alloc.pool != 0xffff && alloc.owner == nullptr) {
@@ -2114,7 +2117,7 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
     const Ren::BufferHandle temp_upload_buf =
         ctx_.CreateBuffer(Ren::String{"Image upload buf"}, Ren::eBufType::Upload, 4 * w * h * sizeof(float));
 
-    const auto &[temp_upload_buf_main, temp_upload_buf_cold] = ctx_.buffers().Get(temp_upload_buf);
+    const auto &[temp_upload_buf_main, temp_upload_buf_cold] = ctx_.storages().buffers[temp_upload_buf];
     uint8_t *stage_data = Buffer_Map(ctx_.api(), temp_upload_buf_main, temp_upload_buf_cold);
     for (int y = 0; y < h; ++y) {
 #if defined(REN_GL_BACKEND)
@@ -2136,7 +2139,7 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
 
         const FgBufROHandle temp_upload_res = fg_builder_.ImportResource(temp_upload_buf);
 
-        FgImgRWHandle output_tex_res;
+        FgImgRWHandle output;
         { // Upload image data
             auto &update_image = fg_builder_.AddNode("UPDATE IMAGE");
 
@@ -2149,32 +2152,32 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
                 desc.format = format;
                 desc.sampling.filter = Ren::eFilter::Bilinear;
                 desc.sampling.wrap = Ren::eWrap::ClampToEdge;
-                output_tex_res = update_image.AddTransferImageOutput("Temp Image", desc);
+                output = update_image.AddTransferImageOutput("Temp Image", desc);
             }
 
-            update_image.set_execute_cb([stage_buf_res, output_tex_res](const FgContext &fg) {
+            update_image.set_execute_cb([stage_buf_res, output](const FgContext &fg) {
                 const Ren::BufferROHandle stage_buf = fg.AccessROBuffer(stage_buf_res);
-                const Ren::ImageRWHandle output_image = fg.AccessRWImage(output_tex_res);
+                const Ren::ImageRWHandle output_image = fg.AccessRWImage(output);
 
-                const auto &[img_main, img_cold] = fg.storages().images.Get(output_image);
+                const auto &[img_main, img_cold] = fg.storages().images[output_image];
                 const int w = img_cold.params.w;
                 const int h = img_cold.params.h;
 
-                const auto &[stage_buf_main, stage_buf_cold] = fg.storages().buffers.Get(stage_buf);
+                const auto &[stage_buf_main, stage_buf_cold] = fg.storages().buffers[stage_buf];
                 Image_SetSubImage(fg.ren_ctx().api(), img_main, img_cold, 0, 0, Ren::Vec3i{0}, Ren::Vec3i{w, h, 1},
                                   Ren::eFormat::RGBA32F, stage_buf_main, fg.cmd_buf(), 0, stage_buf_cold.size);
             });
         }
 
-        FgImgROHandle exposure_tex = AddAutoexposurePasses(output_tex_res, Ren::Vec2f{1.0f, 1.0f});
+        FgImgROHandle exposure = AddAutoexposurePasses(output, Ren::Vec2f{1.0f, 1.0f});
 
         if (settings.enable_sharpen) {
-            output_tex_res = AddSharpenPass(output_tex_res, exposure_tex, compressed);
+            output = AddSharpenPass(output, exposure, compressed);
         }
 
-        FgImgROHandle bloom_tex;
+        FgImgROHandle bloom;
         if (settings.enable_bloom) {
-            bloom_tex = AddBloomPasses(output_tex_res, exposure_tex, compressed);
+            bloom = AddBloomPasses(output, exposure, compressed);
         }
 
         const FgImgROHandle dummy_black = fg_builder_.ImportResource(dummy_black_);
@@ -2182,27 +2185,27 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
         auto &postprocess = fg_builder_.AddNode("POSTPROCESS");
 
         ex_postprocess_args_ = {};
-        ex_postprocess_args_.exposure_tex = postprocess.AddTextureInput(exposure_tex, Ren::eStage::FragmentShader);
-        ex_postprocess_args_.color_tex = postprocess.AddTextureInput(output_tex_res, Ren::eStage::FragmentShader);
-        if (bloom_tex) {
-            ex_postprocess_args_.bloom_tex = postprocess.AddTextureInput(bloom_tex, Ren::eStage::FragmentShader);
+        ex_postprocess_args_.exposure = postprocess.AddTextureInput(exposure, Ren::eStage::FragmentShader);
+        ex_postprocess_args_.color = postprocess.AddTextureInput(output, Ren::eStage::FragmentShader);
+        if (bloom) {
+            ex_postprocess_args_.bloom = postprocess.AddTextureInput(bloom, Ren::eStage::FragmentShader);
         } else {
-            ex_postprocess_args_.bloom_tex = postprocess.AddTextureInput(dummy_black, Ren::eStage::FragmentShader);
+            ex_postprocess_args_.bloom = postprocess.AddTextureInput(dummy_black, Ren::eStage::FragmentShader);
         }
         if (tonemap_lut_) {
             const FgImgROHandle tonemap_lut = fg_builder_.ImportResource(tonemap_lut_);
-            ex_postprocess_args_.lut_tex = postprocess.AddTextureInput(tonemap_lut, Ren::eStage::FragmentShader);
+            ex_postprocess_args_.lut = postprocess.AddTextureInput(tonemap_lut, Ren::eStage::FragmentShader);
         }
         if (target) {
             const FgImgRWHandle target_ref = fg_builder_.ImportResource(target);
-            ex_postprocess_args_.output_tex = postprocess.AddColorOutput(target_ref);
+            ex_postprocess_args_.output = postprocess.AddColorOutput(target_ref);
             if (blit_to_backbuffer) {
                 const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-                ex_postprocess_args_.output_tex2 = postprocess.AddColorOutput(backbuffer_ref);
+                ex_postprocess_args_.output2 = postprocess.AddColorOutput(backbuffer_ref);
             }
         } else {
             const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-            ex_postprocess_args_.output_tex = postprocess.AddColorOutput(backbuffer_ref);
+            ex_postprocess_args_.output = postprocess.AddColorOutput(backbuffer_ref);
         }
         ex_postprocess_args_.linear_sampler = linear_sampler_;
         ex_postprocess_args_.tonemap_mode = int(settings.tonemap_mode);
@@ -2210,7 +2213,7 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
         ex_postprocess_args_.fade = 0.0f;
         ex_postprocess_args_.aberration = settings.enable_aberration ? 1.0f : 0.0f;
 
-        backbuffer_sources_.push_back(ex_postprocess_args_.output_tex);
+        backbuffer_sources_.push_back(ex_postprocess_args_.output);
 
         postprocess.make_executor<ExPostprocess>(prim_draw_, sh_, &view_state_, &ex_postprocess_args_);
 
@@ -2218,14 +2221,14 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
             auto &read_exposure = fg_builder_.AddNode("READ EXPOSURE");
 
             auto *data = fg_builder_.AllocTempData<ExReadExposure::Args>();
-            data->input_tex = read_exposure.AddTransferImageInput(exposure_tex);
+            data->input = read_exposure.AddTransferImageInput(exposure);
 
             FgBufDesc desc;
             desc.type = Ren::eBufType::Readback;
             desc.size = Ren::MaxFramesInFlight * sizeof(float);
-            data->output_buf = read_exposure.AddTransferOutput("Exposure Readback", desc);
+            data->output = read_exposure.AddTransferOutput("Exposure Readback", desc);
 
-            backbuffer_sources_.push_back(data->output_buf);
+            backbuffer_sources_.push_back(data->output);
 
             ex_read_exposure_.Setup(data);
             read_exposure.set_executor(&ex_read_exposure_);
@@ -2245,14 +2248,14 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
         auto *postprocess = fg_builder_.FindNode("POSTPROCESS");
         if (target) {
             const FgImgRWHandle target_ref = fg_builder_.ImportResource(target);
-            ex_postprocess_args_.output_tex = postprocess->ReplaceColorOutput(0, target_ref);
+            ex_postprocess_args_.output = postprocess->ReplaceColorOutput(0, target_ref);
             if (blit_to_backbuffer) {
                 const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-                ex_postprocess_args_.output_tex2 = postprocess->ReplaceColorOutput(1, backbuffer_ref);
+                ex_postprocess_args_.output2 = postprocess->ReplaceColorOutput(1, backbuffer_ref);
             }
         } else {
             const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-            ex_postprocess_args_.output_tex = postprocess->ReplaceColorOutput(0, backbuffer_ref);
+            ex_postprocess_args_.output = postprocess->ReplaceColorOutput(0, backbuffer_ref);
         }
     }
 
@@ -2298,16 +2301,16 @@ void Eng::Renderer::BlitImageTonemap(const Ren::ImageHandle result, const int w,
         fg_builder_.Reset();
         backbuffer_sources_.clear();
 
-        FgImgRWHandle output_tex_res = fg_builder_.ImportResource(result);
-        FgImgROHandle exposure_tex = AddAutoexposurePasses(output_tex_res, Ren::Vec2f{1.0f, 1.0f});
+        FgImgRWHandle output = fg_builder_.ImportResource(result);
+        FgImgROHandle exposure = AddAutoexposurePasses(output, Ren::Vec2f{1.0f, 1.0f});
 
         if (settings.enable_sharpen) {
-            output_tex_res = AddSharpenPass(output_tex_res, exposure_tex, compressed);
+            output = AddSharpenPass(output, exposure, compressed);
         }
 
-        FgImgROHandle bloom_tex;
+        FgImgROHandle bloom;
         if (settings.enable_bloom) {
-            bloom_tex = AddBloomPasses(output_tex_res, exposure_tex, compressed);
+            bloom = AddBloomPasses(output, exposure, compressed);
         }
 
         const FgImgROHandle dummy_black = fg_builder_.ImportResource(dummy_black_);
@@ -2315,27 +2318,27 @@ void Eng::Renderer::BlitImageTonemap(const Ren::ImageHandle result, const int w,
         auto &postprocess = fg_builder_.AddNode("POSTPROCESS");
 
         ex_postprocess_args_ = {};
-        ex_postprocess_args_.exposure_tex = postprocess.AddTextureInput(exposure_tex, Ren::eStage::FragmentShader);
-        ex_postprocess_args_.color_tex = postprocess.AddTextureInput(output_tex_res, Ren::eStage::FragmentShader);
-        if (bloom_tex) {
-            ex_postprocess_args_.bloom_tex = postprocess.AddTextureInput(bloom_tex, Ren::eStage::FragmentShader);
+        ex_postprocess_args_.exposure = postprocess.AddTextureInput(exposure, Ren::eStage::FragmentShader);
+        ex_postprocess_args_.color = postprocess.AddTextureInput(output, Ren::eStage::FragmentShader);
+        if (bloom) {
+            ex_postprocess_args_.bloom = postprocess.AddTextureInput(bloom, Ren::eStage::FragmentShader);
         } else {
-            ex_postprocess_args_.bloom_tex = postprocess.AddTextureInput(dummy_black, Ren::eStage::FragmentShader);
+            ex_postprocess_args_.bloom = postprocess.AddTextureInput(dummy_black, Ren::eStage::FragmentShader);
         }
         if (tonemap_lut_) {
             const FgImgROHandle tonemap_lut = fg_builder_.ImportResource(tonemap_lut_);
-            ex_postprocess_args_.lut_tex = postprocess.AddTextureInput(tonemap_lut, Ren::eStage::FragmentShader);
+            ex_postprocess_args_.lut = postprocess.AddTextureInput(tonemap_lut, Ren::eStage::FragmentShader);
         }
         if (target) {
             const FgImgRWHandle target_ref = fg_builder_.ImportResource(target);
-            ex_postprocess_args_.output_tex = postprocess.AddColorOutput(target_ref);
+            ex_postprocess_args_.output = postprocess.AddColorOutput(target_ref);
             if (blit_to_backbuffer) {
                 const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-                ex_postprocess_args_.output_tex2 = postprocess.AddColorOutput(backbuffer_ref);
+                ex_postprocess_args_.output2 = postprocess.AddColorOutput(backbuffer_ref);
             }
         } else {
             const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-            ex_postprocess_args_.output_tex = postprocess.AddColorOutput(backbuffer_ref);
+            ex_postprocess_args_.output = postprocess.AddColorOutput(backbuffer_ref);
         }
         ex_postprocess_args_.linear_sampler = linear_sampler_;
         ex_postprocess_args_.tonemap_mode = int(settings.tonemap_mode);
@@ -2343,7 +2346,7 @@ void Eng::Renderer::BlitImageTonemap(const Ren::ImageHandle result, const int w,
         ex_postprocess_args_.fade = 0.0f;
         ex_postprocess_args_.aberration = settings.enable_aberration ? 1.0f : 0.0f;
 
-        backbuffer_sources_.push_back(ex_postprocess_args_.output_tex);
+        backbuffer_sources_.push_back(ex_postprocess_args_.output);
 
         postprocess.make_executor<ExPostprocess>(prim_draw_, sh_, &view_state_, &ex_postprocess_args_);
 
@@ -2351,14 +2354,14 @@ void Eng::Renderer::BlitImageTonemap(const Ren::ImageHandle result, const int w,
             auto &read_exposure = fg_builder_.AddNode("READ EXPOSURE");
 
             auto *data = fg_builder_.AllocTempData<ExReadExposure::Args>();
-            data->input_tex = read_exposure.AddTransferImageInput(exposure_tex);
+            data->input = read_exposure.AddTransferImageInput(exposure);
 
             FgBufDesc desc;
             desc.type = Ren::eBufType::Readback;
             desc.size = Ren::MaxFramesInFlight * sizeof(float);
-            data->output_buf = read_exposure.AddTransferOutput("Exposure Readback", desc);
+            data->output = read_exposure.AddTransferOutput("Exposure Readback", desc);
 
-            backbuffer_sources_.push_back(data->output_buf);
+            backbuffer_sources_.push_back(data->output);
 
             ex_read_exposure_.Setup(data);
             read_exposure.set_executor(&ex_read_exposure_);
@@ -2372,14 +2375,14 @@ void Eng::Renderer::BlitImageTonemap(const Ren::ImageHandle result, const int w,
         auto *postprocess = fg_builder_.FindNode("POSTPROCESS");
         if (target) {
             const FgImgRWHandle target_ref = fg_builder_.ImportResource(target);
-            ex_postprocess_args_.output_tex = postprocess->ReplaceColorOutput(0, target_ref);
+            ex_postprocess_args_.output = postprocess->ReplaceColorOutput(0, target_ref);
             if (blit_to_backbuffer) {
                 const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-                ex_postprocess_args_.output_tex2 = postprocess->ReplaceColorOutput(1, backbuffer_ref);
+                ex_postprocess_args_.output2 = postprocess->ReplaceColorOutput(1, backbuffer_ref);
             }
         } else {
             const FgImgRWHandle backbuffer_ref = fg_builder_.ImportResource(ctx_.backbuffer_img());
-            ex_postprocess_args_.output_tex = postprocess->ReplaceColorOutput(0, backbuffer_ref);
+            ex_postprocess_args_.output = postprocess->ReplaceColorOutput(0, backbuffer_ref);
         }
     }
 

@@ -46,11 +46,11 @@ Ren::eShaderType ShaderTypeFromName(std::string_view name) {
 
 Eng::ShaderLoader::ShaderLoader(Ren::Context &ctx) : ctx_(ctx) {
     // prevent reallocation
-    ctx.vtx_inputs().Reserve(32);
-    ctx.render_passes().Reserve(128);
-    ctx.shaders().Reserve(2048);
-    ctx.programs().Reserve(1024);
-    ctx.pipelines().Reserve(2048);
+    ctx.storages().vtx_inputs.Reserve(32);
+    ctx.storages().render_passes.Reserve(128);
+    ctx.storages().shaders.Reserve(2048);
+    ctx.storages().programs.Reserve(1024);
+    ctx.storages().pipelines.Reserve(2048);
 }
 
 Eng::ShaderLoader::~ShaderLoader() {
@@ -135,10 +135,10 @@ Ren::VertexInputHandle Eng::ShaderLoader::FindOrCreateVertexInput(Ren::Span<cons
     const auto it = lower_bound(
         std::begin(vtx_inputs_), std::end(vtx_inputs_), attribs,
         [this](const Ren::VertexInputHandle lhs_handle, Ren::Span<const Ren::VtxAttribDesc> attribs) {
-            return Ren::Span<const Ren::VtxAttribDesc>(ctx_.vtx_inputs().Get(lhs_handle).attribs) < attribs;
+            return Ren::Span<const Ren::VtxAttribDesc>(ctx_.storages().vtx_inputs[lhs_handle].attribs) < attribs;
         });
     if (it != std::end(vtx_inputs_) &&
-        Ren::Span<const Ren::VtxAttribDesc>(ctx_.vtx_inputs().Get(*it).attribs) == attribs) {
+        Ren::Span<const Ren::VtxAttribDesc>(ctx_.storages().vtx_inputs[*it].attribs) == attribs) {
         return *it;
     }
     const Ren::VertexInputHandle ret = ctx_.CreateVertexInput(attribs);
@@ -152,9 +152,9 @@ Ren::RenderPassHandle Eng::ShaderLoader::FindOrCreateRenderPass(const Ren::Rende
 
     const auto it =
         partition_point(std::begin(render_passes_), std::end(render_passes_), [&](const Ren::RenderPassHandle lhs) {
-            return ctx_.render_passes().Get(lhs).LessThan(depth_rt, color_rts);
+            return ctx_.storages().render_passes[lhs].LessThan(depth_rt, color_rts);
         });
-    if (it != std::end(render_passes_) && ctx_.render_passes().Get(*it).Equals(depth_rt, color_rts)) {
+    if (it != std::end(render_passes_) && ctx_.storages().render_passes[*it].Equals(depth_rt, color_rts)) {
         return *it;
     }
 
@@ -172,14 +172,14 @@ Ren::RenderPassHandle Eng::ShaderLoader::FindOrCreateRenderPass(const Ren::Rende
     { //
         std::lock_guard<std::mutex> _(mtx_);
         for (int i = 0; i < color_rts.size(); ++i) {
-            const auto &[img_main, img_cold] = ctx_.images().Get(color_rts[i].img);
+            const auto &[img_main, img_cold] = ctx_.storages().images[color_rts[i].img];
             const Ren::eImageLayout layout = ImageLayoutForState(img_main.resource_state);
             color_infos.emplace_back(img_cold.params.format, uint8_t(img_cold.params.samples), layout,
                                      color_rts[i].load, color_rts[i].store, color_rts[i].stencil_load,
                                      color_rts[i].stencil_store);
         }
         if (depth_rt) {
-            const auto &[img_main, img_cold] = ctx_.images().Get(depth_rt.img);
+            const auto &[img_main, img_cold] = ctx_.storages().images[depth_rt.img];
             const Ren::eImageLayout layout = ImageLayoutForState(img_main.resource_state);
             depth_info = {img_cold.params.format,
                           uint8_t(img_cold.params.samples),
@@ -301,9 +301,9 @@ Ren::ProgramHandle Eng::ShaderLoader::FindOrCreateProgram(std::string_view vs_na
     const auto it = lower_bound(std::begin(programs_), std::end(programs_), temp_shaders,
                                 [this](const Ren::ProgramHandle lhs_handle,
                                        const std::array<Ren::ShaderROHandle, int(Ren::eShaderType::_Count)> &shaders) {
-                                    return ctx_.programs().Get(lhs_handle).first.shaders < shaders;
+                                    return ctx_.storages().programs[lhs_handle].first.shaders < shaders;
                                 });
-    if (it != std::end(programs_) && ctx_.programs().Get(*it).first.shaders == temp_shaders) {
+    if (it != std::end(programs_) && ctx_.storages().programs[*it].first.shaders == temp_shaders) {
         return *it;
     }
 
@@ -325,9 +325,9 @@ Ren::ProgramHandle Eng::ShaderLoader::FindOrCreateProgram(std::string_view cs_na
     const auto it = lower_bound(std::begin(programs_), std::end(programs_), temp_shaders,
                                 [this](const Ren::ProgramHandle lhs_handle,
                                        const std::array<Ren::ShaderROHandle, int(Ren::eShaderType::_Count)> &shaders) {
-                                    return ctx_.programs().Get(lhs_handle).first.shaders < shaders;
+                                    return ctx_.storages().programs[lhs_handle].first.shaders < shaders;
                                 });
-    if (it != std::end(programs_) && ctx_.programs().Get(*it).first.shaders == temp_shaders) {
+    if (it != std::end(programs_) && ctx_.storages().programs[*it].first.shaders == temp_shaders) {
         return *it;
     }
 
@@ -374,9 +374,9 @@ Ren::ProgramHandle Eng::ShaderLoader::FindOrCreateProgram2(std::string_view rgs_
     const auto it = lower_bound(std::begin(programs_), std::end(programs_), temp_shaders,
                                 [this](const Ren::ProgramHandle lhs,
                                        const std::array<Ren::ShaderROHandle, int(Ren::eShaderType::_Count)> &shaders) {
-                                    return ctx_.programs().Get(lhs).first.shaders < shaders;
+                                    return ctx_.storages().programs[lhs].first.shaders < shaders;
                                 });
-    if (it != std::end(programs_) && ctx_.programs().Get(*it).first.shaders == temp_shaders) {
+    if (it != std::end(programs_) && ctx_.storages().programs[*it].first.shaders == temp_shaders) {
         return *it;
     }
 
@@ -394,14 +394,14 @@ Ren::PipelineHandle Eng::ShaderLoader::FindOrCreatePipeline(const Ren::RastState
                                                             const Ren::RenderPassROHandle render_pass,
                                                             const uint32_t subpass_index) {
     const auto less_than = [&](const Ren::PipelineHandle lhs) {
-        return ctx_.pipelines().Get(lhs).first.LessThan(rast_state, prog, vtx_input, render_pass);
+        return ctx_.storages().pipelines[lhs].first.LessThan(rast_state, prog, vtx_input, render_pass);
     };
 
     { // Try to find pipeline
         std::lock_guard<std::mutex> _(mtx_);
         const auto it = partition_point(std::begin(pipelines_), std::end(pipelines_), less_than);
         if (it != std::end(pipelines_) &&
-            ctx_.pipelines().Get(*it).first.Equals(rast_state, prog, vtx_input, render_pass)) {
+            ctx_.storages().pipelines[*it].first.Equals(rast_state, prog, vtx_input, render_pass)) {
             return *it;
         }
     }
@@ -430,16 +430,16 @@ Ren::PipelineHandle Eng::ShaderLoader::FindOrCreatePipeline(std::string_view cs_
 
 Ren::PipelineHandle Eng::ShaderLoader::FindOrCreatePipeline(const Ren::ProgramROHandle prog, const int subgroup_size) {
     const auto less_than = [&](const Ren::PipelineHandle lhs) {
-        return ctx_.pipelines().Get(lhs).first.LessThan({}, prog, {}, {});
+        return ctx_.storages().pipelines[lhs].first.LessThan({}, prog, {}, {});
     };
 
     { // Try to find pipeline
         std::lock_guard<std::mutex> _(mtx_);
         const auto it = partition_point(std::begin(pipelines_), std::end(pipelines_), less_than);
-        if (it != std::end(pipelines_) && ctx_.pipelines().Get(*it).first.Equals({}, prog, {}, {})) {
+        if (it != std::end(pipelines_) && ctx_.storages().pipelines[*it].first.Equals({}, prog, {}, {})) {
             return *it;
         }
-        const bool is_rt_pipeline = bool(ctx_.programs().Get(prog).first.shaders[int(Ren::eShaderType::RayGen)]);
+        const bool is_rt_pipeline = bool(ctx_.storages().programs[prog].first.shaders[int(Ren::eShaderType::RayGen)]);
         if (is_rt_pipeline) {
             // Has to be initialized under lock due to buffer allocation
             return ctx_.CreatePipeline(prog, subgroup_size);
@@ -449,8 +449,8 @@ Ren::PipelineHandle Eng::ShaderLoader::FindOrCreatePipeline(const Ren::ProgramRO
     // Pipeline initialization is done with no lock as it is the heaviest part
     Ren::PipelineMain pi_main = {};
     Ren::PipelineCold pi_cold = {};
-    if (!Pipeline_Init(ctx_.api(), ctx_.shaders(), ctx_.programs(), ctx_.buffers(), pi_main, pi_cold, prog, ctx_.log(),
-                       subgroup_size)) {
+    if (!Pipeline_Init(ctx_.api(), ctx_.storages().shaders, ctx_.storages().programs, ctx_.storages().buffers, pi_main,
+                       pi_cold, prog, ctx_.log(), subgroup_size)) {
         return {};
     }
 

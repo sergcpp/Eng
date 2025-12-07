@@ -22,7 +22,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
         first_img = color_attachments[0].img;
     }
     if (first_img) {
-        const auto &[img_main, img_cold] = storages.images.Get(first_img);
+        const auto &[img_main, img_cold] = storages.images[first_img];
         if (img_cold.params.samples > 1) {
             target = GL_TEXTURE_2D_MULTISAMPLE;
         }
@@ -33,7 +33,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
     }
 
     if (color_attachments.size() == 1 &&
-        (!color_attachments[0] || storages.images.Get(color_attachments[0].img).first.img == 0)) {
+        (!color_attachments[0] || storages.images[color_attachments[0].img].first.img == 0)) {
         // default backbuffer
         return true;
     }
@@ -47,7 +47,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
     SmallVector<GLenum, 4> draw_buffers;
     for (int i = 0; i < color_attachments.size(); i++) {
         if (color_attachments[i]) {
-            const auto &[img_main, img_cold] = storages.images.Get(color_attachments[i].img);
+            const auto &[img_main, img_cold] = storages.images[color_attachments[i].img];
             if (cube) {
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + GLenum(i),
                                        target + color_attachments[i].view_index - 1, GLuint(img_main.img), 0);
@@ -70,7 +70,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
     glDrawBuffers(GLsizei(draw_buffers.size()), draw_buffers.data());
 
     if (depth) {
-        const auto &[depth_main, depth_cold] = storages.images.Get(depth.img);
+        const auto &[depth_main, depth_cold] = storages.images[depth.img];
         if (depth == stencil) {
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, target, GLuint(depth_main.img), 0);
         } else {
@@ -86,7 +86,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
     }
 
     if (stencil && depth != stencil) {
-        const auto &[stencil_main, stencil_cold] = storages.images.Get(stencil.img);
+        const auto &[stencil_main, stencil_cold] = storages.images[stencil.img];
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, target, GLuint(stencil_main.img), 0);
     }
 

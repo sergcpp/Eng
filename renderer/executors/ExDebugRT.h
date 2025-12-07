@@ -11,34 +11,34 @@ class ExDebugRT final : public FgExecutor {
   public:
     struct Args {
         FgBufROHandle shared_data;
-        FgBufROHandle geo_data_buf;
-        FgBufROHandle materials_buf;
+        FgBufROHandle geo_data;
+        FgBufROHandle materials;
         FgBufROHandle vtx_buf1;
         FgBufROHandle vtx_buf2;
         FgBufROHandle ndx_buf;
-        FgImgROHandle env_tex;
-        FgBufROHandle lights_buf;
+        FgImgROHandle env;
+        FgBufROHandle lights;
         FgImgROHandle shadow_depth, shadow_color;
         FgImgROHandle ltc_luts;
-        FgBufROHandle cells_buf;
-        FgBufROHandle items_buf;
+        FgBufROHandle cells;
+        FgBufROHandle items;
         FgBufROHandle tlas_buf;
 
-        FgImgROHandle irradiance_tex;
-        FgImgROHandle distance_tex;
-        FgImgROHandle offset_tex;
+        FgImgROHandle irradiance;
+        FgImgROHandle distance;
+        FgImgROHandle offset;
 
         Ren::AccStructROHandle tlas;
         uint32_t cull_mask = 0xffffffff;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgBufROHandle rt_blas_buf;
-            FgBufROHandle prim_ndx_buf;
-            FgBufROHandle mesh_instances_buf;
+            FgBufROHandle rt_blas;
+            FgBufROHandle prim_ndx;
+            FgBufROHandle mesh_instances;
         } swrt;
 
-        FgImgRWHandle output_tex;
+        FgImgRWHandle output;
     };
 
     ExDebugRT(ShaderLoader &sh, const view_state_t *view_state, const BindlessTextureData *bindless_tex,

@@ -15,8 +15,8 @@ void _bind_textures_and_samplers(const Ren::StoragesRef &storages, const Ren::Ma
     assert(mat.textures.size() == mat.samplers.size());
     for (int j = 0; j < int(mat.textures.size()); ++j) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j,
-                                   storages.images.Get(mat.textures[j]).first.img);
-        glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers.Get(mat.samplers[j]).id);
+                                   storages.images[mat.textures[j]].first.img);
+        glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers[mat.samplers[j]].id);
     }
 }
 uint32_t _draw_list_range_full(const Eng::FgContext &fg, Ren::Span<const Eng::custom_draw_batch_t> main_batches,
@@ -164,7 +164,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
     const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_opaque_, depth_tex, depth_tex, color_targets);
 
     // Bind main buffer for drawing
-    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb).first.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[fb].first.id);
 
     rast_state.viewport[2] = view_state_->ren_res[0];
     rast_state.viewport[3] = view_state_->ren_res[1];
@@ -178,19 +178,19 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
-    const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
+    const Ren::BufferROHandle cells = fg.AccessROBuffer(cells_);
+    const Ren::BufferROHandle items = fg.AccessROBuffer(items_);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(lights_);
+    const Ren::BufferROHandle decals = fg.AccessROBuffer(decals_);
 
     const Ren::ImageROHandle shadow_depth = fg.AccessROImage(shadow_depth_);
-    const Ren::ImageROHandle ssao_tex = fg.AccessROImage(ssao_tex_);
+    const Ren::ImageROHandle ssao = fg.AccessROImage(ssao_);
     const Ren::ImageROHandle brdf_lut = fg.AccessROImage(brdf_lut_);
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
     const Ren::ImageROHandle cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
 
     const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
@@ -204,34 +204,34 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
         //}
     }
 
-    const Ren::VertexInput &vi = storages.vtx_inputs.Get(draw_pass_vi_);
+    const Ren::VertexInput &vi = storages.vtx_inputs[draw_pass_vi_];
     VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
-    const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
+    const Ren::BufferMain &materials_main = storages.buffers[materials].first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_main.buf));
     if (fg.ren_ctx().capabilities.bindless_texture) {
-        const Ren::BufferMain &buf_main = storages.buffers.Get(bindless_tex_->rt_inline_textures.buf).first;
+        const Ren::BufferMain &buf_main = storages.buffers[bindless_tex_->rt_inline_textures.buf].first;
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX, GLuint(buf_main.buf));
     }
 
-    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
-    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
+    const Ren::BufferMain &unif_shared_data_main = storages.buffers[unif_shared_data].first;
+    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_main.buf);
 
-    const Ren::ImageMain &shadow_depth_main = storages.images.Get(shadow_depth).first;
+    const Ren::ImageMain &shadow_depth_main = storages.images[shadow_depth].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SHAD_TEX, shadow_depth_main.img);
 
     if ((*p_list_)->decals_atlas) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_DECAL_TEX, (*p_list_)->decals_atlas->tex_id(0));
     }
 
-    const Ren::ImageMain &ssao_tex_main = storages.images.Get(ssao_tex).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SSAO_TEX_SLOT, ssao_tex_main.img);
+    const Ren::ImageMain &ssao_main = storages.images[ssao].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SSAO_TEX_SLOT, ssao_main.img);
 
-    const Ren::ImageMain &brdf_lut_main = storages.images.Get(brdf_lut).first;
+    const Ren::ImageMain &brdf_lut_main = storages.images[brdf_lut].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_BRDF_LUT, brdf_lut_main.img);
 
     for (int sh_l = 0; sh_l < 4; sh_l++) {
-        const Ren::ImageMain &lm_tex_main = storages.images.Get(lm_tex[sh_l]).first;
+        const Ren::ImageMain &lm_tex_main = storages.images[lm_tex[sh_l]].first;
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_LMAP_SH + sh_l, lm_tex_main.img);
     }
 
@@ -239,22 +239,22 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
     //                            (*p_list_)->probe_storage ? (*p_list_)->probe_storage->handle().id : 0);
 
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_LIGHT_BUF,
-                               GLuint(storages.buffers.Get(lights_buf).first.views[0].second));
+                               GLuint(storages.buffers[lights].first.views[0].second));
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_DECAL_BUF,
-                               GLuint(storages.buffers.Get(decals_buf).first.views[0].second));
+                               GLuint(storages.buffers[decals].first.views[0].second));
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_CELLS_BUF,
-                               GLuint(storages.buffers.Get(cells_buf).first.views[0].second));
+                               GLuint(storages.buffers[cells].first.views[0].second));
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_ITEMS_BUF,
-                               GLuint(storages.buffers.Get(items_buf).first.views[0].second));
+                               GLuint(storages.buffers[items].first.views[0].second));
 
-    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
+    const Ren::ImageMain &noise_main = storages.images[noise].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_main.img);
     // ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_CONE_RT_LUT, cone_rt_lut.id());
 
-    const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
-    const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
+    const Ren::BufferMain &instances_main = storages.buffers[instances].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_main.views[0].second));
+    const Ren::BufferMain &instance_indices_main = storages.buffers[instance_indices].first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_main.buf));
 
     const Ren::Span<const custom_draw_batch_t> batches = {(*p_list_)->custom_batches};
     const Ren::Span<const uint32_t> batch_indices = {(*p_list_)->custom_batch_indices};

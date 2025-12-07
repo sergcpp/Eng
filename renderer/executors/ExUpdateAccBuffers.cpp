@@ -15,17 +15,17 @@ void Eng::ExUpdateAccBuffers::Execute(const FgContext &fg) {
 }
 
 void Eng::ExUpdateAccBuffers::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferHandle rt_geo_instances_buf = fg.AccessRWBuffer(rt_geo_instances_buf_);
+    const Ren::BufferHandle rt_geo_instances_buf = fg.AccessRWBuffer(rt_geo_instances_);
 
     const auto &rt_geo_instances = p_list_->rt_geo_instances[rt_index_];
-    const Ren::BufferHandle rt_geo_instances_stage_buf = p_list_->rt_geo_instances_stage_buf[rt_index_];
+    const Ren::BufferHandle rt_geo_instances_stage = p_list_->rt_geo_instances_stage[rt_index_];
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
     if (rt_geo_instances.count) {
         const auto &[rt_geo_instances_stage_buf_main, rt_geo_instances_stage_buf_cold] =
-            storages.buffers.Get(rt_geo_instances_stage_buf);
+            storages.buffers[rt_geo_instances_stage];
 
         uint8_t *stage_mem =
             Buffer_MapRange(api, rt_geo_instances_stage_buf_main, rt_geo_instances_stage_buf_cold,
@@ -36,7 +36,7 @@ void Eng::ExUpdateAccBuffers::Execute_SWRT(const FgContext &fg) {
             Buffer_Unmap(api, rt_geo_instances_stage_buf_main, rt_geo_instances_stage_buf_cold);
         }
 
-        Ren::BufferMain &rt_geo_instances_buf_main = fg.storages().buffers.Get(rt_geo_instances_buf).first;
+        Ren::BufferMain &rt_geo_instances_buf_main = fg.storages().buffers[rt_geo_instances_buf].first;
         CopyBufferToBuffer(api, rt_geo_instances_stage_buf_main, fg.backend_frame() * RTGeoInstancesBufChunkSize,
                            rt_geo_instances_buf_main, 0, rt_geo_instances_mem_size, fg.cmd_buf());
     }

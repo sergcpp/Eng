@@ -743,7 +743,7 @@ void Eng::DebugFrameUI::DrawLine(Gui::Renderer *r, const Gui::Vec2f &_p0, const 
                                dims_[0][1] + 0.5f * (_p1[1] + 1) * dims_[1][1], _uvs[1][0] - 2, _uvs[1][1] - 0.5f};
     const auto dp = Normalize(Gui::Vec2f{p1 - p0});
 
-    const auto &[reg_main, reg_cold] = storage->Get(line_tex);
+    const auto &[reg_main, reg_cold] = (*storage)[line_tex];
     r->PushLine(Gui::eDrawMode::Passthrough, reg_main.pos[2], color, p0, p1, dp, dp,
                 Gui::Vec4f{width[0], width[1], 2, 0});
 }
@@ -769,7 +769,7 @@ void Eng::DebugFrameUI::DrawCurve(Gui::Renderer *r, const Gui::Vec2f &_p0, const
         std::swap(p1[3], p3[3]);
     }
 
-    const auto &[reg_main, reg_cold] = storage->Get(line_tex);
+    const auto &[reg_main, reg_cold] = (*storage)[line_tex];
     r->PushCurve(Gui::eDrawMode::Passthrough, reg_main.pos[2], color, p0, p1, p2, p3,
                  Gui::Vec4f{width[0], width[1], 2, 0});
 }

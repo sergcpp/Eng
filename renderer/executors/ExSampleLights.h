@@ -12,8 +12,8 @@ class ExSampleLights final : public FgExecutor {
     struct Args {
         FgBufROHandle shared_data;
         FgBufROHandle random_seq;
-        FgBufROHandle lights_buf;
-        FgBufROHandle nodes_buf;
+        FgBufROHandle lights;
+        FgBufROHandle nodes;
 
         FgBufROHandle geo_data;
         FgBufROHandle materials;
@@ -21,22 +21,22 @@ class ExSampleLights final : public FgExecutor {
         FgBufROHandle ndx_buf;
         FgBufROHandle tlas_buf;
 
-        FgImgROHandle albedo_tex;
-        FgImgROHandle depth_tex;
-        FgImgROHandle norm_tex;
-        FgImgROHandle spec_tex;
+        FgImgROHandle albedo;
+        FgImgROHandle depth;
+        FgImgROHandle norm;
+        FgImgROHandle spec;
 
         Ren::AccStructROHandle tlas;
 
         struct {
             uint32_t root_node = 0xffffffff;
             FgBufROHandle rt_blas_buf;
-            FgBufROHandle prim_ndx_buf;
-            FgBufROHandle mesh_instances_buf;
+            FgBufROHandle prim_ndx;
+            FgBufROHandle mesh_instances;
         } swrt;
 
-        FgImgRWHandle out_diffuse_tex;
-        FgImgRWHandle out_specular_tex;
+        FgImgRWHandle out_diffuse;
+        FgImgRWHandle out_specular;
     };
 
     ExSampleLights(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args)

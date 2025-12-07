@@ -35,64 +35,64 @@ void Eng::ExSampleLights::LazyInit(Ren::Context &ctx, ShaderLoader &sh) {
 }
 
 void Eng::ExSampleLights::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::BufferROHandle random_seq_buf = fg.AccessROBuffer(args_->random_seq);
+    const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle random_seq = fg.AccessROBuffer(args_->random_seq);
 
-    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle geo_data = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
     const Ren::BufferROHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
 
     const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferROHandle prim_ndx = fg.AccessROBuffer(args_->swrt.prim_ndx);
+    const Ren::BufferROHandle mesh_instances = fg.AccessROBuffer(args_->swrt.mesh_instances);
 
-    const Ren::ImageROHandle albedo_tex = fg.AccessROImage(args_->albedo_tex);
-    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::ImageROHandle norm_tex = fg.AccessROImage(args_->norm_tex);
-    const Ren::ImageROHandle spec_tex = fg.AccessROImage(args_->spec_tex);
+    const Ren::ImageROHandle albedo = fg.AccessROImage(args_->albedo);
+    const Ren::ImageROHandle depth = fg.AccessROImage(args_->depth);
+    const Ren::ImageROHandle norm = fg.AccessROImage(args_->norm);
+    const Ren::ImageROHandle spec = fg.AccessROImage(args_->spec);
 
-    const Ren::ImageRWHandle out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
-    const Ren::ImageRWHandle out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
+    const Ren::ImageRWHandle out_diffuse = fg.AccessRWImage(args_->out_diffuse);
+    const Ren::ImageRWHandle out_specular = fg.AccessRWImage(args_->out_specular);
 
-    if (!args_->lights_buf) {
+    if (!args_->lights) {
         return;
     }
 
-    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::BufferROHandle nodes_buf = fg.AccessROBuffer(args_->nodes_buf);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(args_->lights);
+    const Ren::BufferROHandle nodes = fg.AccessROBuffer(args_->nodes);
 
     const Ren::Binding bindings[] = {
-        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
+        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
         {Ren::eBindTarget::BindlessDescriptors, BIND_BINDLESS_TEX, bindless_tex_->rt_inline_textures},
-        {Ren::eBindTarget::UTBuf, SampleLights::RANDOM_SEQ_BUF_SLOT, random_seq_buf},
-        {Ren::eBindTarget::UTBuf, SampleLights::LIGHTS_BUF_SLOT, lights_buf},
-        {Ren::eBindTarget::UTBuf, SampleLights::LIGHT_NODES_BUF_SLOT, nodes_buf},
+        {Ren::eBindTarget::UTBuf, SampleLights::RANDOM_SEQ_BUF_SLOT, random_seq},
+        {Ren::eBindTarget::UTBuf, SampleLights::LIGHTS_BUF_SLOT, lights},
+        {Ren::eBindTarget::UTBuf, SampleLights::LIGHT_NODES_BUF_SLOT, nodes},
         {Ren::eBindTarget::UTBuf, SampleLights::BLAS_BUF_SLOT, rt_blas_buf},
         {Ren::eBindTarget::UTBuf, SampleLights::TLAS_BUF_SLOT, rt_tlas_buf},
-        {Ren::eBindTarget::UTBuf, SampleLights::PRIM_NDX_BUF_SLOT, prim_ndx_buf},
-        {Ren::eBindTarget::UTBuf, SampleLights::MESH_INSTANCES_BUF_SLOT, mesh_instances_buf},
-        {Ren::eBindTarget::SBufRO, SampleLights::GEO_DATA_BUF_SLOT, geo_data_buf},
-        {Ren::eBindTarget::SBufRO, SampleLights::MATERIAL_BUF_SLOT, materials_buf},
+        {Ren::eBindTarget::UTBuf, SampleLights::PRIM_NDX_BUF_SLOT, prim_ndx},
+        {Ren::eBindTarget::UTBuf, SampleLights::MESH_INSTANCES_BUF_SLOT, mesh_instances},
+        {Ren::eBindTarget::SBufRO, SampleLights::GEO_DATA_BUF_SLOT, geo_data},
+        {Ren::eBindTarget::SBufRO, SampleLights::MATERIAL_BUF_SLOT, materials},
         {Ren::eBindTarget::UTBuf, SampleLights::VTX_BUF1_SLOT, vtx_buf1},
         {Ren::eBindTarget::UTBuf, SampleLights::NDX_BUF_SLOT, ndx_buf},
-        {Ren::eBindTarget::TexSampled, SampleLights::ALBEDO_TEX_SLOT, albedo_tex},
-        {Ren::eBindTarget::TexSampled, SampleLights::DEPTH_TEX_SLOT, {depth_tex, 1}},
-        {Ren::eBindTarget::TexSampled, SampleLights::NORM_TEX_SLOT, norm_tex},
-        {Ren::eBindTarget::TexSampled, SampleLights::SPEC_TEX_SLOT, spec_tex},
-        {Ren::eBindTarget::ImageRW, SampleLights::OUT_DIFFUSE_IMG_SLOT, out_diffuse_tex},
-        {Ren::eBindTarget::ImageRW, SampleLights::OUT_SPECULAR_IMG_SLOT, out_specular_tex}};
+        {Ren::eBindTarget::TexSampled, SampleLights::ALBEDO_TEX_SLOT, albedo},
+        {Ren::eBindTarget::TexSampled, SampleLights::DEPTH_TEX_SLOT, {depth, 1}},
+        {Ren::eBindTarget::TexSampled, SampleLights::NORM_TEX_SLOT, norm},
+        {Ren::eBindTarget::TexSampled, SampleLights::SPEC_TEX_SLOT, spec},
+        {Ren::eBindTarget::ImageRW, SampleLights::OUT_DIFFUSE_IMG_SLOT, out_diffuse},
+        {Ren::eBindTarget::ImageRW, SampleLights::OUT_SPECULAR_IMG_SLOT, out_specular}};
 
     const Ren::Vec3u grp_count = Ren::Vec3u(Ren::DivCeil(view_state_->ren_res[0], SampleLights::GRP_SIZE_X),
                                             Ren::DivCeil(view_state_->ren_res[1], SampleLights::GRP_SIZE_Y), 1u);
 
     // TODO: Avoid accessing cold data
-    const Ren::BufferCold &lights_buf_cold = fg.storages().buffers.Get(lights_buf).second;
+    const Ren::BufferCold &lights_cold = fg.storages().buffers[lights].second;
 
     SampleLights::Params uniform_params;
     uniform_params.img_size = Ren::Vec2u{view_state_->ren_res};
-    uniform_params.lights_count = uint32_t(lights_buf_cold.size / sizeof(light_item_t));
+    uniform_params.lights_count = uint32_t(lights_cold.size / sizeof(light_item_t));
     uniform_params.frame_index = view_state_->frame_index;
 
     DispatchCompute(fg.cmd_buf(), pi_sample_lights_, fg.storages(), grp_count, bindings, &uniform_params,

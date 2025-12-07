@@ -34,57 +34,57 @@ void Eng::ExDebugRT::Execute(const FgContext &fg) {
 }
 
 void Eng::ExDebugRT::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data_buf);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials_buf);
+    const Ren::BufferROHandle geo_data = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(args_->vtx_buf2);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(args_->lights);
     const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::BufferROHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
-    const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
-    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::ImageROHandle env_tex = fg.AccessROImage(args_->env_tex);
+    const Ren::BufferROHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas);
+    const Ren::BufferROHandle prim_ndx = fg.AccessROBuffer(args_->swrt.prim_ndx);
+    const Ren::BufferROHandle mesh_instances = fg.AccessROBuffer(args_->swrt.mesh_instances);
+    const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
+    const Ren::ImageROHandle env = fg.AccessROImage(args_->env);
     const Ren::ImageROHandle shadow_depth = fg.AccessROImage(args_->shadow_depth);
     const Ren::ImageROHandle shadow_color = fg.AccessROImage(args_->shadow_color);
     const Ren::ImageROHandle ltc_luts = fg.AccessROImage(args_->ltc_luts);
-    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(args_->items_buf);
+    const Ren::BufferROHandle cells = fg.AccessROBuffer(args_->cells);
+    const Ren::BufferROHandle items = fg.AccessROBuffer(args_->items);
 
-    Ren::ImageROHandle irr_tex, dist_tex, off_tex;
-    if (args_->irradiance_tex) {
-        irr_tex = fg.AccessROImage(args_->irradiance_tex);
-        dist_tex = fg.AccessROImage(args_->distance_tex);
-        off_tex = fg.AccessROImage(args_->offset_tex);
+    Ren::ImageROHandle irr, dist, off;
+    if (args_->irradiance) {
+        irr = fg.AccessROImage(args_->irradiance);
+        dist = fg.AccessROImage(args_->distance);
+        off = fg.AccessROImage(args_->offset);
     }
 
-    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(args_->output_tex);
+    const Ren::ImageRWHandle output = fg.AccessRWImage(args_->output);
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
-        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
+        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
         {Ren::eBindTarget::BindlessDescriptors, BIND_BINDLESS_TEX, bindless_tex_->rt_inline_textures},
-        {Ren::eBindTarget::SBufRO, RTDebug::GEO_DATA_BUF_SLOT, geo_data_buf},
-        {Ren::eBindTarget::SBufRO, RTDebug::MATERIAL_BUF_SLOT, materials_buf},
+        {Ren::eBindTarget::SBufRO, RTDebug::GEO_DATA_BUF_SLOT, geo_data},
+        {Ren::eBindTarget::SBufRO, RTDebug::MATERIAL_BUF_SLOT, materials},
         {Ren::eBindTarget::UTBuf, RTDebug::VTX_BUF1_SLOT, vtx_buf1},
         {Ren::eBindTarget::UTBuf, RTDebug::VTX_BUF2_SLOT, vtx_buf2},
         {Ren::eBindTarget::UTBuf, RTDebug::NDX_BUF_SLOT, ndx_buf},
         {Ren::eBindTarget::UTBuf, RTDebug::BLAS_BUF_SLOT, rt_blas_buf},
         {Ren::eBindTarget::UTBuf, RTDebug::TLAS_BUF_SLOT, rt_tlas_buf},
-        {Ren::eBindTarget::UTBuf, RTDebug::PRIM_NDX_BUF_SLOT, prim_ndx_buf},
-        {Ren::eBindTarget::UTBuf, RTDebug::MESH_INSTANCES_BUF_SLOT, mesh_instances_buf},
-        {Ren::eBindTarget::SBufRO, RTDebug::LIGHTS_BUF_SLOT, lights_buf},
-        {Ren::eBindTarget::TexSampled, RTDebug::ENV_TEX_SLOT, env_tex},
+        {Ren::eBindTarget::UTBuf, RTDebug::PRIM_NDX_BUF_SLOT, prim_ndx},
+        {Ren::eBindTarget::UTBuf, RTDebug::MESH_INSTANCES_BUF_SLOT, mesh_instances},
+        {Ren::eBindTarget::SBufRO, RTDebug::LIGHTS_BUF_SLOT, lights},
+        {Ren::eBindTarget::TexSampled, RTDebug::ENV_TEX_SLOT, env},
         {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_DEPTH_TEX_SLOT, shadow_depth},
         {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_COLOR_TEX_SLOT, shadow_color},
         {Ren::eBindTarget::TexSampled, RTDebug::LTC_LUTS_TEX_SLOT, ltc_luts},
-        {Ren::eBindTarget::UTBuf, RTDebug::CELLS_BUF_SLOT, cells_buf},
-        {Ren::eBindTarget::UTBuf, RTDebug::ITEMS_BUF_SLOT, items_buf},
-        {Ren::eBindTarget::ImageRW, RTDebug::OUT_IMG_SLOT, output_tex}};
-    if (irr_tex) {
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::IRRADIANCE_TEX_SLOT, irr_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::DISTANCE_TEX_SLOT, dist_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, off_tex);
+        {Ren::eBindTarget::UTBuf, RTDebug::CELLS_BUF_SLOT, cells},
+        {Ren::eBindTarget::UTBuf, RTDebug::ITEMS_BUF_SLOT, items},
+        {Ren::eBindTarget::ImageRW, RTDebug::OUT_IMG_SLOT, output}};
+    if (irr) {
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::IRRADIANCE_TEX_SLOT, irr);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::DISTANCE_TEX_SLOT, dist);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, off);
     }
 
     const auto grp_count = Ren::Vec3u(Ren::DivCeil(view_state_->ren_res[0], RTDebug::GRP_SIZE_X),

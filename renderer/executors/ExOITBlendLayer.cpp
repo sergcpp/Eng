@@ -8,37 +8,35 @@
 
 Eng::ExOITBlendLayer::ExOITBlendLayer(
     PrimDraw &prim_draw, const DrawList **p_list, const view_state_t *view_state, const FgBufROHandle vtx_buf1,
-    const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
-    const BindlessTextureData *bindless_tex, const FgBufROHandle cells_buf, const FgBufROHandle items_buf,
-    const FgBufROHandle lights_buf, const FgBufROHandle decals_buf, const FgImgROHandle noise_tex,
-    const FgImgROHandle dummy_white, const FgImgROHandle shadow_depth, const FgImgROHandle ltc_luts,
-    const FgImgROHandle env_tex, const FgBufROHandle instances_buf, const FgBufROHandle instance_indices_buf,
-    const FgBufROHandle shared_data_buf, const FgImgRWHandle depth_tex, const FgImgRWHandle color_tex,
-    const FgBufROHandle oit_depth_buf, const FgImgROHandle oit_specular_tex, const int depth_layer_index,
-    const FgImgROHandle irradiance_tex, const FgImgROHandle distance_tex, const FgImgROHandle offset_tex,
-    const FgImgROHandle back_color_tex, const FgImgROHandle back_depth_tex)
+    const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials,
+    const BindlessTextureData *bindless_tex, const FgBufROHandle cells, const FgBufROHandle items,
+    const FgBufROHandle lights, const FgBufROHandle decals, const FgImgROHandle noise, const FgImgROHandle dummy_white,
+    const FgImgROHandle shadow_depth, const FgImgROHandle ltc_luts, const FgImgROHandle env,
+    const FgBufROHandle instances, const FgBufROHandle instance_indices, const FgBufROHandle shared_data,
+    const FgImgRWHandle depth, const FgImgRWHandle color, const FgBufROHandle oit_depth,
+    const FgImgROHandle oit_specular, const int depth_layer_index, const FgImgROHandle irradiance,
+    const FgImgROHandle distance, const FgImgROHandle offset, const FgImgROHandle back_color,
+    const FgImgROHandle back_depth)
     : prim_draw_(prim_draw), view_state_(view_state), bindless_tex_(bindless_tex), p_list_(p_list), vtx_buf1_(vtx_buf1),
-      vtx_buf2_(vtx_buf2), ndx_buf_(ndx_buf), instances_buf_(instances_buf),
-      instance_indices_buf_(instance_indices_buf), shared_data_buf_(shared_data_buf), materials_buf_(materials_buf),
-      cells_buf_(cells_buf), items_buf_(items_buf), lights_buf_(lights_buf), decals_buf_(decals_buf),
-      noise_tex_(noise_tex), dummy_white_(dummy_white), shadow_depth_(shadow_depth), ltc_luts_(ltc_luts),
-      env_tex_(env_tex), oit_depth_buf_(oit_depth_buf), depth_layer_index_(depth_layer_index),
-      oit_specular_tex_(oit_specular_tex), irradiance_tex_(irradiance_tex), distance_tex_(distance_tex),
-      offset_tex_(offset_tex), back_color_tex_(back_color_tex), back_depth_tex_(back_depth_tex), depth_tex_(depth_tex),
-      color_tex_(color_tex) {}
+      vtx_buf2_(vtx_buf2), ndx_buf_(ndx_buf), instances_(instances), instance_indices_(instance_indices),
+      shared_data_(shared_data), materials_(materials), cells_(cells), items_(items), lights_(lights), decals_(decals),
+      noise_(noise), dummy_white_(dummy_white), shadow_depth_(shadow_depth), ltc_luts_(ltc_luts), env_(env),
+      oit_depth_(oit_depth), depth_layer_index_(depth_layer_index), oit_specular_(oit_specular),
+      irradiance_(irradiance), distance_(distance), offset_(offset), back_color_(back_color), back_depth_(back_depth),
+      depth_(depth), color_(color) {}
 
 void Eng::ExOITBlendLayer::Execute(const FgContext &fg) {
-    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(depth_tex_);
-    const Ren::ImageRWHandle color_tex = fg.AccessRWImage(color_tex_);
+    const Ren::ImageRWHandle depth = fg.AccessRWImage(depth_);
+    const Ren::ImageRWHandle color = fg.AccessRWImage(color_);
 
-    LazyInit(fg.ren_ctx(), fg.sh(), depth_tex, color_tex);
-    DrawTransparent(fg, depth_tex, color_tex);
+    LazyInit(fg.ren_ctx(), fg.sh(), depth, color);
+    DrawTransparent(fg, depth, color);
 }
 
-void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle depth_tex,
-                                    const Ren::ImageRWHandle color_tex) {
-    const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
-    const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
+void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle depth,
+                                    const Ren::ImageRWHandle color) {
+    const Ren::RenderTarget color_targets[] = {{color, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
+    const Ren::RenderTarget depth_target = {depth, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
                                             Ren::eStoreOp::Store};
     if (!initialized) {
 #if defined(REN_GL_BACKEND)
@@ -50,8 +48,8 @@ void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, co
         prog_oit_blit_depth_ = sh.FindOrCreateProgram("internal/blit.vert.glsl", "internal/blit_oit_depth.frag.glsl");
 
         Ren::ProgramHandle oit_blend_simple_prog, oit_blend_vegetation_prog;
-        if (irradiance_tex_) {
-            if (oit_specular_tex_) {
+        if (irradiance_) {
+            if (oit_specular_) {
                 oit_blend_simple_prog = sh.FindOrCreateProgram(
                     bindless ? "internal/oit_blend_layer.vert.glsl" : "internal/oit_blend_layer@NO_BINDLESS.vert.glsl",
                     bindless ? "internal/oit_blend_layer@GI_CACHE;SPECULAR.frag.glsl"
@@ -73,7 +71,7 @@ void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, co
                                                     : "internal/oit_blend_layer@GI_CACHE;NO_BINDLESS.frag.glsl");
             }
         } else {
-            if (oit_specular_tex_) {
+            if (oit_specular_) {
                 oit_blend_simple_prog = sh.FindOrCreateProgram(
                     bindless ? "internal/oit_blend_layer.vert.glsl" : "internal/oit_blend_layer@NO_BINDLESS.vert.glsl",
                     bindless ? "internal/oit_blend_layer@SPECULAR.frag.glsl"

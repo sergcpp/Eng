@@ -69,35 +69,35 @@ void Eng::ExRTGICache::Execute_SWRT(const FgContext &fg) {
     const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferROHandle rt_blas = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
+    const Ren::BufferROHandle rt_blas = fg.AccessROBuffer(args_->swrt.rt_blas);
     const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
-    const Ren::ImageROHandle env_tex = fg.AccessROImage(args_->env_tex);
+    const Ren::ImageROHandle env = fg.AccessROImage(args_->env);
     const Ren::BufferROHandle rt_tlas = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::BufferROHandle prim_ndx = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::BufferROHandle mesh_instances = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
-    const Ren::BufferROHandle lights = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::BufferROHandle prim_ndx = fg.AccessROBuffer(args_->swrt.prim_ndx);
+    const Ren::BufferROHandle mesh_instances = fg.AccessROBuffer(args_->swrt.mesh_instances);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(args_->lights);
     const Ren::ImageROHandle shadow_depth = fg.AccessROImage(args_->shadow_depth);
     const Ren::ImageROHandle shadow_color = fg.AccessROImage(args_->shadow_color);
     const Ren::ImageROHandle ltc_luts = fg.AccessROImage(args_->ltc_luts);
-    const Ren::BufferROHandle cells = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::BufferROHandle items = fg.AccessROBuffer(args_->items_buf);
-    const Ren::ImageROHandle irr_tex = fg.AccessROImage(args_->irradiance_tex);
-    const Ren::ImageROHandle dist_tex = fg.AccessROImage(args_->distance_tex);
-    const Ren::ImageROHandle off_tex = fg.AccessROImage(args_->offset_tex);
+    const Ren::BufferROHandle cells = fg.AccessROBuffer(args_->cells);
+    const Ren::BufferROHandle items = fg.AccessROBuffer(args_->items);
+    const Ren::ImageROHandle irr = fg.AccessROImage(args_->irradiance);
+    const Ren::ImageROHandle dist = fg.AccessROImage(args_->distance);
+    const Ren::ImageROHandle off = fg.AccessROImage(args_->offset);
 
-    Ren::BufferROHandle random_seq_buf = {}, stoch_lights_buf = {}, light_nodes_buf = {};
-    if (args_->stoch_lights_buf) {
-        random_seq_buf = fg.AccessROBuffer(args_->random_seq);
-        stoch_lights_buf = fg.AccessROBuffer(args_->stoch_lights_buf);
-        light_nodes_buf = fg.AccessROBuffer(args_->light_nodes_buf);
+    Ren::BufferROHandle random_seq = {}, stoch_lights = {}, light_nodes = {};
+    if (args_->stoch_lights) {
+        random_seq = fg.AccessROBuffer(args_->random_seq);
+        stoch_lights = fg.AccessROBuffer(args_->stoch_lights);
+        light_nodes = fg.AccessROBuffer(args_->light_nodes);
     }
 
-    const Ren::ImageRWHandle out_ray_data_tex = fg.AccessRWImage(args_->out_ray_data_tex);
+    const Ren::ImageRWHandle out_ray_data = fg.AccessRWImage(args_->out_ray_data);
 
     Ren::SmallVector<Ren::Binding, 16> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
         {Ren::eBindTarget::BindlessDescriptors, BIND_BINDLESS_TEX, bindless_tex_->rt_inline_textures},
-        {Ren::eBindTarget::TexSampled, RTGICache::ENV_TEX_SLOT, env_tex},
+        {Ren::eBindTarget::TexSampled, RTGICache::ENV_TEX_SLOT, env},
         {Ren::eBindTarget::UTBuf, RTGICache::BLAS_BUF_SLOT, rt_blas},
         {Ren::eBindTarget::UTBuf, RTGICache::TLAS_BUF_SLOT, rt_tlas},
         {Ren::eBindTarget::UTBuf, RTGICache::PRIM_NDX_BUF_SLOT, prim_ndx},
@@ -112,17 +112,17 @@ void Eng::ExRTGICache::Execute_SWRT(const FgContext &fg) {
         {Ren::eBindTarget::TexSampled, RTGICache::LTC_LUTS_TEX_SLOT, ltc_luts},
         {Ren::eBindTarget::UTBuf, RTGICache::CELLS_BUF_SLOT, cells},
         {Ren::eBindTarget::UTBuf, RTGICache::ITEMS_BUF_SLOT, items},
-        {Ren::eBindTarget::TexSampled, RTGICache::IRRADIANCE_TEX_SLOT, irr_tex},
-        {Ren::eBindTarget::TexSampled, RTGICache::DISTANCE_TEX_SLOT, dist_tex},
-        {Ren::eBindTarget::TexSampled, RTGICache::OFFSET_TEX_SLOT, off_tex},
-        {Ren::eBindTarget::ImageRW, RTGICache::OUT_RAY_DATA_IMG_SLOT, out_ray_data_tex}};
-    if (stoch_lights_buf) {
-        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::RANDOM_SEQ_BUF_SLOT, random_seq_buf);
-        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::STOCH_LIGHTS_BUF_SLOT, stoch_lights_buf);
-        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::LIGHT_NODES_BUF_SLOT, light_nodes_buf);
+        {Ren::eBindTarget::TexSampled, RTGICache::IRRADIANCE_TEX_SLOT, irr},
+        {Ren::eBindTarget::TexSampled, RTGICache::DISTANCE_TEX_SLOT, dist},
+        {Ren::eBindTarget::TexSampled, RTGICache::OFFSET_TEX_SLOT, off},
+        {Ren::eBindTarget::ImageRW, RTGICache::OUT_RAY_DATA_IMG_SLOT, out_ray_data}};
+    if (stoch_lights) {
+        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::RANDOM_SEQ_BUF_SLOT, random_seq);
+        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::STOCH_LIGHTS_BUF_SLOT, stoch_lights);
+        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::LIGHT_NODES_BUF_SLOT, light_nodes);
     }
 
-    const Ren::PipelineHandle pi = pi_rt_gi_cache_[bool(stoch_lights_buf)][args_->partial_update];
+    const Ren::PipelineHandle pi = pi_rt_gi_cache_[bool(stoch_lights)][args_->partial_update];
 
     RTGICache::Params uniform_params = {};
     uniform_params.volume_index = view_state_->volume_to_update;

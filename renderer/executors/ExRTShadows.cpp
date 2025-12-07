@@ -29,45 +29,45 @@ void Eng::ExRTShadows::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
 }
 
 void Eng::ExRTShadows::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle geo_data = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(args_->noise_tex);
-    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::ImageROHandle normal_tex = fg.AccessROImage(args_->normal_tex);
+    const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
+    const Ren::ImageROHandle noise = fg.AccessROImage(args_->noise);
+    const Ren::ImageROHandle depth = fg.AccessROImage(args_->depth);
+    const Ren::ImageROHandle normal = fg.AccessROImage(args_->normal);
     const Ren::BufferROHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.blas_buf);
     const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
-    const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(args_->tile_list_buf);
-    const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
+    const Ren::BufferROHandle prim_ndx = fg.AccessROBuffer(args_->swrt.prim_ndx);
+    const Ren::BufferROHandle mesh_instances = fg.AccessROBuffer(args_->swrt.mesh_instances);
+    const Ren::BufferROHandle tile_list = fg.AccessROBuffer(args_->tile_list);
+    const Ren::BufferROHandle indir_args = fg.AccessROBuffer(args_->indir_args);
 
-    const Ren::ImageRWHandle out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
+    const Ren::ImageRWHandle out_shadow = fg.AccessRWImage(args_->out_shadow);
 
     const Ren::Binding bindings[] = {
-        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
+        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
         {Ren::eBindTarget::BindlessDescriptors, BIND_BINDLESS_TEX, bindless_tex_->rt_inline_textures},
-        {Ren::eBindTarget::TexSampled, RTShadows::NOISE_TEX_SLOT, noise_tex},
-        {Ren::eBindTarget::TexSampled, RTShadows::DEPTH_TEX_SLOT, {depth_tex, 1}},
-        {Ren::eBindTarget::TexSampled, RTShadows::NORM_TEX_SLOT, normal_tex},
-        {Ren::eBindTarget::SBufRO, RTShadows::GEO_DATA_BUF_SLOT, geo_data_buf},
-        {Ren::eBindTarget::SBufRO, RTShadows::MATERIAL_BUF_SLOT, materials_buf},
+        {Ren::eBindTarget::TexSampled, RTShadows::NOISE_TEX_SLOT, noise},
+        {Ren::eBindTarget::TexSampled, RTShadows::DEPTH_TEX_SLOT, {depth, 1}},
+        {Ren::eBindTarget::TexSampled, RTShadows::NORM_TEX_SLOT, normal},
+        {Ren::eBindTarget::SBufRO, RTShadows::GEO_DATA_BUF_SLOT, geo_data},
+        {Ren::eBindTarget::SBufRO, RTShadows::MATERIAL_BUF_SLOT, materials},
         {Ren::eBindTarget::UTBuf, RTShadows::BLAS_BUF_SLOT, rt_blas_buf},
         {Ren::eBindTarget::UTBuf, RTShadows::TLAS_BUF_SLOT, rt_tlas_buf},
-        {Ren::eBindTarget::UTBuf, RTShadows::PRIM_NDX_BUF_SLOT, prim_ndx_buf},
-        {Ren::eBindTarget::UTBuf, RTShadows::MESH_INSTANCES_BUF_SLOT, mesh_instances_buf},
+        {Ren::eBindTarget::UTBuf, RTShadows::PRIM_NDX_BUF_SLOT, prim_ndx},
+        {Ren::eBindTarget::UTBuf, RTShadows::MESH_INSTANCES_BUF_SLOT, mesh_instances},
         {Ren::eBindTarget::UTBuf, RTShadows::VTX_BUF1_SLOT, vtx_buf1},
         {Ren::eBindTarget::UTBuf, RTShadows::NDX_BUF_SLOT, ndx_buf},
-        {Ren::eBindTarget::SBufRO, RTShadows::TILE_LIST_SLOT, tile_list_buf},
-        {Ren::eBindTarget::ImageRW, RTShadows::OUT_SHADOW_IMG_SLOT, out_shadow_tex}};
+        {Ren::eBindTarget::SBufRO, RTShadows::TILE_LIST_SLOT, tile_list},
+        {Ren::eBindTarget::ImageRW, RTShadows::OUT_SHADOW_IMG_SLOT, out_shadow}};
 
     RTShadows::Params uniform_params;
     uniform_params.img_size = Ren::Vec2u{view_state_->ren_res};
     uniform_params.pixel_spread_angle = view_state_->pixel_spread_angle;
 
-    DispatchComputeIndirect(fg.cmd_buf(), pi_rt_shadows_, fg.storages(), indir_args_buf, 0, bindings, &uniform_params,
+    DispatchComputeIndirect(fg.cmd_buf(), pi_rt_shadows_, fg.storages(), indir_args, 0, bindings, &uniform_params,
                             sizeof(uniform_params), fg.descr_alloc(), fg.log());
 }
 

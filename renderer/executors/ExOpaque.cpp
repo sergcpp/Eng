@@ -7,22 +7,22 @@
 #include "../framegraph/FgBuilder.h"
 
 void Eng::ExOpaque::Execute(const FgContext &fg) {
-    const Ren::ImageRWHandle color_tex = fg.AccessRWImage(color_tex_);
-    const Ren::ImageRWHandle normal_tex = fg.AccessRWImage(normal_tex_);
-    const Ren::ImageRWHandle spec_tex = fg.AccessRWImage(spec_tex_);
-    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(depth_tex_);
+    const Ren::ImageRWHandle color = fg.AccessRWImage(color_);
+    const Ren::ImageRWHandle normal = fg.AccessRWImage(normal_);
+    const Ren::ImageRWHandle spec = fg.AccessRWImage(spec_);
+    const Ren::ImageRWHandle depth = fg.AccessRWImage(depth_);
 
-    LazyInit(fg.ren_ctx(), fg.sh(), color_tex, normal_tex, spec_tex, depth_tex);
-    DrawOpaque(fg, color_tex, normal_tex, spec_tex, depth_tex);
+    LazyInit(fg.ren_ctx(), fg.sh(), color, normal, spec, depth);
+    DrawOpaque(fg, color, normal, spec, depth);
 }
 
-void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle color_tex,
-                             const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex,
-                             const Ren::ImageRWHandle depth_tex) {
-    const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store},
-                                               {normal_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store},
-                                               {spec_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
-    const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
+void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle color,
+                             const Ren::ImageRWHandle normal, const Ren::ImageRWHandle spec,
+                             const Ren::ImageRWHandle depth) {
+    const Ren::RenderTarget color_targets[] = {{color, Ren::eLoadOp::Load, Ren::eStoreOp::Store},
+                                               {normal, Ren::eLoadOp::Load, Ren::eStoreOp::Store},
+                                               {spec, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
+    const Ren::RenderTarget depth_target = {depth, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
                                             Ren::eStoreOp::Store};
 
     if (!initialized) {

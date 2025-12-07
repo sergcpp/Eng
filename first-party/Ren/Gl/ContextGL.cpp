@@ -184,7 +184,7 @@ bool Ren::Context::Init(const int w, const int h, ILog *log, const int validatio
         params.usage = Bitmask(eImgUsage::RenderTarget);
 
         ImageHandle new_img = images_.Emplace();
-        const auto &[img_main, img_cold] = images_.Get(new_img);
+        const auto &[img_main, img_cold] = images_[new_img];
 
         img_cold.params = params;
 

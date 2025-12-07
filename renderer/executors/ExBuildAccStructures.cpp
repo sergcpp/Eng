@@ -19,12 +19,12 @@ void Eng::ExBuildAccStructures::Execute(const FgContext &fg) {
 }
 
 void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferHandle rt_obj_instances_buf = fg.AccessRWBuffer(rt_obj_instances_buf_rw_);
-    const Ren::BufferHandle rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
+    const Ren::BufferHandle rt_obj_instances_buf = fg.AccessRWBuffer(rt_obj_instances_rw_);
+    const Ren::BufferHandle rt_tlas = fg.AccessRWBuffer(rt_tlas_buf_);
 
     const auto &rt_obj_instances = p_list_->rt_obj_instances[rt_index_];
-    const Ren::BufferHandle rt_obj_instances_stage_buf = p_list_->rt_obj_instances_stage_buf[rt_index_];
-    const Ren::BufferHandle rt_tlas_stage_buf = p_list_->swrt.rt_tlas_nodes_stage_buf[rt_index_];
+    const Ren::BufferHandle rt_obj_instances_stage = p_list_->rt_obj_instances_stage[rt_index_];
+    const Ren::BufferHandle rt_tlas_stage = p_list_->swrt.rt_tlas_nodes_stage[rt_index_];
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
@@ -70,7 +70,7 @@ void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
 
         for (int i = 0; i < int(rt_obj_instances.count); ++i) {
             const auto &inst = rt_obj_instances.data[i];
-            const auto &[acc_main, acc_cold] = storages.acc_structs.Get(inst.blas);
+            const auto &[acc_main, acc_cold] = storages.acc_structs[inst.blas];
 
             const mesh_t &mesh = rt_meshes_[acc_main.sw.mesh_index];
             auto &new_mi = mesh_instances.emplace_back();
@@ -91,7 +91,7 @@ void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
 
         { // update instances buf
             const auto &[rt_obj_instances_stage_buf_main, rt_obj_instances_stage_buf_cold] =
-                storages.buffers.Get(rt_obj_instances_stage_buf);
+                storages.buffers[rt_obj_instances_stage];
 
             uint8_t *stage_mem =
                 Buffer_MapRange(api, rt_obj_instances_stage_buf_main, rt_obj_instances_stage_buf_cold,
@@ -104,12 +104,12 @@ void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
                 fg.log()->Error("ExBuildAccStructures: Failed to map rt obj instance buffer!");
             }
 
-            Ren::BufferMain &rt_obj_instances_buf_main = storages.buffers.Get(rt_obj_instances_buf).first;
+            Ren::BufferMain &rt_obj_instances_buf_main = storages.buffers[rt_obj_instances_buf].first;
             CopyBufferToBuffer(api, rt_obj_instances_stage_buf_main, fg.backend_frame() * SWRTObjInstancesBufChunkSize,
                                rt_obj_instances_buf_main, 0, rt_obj_instances_mem_size, fg.cmd_buf());
         }
         { // update nodes buf
-            const auto &[rt_tlas_stage_buf_main, rt_tlas_stage_buf_cold] = storages.buffers.Get(rt_tlas_stage_buf);
+            const auto &[rt_tlas_stage_buf_main, rt_tlas_stage_buf_cold] = storages.buffers[rt_tlas_stage];
 
             uint8_t *stage_mem =
                 Buffer_MapRange(api, rt_tlas_stage_buf_main, rt_tlas_stage_buf_cold,
@@ -122,14 +122,14 @@ void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
                 fg.log()->Error("ExBuildAccStructures: Failed to map rt tlas stage buffer!");
             }
 
-            Ren::BufferMain &rt_tlas_buf_main = storages.buffers.Get(rt_tlas_buf).first;
+            Ren::BufferMain &rt_tlas_buf_main = storages.buffers[rt_tlas].first;
             CopyBufferToBuffer(api, rt_tlas_stage_buf_main, fg.backend_frame() * SWRTTLASNodesBufChunkSize,
                                rt_tlas_buf_main, 0, rt_nodes_mem_size, fg.cmd_buf());
         }
     } else {
         static const gpu_bvh2_node_t dummy_node = {};
 
-        Ren::BufferMain &rt_tlas_buf_main = storages.buffers.Get(rt_tlas_buf).first;
+        Ren::BufferMain &rt_tlas_buf_main = storages.buffers[rt_tlas].first;
         Buffer_UpdateInPlace(api, rt_tlas_buf_main, 0, sizeof(dummy_node), &dummy_node, fg.cmd_buf());
     }
 }

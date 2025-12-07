@@ -10,7 +10,7 @@ void Ren::TransitionResourceStates(const ApiContext &, const StoragesRef &storag
 
     for (const TransitionInfo &tr : transitions) {
         if (std::holds_alternative<BufferHandle>(tr.p_res)) {
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(std::get<BufferHandle>(tr.p_res));
+            const auto &[buf_main, buf_cold] = storages.buffers[std::get<BufferHandle>(tr.p_res)];
 
             eResState old_state = tr.old_state;
             if (old_state == eResState::Undefined) {
@@ -40,7 +40,7 @@ void Ren::TransitionResourceStates(const ApiContext &, const StoragesRef &storag
                 buf_main.resource_state = tr.new_state;
             }
         } else if (std::holds_alternative<ImageHandle>(tr.p_res)) {
-            const auto &[img_main, img_cold] = storages.images.Get(std::get<ImageHandle>(tr.p_res));
+            const auto &[img_main, img_cold] = storages.images[std::get<ImageHandle>(tr.p_res)];
 
             eResState old_state = tr.old_state;
             if (old_state == eResState::Undefined) {

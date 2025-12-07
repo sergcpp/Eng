@@ -24,9 +24,9 @@ Eng::FgImgRWHandle Eng::Renderer::AddAutoexposurePasses(const FgImgROHandle hdr_
         histogram = histogram_clear.AddClearImageOutput("Exposure Histogram", desc);
 
         histogram_clear.set_execute_cb([histogram](const FgContext &fg) {
-            const Ren::ImageRWHandle histogram_tex = fg.AccessRWImage(histogram);
+            const Ren::ImageRWHandle _histogram = fg.AccessRWImage(histogram);
 
-            fg.ren_ctx().CmdClearImage(histogram_tex, {}, fg.cmd_buf());
+            fg.ren_ctx().CmdClearImage(_histogram, {}, fg.cmd_buf());
         });
     }
     { // Sample histogram
@@ -36,13 +36,13 @@ Eng::FgImgRWHandle Eng::Renderer::AddAutoexposurePasses(const FgImgROHandle hdr_
         histogram = histogram_sample.AddStorageImageOutput(histogram, Ren::eStage::ComputeShader);
 
         histogram_sample.set_execute_cb([this, input, histogram](const FgContext &fg) {
-            const Ren::ImageROHandle input_tex = fg.AccessROImage(input);
+            const Ren::ImageROHandle _input = fg.AccessROImage(input);
 
-            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(histogram);
+            const Ren::ImageRWHandle output = fg.AccessRWImage(histogram);
 
             const Ren::Binding bindings[] = {
-                {Ren::eBindTarget::TexSampled, HistogramSample::HDR_TEX_SLOT, {input_tex, linear_sampler_}},
-                {Ren::eBindTarget::ImageRW, HistogramSample::OUT_IMG_SLOT, output_tex}};
+                {Ren::eBindTarget::TexSampled, HistogramSample::HDR_TEX_SLOT, {_input, linear_sampler_}},
+                {Ren::eBindTarget::ImageRW, HistogramSample::OUT_IMG_SLOT, output}};
 
             HistogramSample::Params uniform_params = {};
             uniform_params.pre_exposure = view_state_.pre_exposure;
@@ -73,15 +73,15 @@ Eng::FgImgRWHandle Eng::Renderer::AddAutoexposurePasses(const FgImgROHandle hdr_
         data->exposure_prev = histogram_exposure.AddHistoryTextureInput(exposure, Ren::eStage::ComputeShader);
 
         histogram_exposure.set_execute_cb([this, data, adaptation_speed](const FgContext &fg) {
-            const Ren::ImageROHandle histogram_tex = fg.AccessROImage(data->histogram);
-            const Ren::ImageROHandle exposure_prev_tex = fg.AccessROImage(data->exposure_prev);
+            const Ren::ImageROHandle histogram = fg.AccessROImage(data->histogram);
+            const Ren::ImageROHandle exposure_prev = fg.AccessROImage(data->exposure_prev);
 
-            const Ren::ImageRWHandle exposure_tex = fg.AccessRWImage(data->exposure);
+            const Ren::ImageRWHandle exposure = fg.AccessRWImage(data->exposure);
 
             const Ren::Binding bindings[] = {
-                {Ren::eBindTarget::TexSampled, HistogramExposure::HISTOGRAM_TEX_SLOT, histogram_tex},
-                {Ren::eBindTarget::TexSampled, HistogramExposure::EXPOSURE_PREV_TEX_SLOT, exposure_prev_tex},
-                {Ren::eBindTarget::ImageRW, HistogramExposure::OUT_TEX_SLOT, exposure_tex}};
+                {Ren::eBindTarget::TexSampled, HistogramExposure::HISTOGRAM_TEX_SLOT, histogram},
+                {Ren::eBindTarget::TexSampled, HistogramExposure::EXPOSURE_PREV_TEX_SLOT, exposure_prev},
+                {Ren::eBindTarget::ImageRW, HistogramExposure::OUT_TEX_SLOT, exposure}};
 
             HistogramExposure::Params uniform_params = {};
             uniform_params.min_exposure = min_exposure_;
@@ -107,18 +107,18 @@ Eng::FgImgRWHandle Eng::Renderer::AddBloomPasses(const FgImgROHandle hdr_texture
         auto &bloom_downsample = fg_builder_.AddNode(node_name);
 
         struct PassData {
-            FgImgROHandle input_tex;
-            FgImgROHandle exposure_tex;
-            FgImgRWHandle output_tex;
+            FgImgROHandle input;
+            FgImgROHandle exposure;
+            FgImgRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         if (mip == 0) {
-            data->input_tex = bloom_downsample.AddTextureInput(hdr_texture, Ren::eStage::ComputeShader);
+            data->input = bloom_downsample.AddTextureInput(hdr_texture, Ren::eStage::ComputeShader);
         } else {
-            data->input_tex = bloom_downsample.AddTextureInput(downsampled[mip - 1], Ren::eStage::ComputeShader);
+            data->input = bloom_downsample.AddTextureInput(downsampled[mip - 1], Ren::eStage::ComputeShader);
         }
-        data->exposure_tex = bloom_downsample.AddTextureInput(exposure_texture, Ren::eStage::ComputeShader);
+        data->exposure = bloom_downsample.AddTextureInput(exposure_texture, Ren::eStage::ComputeShader);
 
         { // Image that holds downsampled bloom image
             FgImgDesc desc;
@@ -129,15 +129,15 @@ Eng::FgImgRWHandle Eng::Renderer::AddBloomPasses(const FgImgROHandle hdr_texture
             desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
             const std::string output_name = "Bloom Downsampled " + std::to_string(mip);
-            downsampled[mip] = data->output_tex =
+            downsampled[mip] = data->output =
                 bloom_downsample.AddStorageImageOutput(output_name, desc, Ren::eStage::ComputeShader);
         }
 
         bloom_downsample.set_execute_cb([this, data, mip, compressed](const FgContext &fg) {
-            const Ren::ImageROHandle input_tex = fg.AccessROImage(data->input_tex);
-            const Ren::ImageROHandle exposure_tex = fg.AccessROImage(data->exposure_tex);
+            const Ren::ImageROHandle input = fg.AccessROImage(data->input);
+            const Ren::ImageROHandle exposure = fg.AccessROImage(data->exposure);
 
-            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle output = fg.AccessRWImage(data->output);
 
             Bloom::Params uniform_params;
             uniform_params.img_size[0] = (view_state_.out_res[0] / 2) >> mip;
@@ -145,9 +145,9 @@ Eng::FgImgRWHandle Eng::Renderer::AddBloomPasses(const FgImgROHandle hdr_texture
             uniform_params.pre_exposure = view_state_.pre_exposure;
 
             const Ren::Binding bindings[] = {
-                {Ren::eBindTarget::TexSampled, Bloom::INPUT_TEX_SLOT, {input_tex, linear_sampler_}},
-                {Ren::eBindTarget::TexSampled, Bloom::EXPOSURE_TEX_SLOT, exposure_tex},
-                {Ren::eBindTarget::ImageRW, Bloom::OUT_IMG_SLOT, output_tex}};
+                {Ren::eBindTarget::TexSampled, Bloom::INPUT_TEX_SLOT, {input, linear_sampler_}},
+                {Ren::eBindTarget::TexSampled, Bloom::EXPOSURE_TEX_SLOT, exposure},
+                {Ren::eBindTarget::ImageRW, Bloom::OUT_IMG_SLOT, output}};
 
             const Ren::Vec3u grp_count =
                 Ren::Vec3u{(uniform_params.img_size[0] + Bloom::GRP_SIZE_X - 1u) / Bloom::GRP_SIZE_X,
@@ -164,18 +164,18 @@ Eng::FgImgRWHandle Eng::Renderer::AddBloomPasses(const FgImgROHandle hdr_texture
         auto &bloom_upsample = fg_builder_.AddNode(node_name);
 
         struct PassData {
-            FgImgROHandle input_tex;
-            FgImgROHandle blend_tex;
-            FgImgRWHandle output_tex;
+            FgImgROHandle input;
+            FgImgROHandle blend;
+            FgImgRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         if (mip == BloomMipCount - 2) {
-            data->input_tex = bloom_upsample.AddTextureInput(downsampled[mip + 1], Ren::eStage::ComputeShader);
+            data->input = bloom_upsample.AddTextureInput(downsampled[mip + 1], Ren::eStage::ComputeShader);
         } else {
-            data->input_tex = bloom_upsample.AddTextureInput(upsampled[mip + 1], Ren::eStage::ComputeShader);
+            data->input = bloom_upsample.AddTextureInput(upsampled[mip + 1], Ren::eStage::ComputeShader);
         }
-        data->blend_tex = bloom_upsample.AddTextureInput(downsampled[mip], Ren::eStage::ComputeShader);
+        data->blend = bloom_upsample.AddTextureInput(downsampled[mip], Ren::eStage::ComputeShader);
 
         { // Image that holds upsampled bloom image
             FgImgDesc desc;
@@ -186,24 +186,24 @@ Eng::FgImgRWHandle Eng::Renderer::AddBloomPasses(const FgImgROHandle hdr_texture
             desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
             const std::string output_name = "Bloom Upsampled " + std::to_string(mip);
-            upsampled[mip] = data->output_tex =
+            upsampled[mip] = data->output =
                 bloom_upsample.AddStorageImageOutput(output_name, desc, Ren::eStage::ComputeShader);
         }
 
         bloom_upsample.set_execute_cb([this, data, mip, compressed](const FgContext &fg) {
-            const Ren::ImageROHandle input_tex = fg.AccessROImage(data->input_tex);
-            const Ren::ImageROHandle blend_tex = fg.AccessROImage(data->blend_tex);
+            const Ren::ImageROHandle input = fg.AccessROImage(data->input);
+            const Ren::ImageROHandle blend = fg.AccessROImage(data->blend);
 
-            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle output = fg.AccessRWImage(data->output);
 
             Bloom::Params uniform_params;
             uniform_params.img_size[0] = (view_state_.out_res[0] / 2) >> mip;
             uniform_params.img_size[1] = (view_state_.out_res[1] / 2) >> mip;
             uniform_params.blend_weight = 1.0f / float(1 + BloomMipCount - 1 - mip);
 
-            const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, Bloom::INPUT_TEX_SLOT, input_tex},
-                                             {Ren::eBindTarget::TexSampled, Bloom::BLEND_TEX_SLOT, blend_tex},
-                                             {Ren::eBindTarget::ImageRW, Bloom::OUT_IMG_SLOT, output_tex}};
+            const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, Bloom::INPUT_TEX_SLOT, input},
+                                             {Ren::eBindTarget::TexSampled, Bloom::BLEND_TEX_SLOT, blend},
+                                             {Ren::eBindTarget::ImageRW, Bloom::OUT_IMG_SLOT, output}};
 
             const Ren::Vec3u grp_count =
                 Ren::Vec3u{(uniform_params.img_size[0] + Bloom::GRP_SIZE_X - 1u) / Bloom::GRP_SIZE_X,
@@ -222,16 +222,16 @@ Eng::FgImgRWHandle Eng::Renderer::AddSharpenPass(const FgImgROHandle input_tex, 
     auto &sharpen = fg_builder_.AddNode("SHARPEN");
 
     struct PassData {
-        FgImgROHandle input_tex;
-        FgImgROHandle exposure_tex;
-        FgImgRWHandle output_tex;
+        FgImgROHandle input;
+        FgImgROHandle exposure;
+        FgImgRWHandle output;
     };
 
     auto *data = fg_builder_.AllocTempData<PassData>();
-    data->input_tex = sharpen.AddTextureInput(input_tex, Ren::eStage::ComputeShader);
-    data->exposure_tex = sharpen.AddTextureInput(exposure_tex, Ren::eStage::ComputeShader);
+    data->input = sharpen.AddTextureInput(input_tex, Ren::eStage::ComputeShader);
+    data->exposure = sharpen.AddTextureInput(exposure_tex, Ren::eStage::ComputeShader);
 
-    FgImgRWHandle output_tex;
+    FgImgRWHandle output;
     { // Image that holds output image
         FgImgDesc desc;
         desc.w = view_state_.out_res[0];
@@ -240,15 +240,14 @@ Eng::FgImgRWHandle Eng::Renderer::AddSharpenPass(const FgImgROHandle input_tex, 
         desc.sampling.filter = Ren::eFilter::Bilinear;
         desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
-        output_tex = data->output_tex =
-            sharpen.AddStorageImageOutput("Sharpen Output", desc, Ren::eStage::ComputeShader);
+        output = data->output = sharpen.AddStorageImageOutput("Sharpen Output", desc, Ren::eStage::ComputeShader);
     }
 
     sharpen.set_execute_cb([this, data, compressed](const FgContext &fg) {
-        const Ren::ImageROHandle input_tex = fg.AccessROImage(data->input_tex);
-        const Ren::ImageROHandle exposure_tex = fg.AccessROImage(data->exposure_tex);
+        const Ren::ImageROHandle input = fg.AccessROImage(data->input);
+        const Ren::ImageROHandle exposure = fg.AccessROImage(data->exposure);
 
-        const Ren::ImageRWHandle &output_tex = fg.AccessRWImage(data->output_tex);
+        const Ren::ImageRWHandle output = fg.AccessRWImage(data->output);
 
         Sharpen::Params uniform_params;
         uniform_params.img_size[0] = view_state_.out_res[0];
@@ -257,9 +256,9 @@ Eng::FgImgRWHandle Eng::Renderer::AddSharpenPass(const FgImgROHandle input_tex, 
         uniform_params.pre_exposure = view_state_.pre_exposure;
 
         const Ren::Binding bindings[] = {
-            {Ren::eBindTarget::TexSampled, Sharpen::INPUT_TEX_SLOT, {input_tex, linear_sampler_}},
-            {Ren::eBindTarget::TexSampled, Sharpen::EXPOSURE_TEX_SLOT, exposure_tex},
-            {Ren::eBindTarget::ImageRW, Sharpen::OUT_IMG_SLOT, output_tex}};
+            {Ren::eBindTarget::TexSampled, Sharpen::INPUT_TEX_SLOT, {input, linear_sampler_}},
+            {Ren::eBindTarget::TexSampled, Sharpen::EXPOSURE_TEX_SLOT, exposure},
+            {Ren::eBindTarget::ImageRW, Sharpen::OUT_IMG_SLOT, output}};
 
         const Ren::Vec3u grp_count =
             Ren::Vec3u{(uniform_params.img_size[0] + Sharpen::GRP_SIZE_X - 1u) / Sharpen::GRP_SIZE_X,
@@ -269,5 +268,5 @@ Eng::FgImgRWHandle Eng::Renderer::AddSharpenPass(const FgImgROHandle input_tex, 
                         sizeof(uniform_params), fg.descr_alloc(), fg.log());
     });
 
-    return output_tex;
+    return output;
 }

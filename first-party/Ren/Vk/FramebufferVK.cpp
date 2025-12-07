@@ -15,7 +15,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
     int w = -1, h = -1;
 
     if (depth) {
-        const auto &[img_main, img_cold] = storages.images.Get(depth.img);
+        const auto &[img_main, img_cold] = storages.images[depth.img];
         image_views.push_back(img_main.views[0]);
         fb_cold.depth_attachment = depth;
         w = img_cold.params.w;
@@ -23,10 +23,10 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
     }
 
     if (stencil) {
-        const auto &[stencil_main, stencil_cold] = storages.images.Get(stencil.img);
+        const auto &[stencil_main, stencil_cold] = storages.images[stencil.img];
         fb_cold.stencil_attachment = stencil;
         if (depth) {
-            const auto &[depth_main, depth_cold] = storages.images.Get(depth.img);
+            const auto &[depth_main, depth_cold] = storages.images[depth.img];
             if (stencil_main.views[0] != depth_main.views[0]) {
                 image_views.push_back(stencil_main.views[0]);
             }
@@ -37,7 +37,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
 
     for (int i = 0; i < color_attachments.size(); i++) {
         if (color_attachments[i]) {
-            const auto &[img_main, img_cold] = storages.images.Get(color_attachments[i].img);
+            const auto &[img_main, img_cold] = storages.images[color_attachments[i].img];
             image_views.push_back(img_main.views[color_attachments[i].view_index]);
             fb_cold.color_attachments.push_back(color_attachments[i]);
             if (w == -1) {
@@ -56,7 +56,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
     fb_main.h = uint16_t(h);
 
     VkFramebufferCreateInfo framebuf_create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-    framebuf_create_info.renderPass = storages.render_passes.Get(render_pass).handle;
+    framebuf_create_info.renderPass = storages.render_passes[render_pass].handle;
     framebuf_create_info.attachmentCount = image_views.size();
     framebuf_create_info.pAttachments = image_views.data();
     framebuf_create_info.width = w;

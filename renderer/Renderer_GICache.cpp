@@ -29,36 +29,36 @@ void Eng::Renderer::AddGICachePasses(const CommonBuffers &common_buffers, const 
 
         auto *data = fg_builder_.AllocTempData<ExRTGICache::Args>();
         data->geo_data = rt_gi_cache.AddStorageReadonlyInput(rt_geo_instances_res, stage);
-        data->materials = rt_gi_cache.AddStorageReadonlyInput(common_buffers.materials_buf, stage);
+        data->materials = rt_gi_cache.AddStorageReadonlyInput(common_buffers.materials, stage);
         data->vtx_buf1 = rt_gi_cache.AddStorageReadonlyInput(common_buffers.vertex_buf1, stage);
         data->ndx_buf = rt_gi_cache.AddStorageReadonlyInput(common_buffers.indices_buf, stage);
         data->shared_data = rt_gi_cache.AddUniformBufferInput(common_buffers.shared_data, stage);
-        data->env_tex = rt_gi_cache.AddTextureInput(frame_textures.envmap, stage);
+        data->env = rt_gi_cache.AddTextureInput(frame_textures.envmap, stage);
         data->tlas_buf = rt_gi_cache.AddStorageReadonlyInput(acc_structs.rt_tlas_buf[int(eTLASIndex::Main)], stage);
-        data->lights_buf = rt_gi_cache.AddStorageReadonlyInput(common_buffers.lights, stage);
+        data->lights = rt_gi_cache.AddStorageReadonlyInput(common_buffers.lights, stage);
         data->shadow_depth = rt_gi_cache.AddTextureInput(frame_textures.shadow_depth, stage);
         data->shadow_color = rt_gi_cache.AddTextureInput(frame_textures.shadow_color, stage);
         data->ltc_luts = rt_gi_cache.AddTextureInput(frame_textures.ltc_luts, stage);
-        if (common_buffers.stoch_lights_buf) {
-            data->random_seq = rt_gi_cache.AddStorageReadonlyInput(common_buffers.pmj_samples_buf, stage);
-            data->stoch_lights_buf = rt_gi_cache.AddStorageReadonlyInput(common_buffers.stoch_lights_buf, stage);
-            data->light_nodes_buf = rt_gi_cache.AddStorageReadonlyInput(common_buffers.stoch_lights_nodes_buf, stage);
+        if (common_buffers.stoch_lights) {
+            data->random_seq = rt_gi_cache.AddStorageReadonlyInput(common_buffers.pmj_samples, stage);
+            data->stoch_lights = rt_gi_cache.AddStorageReadonlyInput(common_buffers.stoch_lights, stage);
+            data->light_nodes = rt_gi_cache.AddStorageReadonlyInput(common_buffers.stoch_lights_nodes, stage);
         }
-        data->cells_buf = rt_gi_cache.AddStorageReadonlyInput(common_buffers.rt_cells, stage);
-        data->items_buf = rt_gi_cache.AddStorageReadonlyInput(common_buffers.rt_items, stage);
+        data->cells = rt_gi_cache.AddStorageReadonlyInput(common_buffers.rt_cells, stage);
+        data->items = rt_gi_cache.AddStorageReadonlyInput(common_buffers.rt_items, stage);
 
         if (!ctx_.capabilities.hwrt) {
             data->swrt.root_node = acc_structs.swrt.rt_root_node;
-            data->swrt.rt_blas_buf = rt_gi_cache.AddStorageReadonlyInput(acc_structs.swrt.rt_blas_buf, stage);
-            data->swrt.prim_ndx_buf = rt_gi_cache.AddStorageReadonlyInput(acc_structs.swrt.rt_prim_indices_buf, stage);
-            data->swrt.mesh_instances_buf = rt_gi_cache.AddStorageReadonlyInput(rt_obj_instances_res, stage);
+            data->swrt.rt_blas = rt_gi_cache.AddStorageReadonlyInput(acc_structs.swrt.rt_blas_buf, stage);
+            data->swrt.prim_ndx = rt_gi_cache.AddStorageReadonlyInput(acc_structs.swrt.rt_prim_indices, stage);
+            data->swrt.mesh_instances = rt_gi_cache.AddStorageReadonlyInput(rt_obj_instances_res, stage);
         }
 
         data->tlas = acc_structs.rt_tlases[int(eTLASIndex::Main)];
 
-        data->irradiance_tex = rt_gi_cache.AddTextureInput(frame_textures.gi_cache_irradiance, Stg::ComputeShader);
-        data->distance_tex = rt_gi_cache.AddTextureInput(frame_textures.gi_cache_distance, Stg::ComputeShader);
-        data->offset_tex = rt_gi_cache.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
+        data->irradiance = rt_gi_cache.AddTextureInput(frame_textures.gi_cache_irradiance, Stg::ComputeShader);
+        data->distance = rt_gi_cache.AddTextureInput(frame_textures.gi_cache_distance, Stg::ComputeShader);
+        data->offset = rt_gi_cache.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
 
         data->view_state = &view_state_;
         data->partial_update = (settings.gi_cache_update_mode == eGICacheUpdateMode::Partial);
@@ -73,7 +73,7 @@ void Eng::Renderer::AddGICachePasses(const CommonBuffers &common_buffers, const 
             desc.flags = Ren::eImgFlags::Array;
             desc.usage = Ren::Bitmask(Ren::eImgUsage::Storage) | Ren::eImgUsage::Sampled | Ren::eImgUsage::Transfer;
 
-            ray_data = data->out_ray_data_tex = rt_gi_cache.AddStorageImageOutput("Probe Volume RayData", desc, stage);
+            ray_data = data->out_ray_data = rt_gi_cache.AddStorageImageOutput("Probe Volume RayData", desc, stage);
         }
 
         rt_gi_cache.make_executor<ExRTGICache>(&view_state_, &bindless, data);
@@ -88,25 +88,25 @@ void Eng::Renderer::AddGICachePasses(const CommonBuffers &common_buffers, const 
 
         struct PassData {
             FgImgROHandle ray_data;
-            FgImgROHandle offset_tex;
-            FgImgRWHandle output_tex;
+            FgImgROHandle offset;
+            FgImgRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         data->ray_data = probe_blend.AddTextureInput(ray_data, Stg::ComputeShader);
-        data->offset_tex = probe_blend.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
-        frame_textures.gi_cache_irradiance = data->output_tex =
+        data->offset = probe_blend.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
+        frame_textures.gi_cache_irradiance = data->output =
             probe_blend.AddStorageImageOutput(frame_textures.gi_cache_irradiance, Stg::ComputeShader);
 
         probe_blend.set_execute_cb([this, data, &persistent_data](const FgContext &fg) {
-            const Ren::ImageROHandle ray_data_tex = fg.AccessROImage(data->ray_data);
-            const Ren::ImageROHandle offset_tex = fg.AccessROImage(data->offset_tex);
+            const Ren::ImageROHandle ray_data = fg.AccessROImage(data->ray_data);
+            const Ren::ImageROHandle offset = fg.AccessROImage(data->offset);
 
-            const Ren::ImageRWHandle out_irr_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle out_irr = fg.AccessRWImage(data->output);
 
-            const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeBlend::RAY_DATA_TEX_SLOT, ray_data_tex},
-                                             {Trg::TexSampled, ProbeBlend::OFFSET_TEX_SLOT, offset_tex},
-                                             {Trg::ImageRW, ProbeBlend::OUT_IMG_SLOT, out_irr_tex}};
+            const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeBlend::RAY_DATA_TEX_SLOT, ray_data},
+                                             {Trg::TexSampled, ProbeBlend::OFFSET_TEX_SLOT, offset},
+                                             {Trg::ImageRW, ProbeBlend::OUT_IMG_SLOT, out_irr}};
 
             const int volume_to_update = p_list_->volume_to_update;
             const bool partial = (settings.gi_cache_update_mode == eGICacheUpdateMode::Partial);
@@ -129,16 +129,16 @@ void Eng::Renderer::AddGICachePasses(const CommonBuffers &common_buffers, const 
             // total irradiance
             uniform_params.input_offset = 0;
             uniform_params.output_offset = 0;
-            DispatchCompute(fg.cmd_buf(), pi_probe_blend_[bool(persistent_data.stoch_lights_buf)][partial],
-                            fg.storages(), Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y},
-                            bindings, &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_probe_blend_[bool(persistent_data.stoch_lights)][partial], fg.storages(),
+                            Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y}, bindings,
+                            &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
 
             // diffuse-only irradiance
             uniform_params.input_offset = PROBE_VOLUME_RES_Y;
             uniform_params.output_offset = PROBE_VOLUMES_COUNT * PROBE_VOLUME_RES_Y;
-            DispatchCompute(fg.cmd_buf(), pi_probe_blend_[bool(persistent_data.stoch_lights_buf)][partial],
-                            fg.storages(), Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y},
-                            bindings, &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_probe_blend_[bool(persistent_data.stoch_lights)][partial], fg.storages(),
+                            Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y}, bindings,
+                            &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
 
@@ -147,26 +147,26 @@ void Eng::Renderer::AddGICachePasses(const CommonBuffers &common_buffers, const 
 
         struct PassData {
             FgImgROHandle ray_data;
-            FgImgROHandle offset_tex;
-            FgImgRWHandle output_tex;
+            FgImgROHandle offset;
+            FgImgRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         data->ray_data = probe_blend.AddTextureInput(ray_data, Stg::ComputeShader);
-        data->offset_tex = probe_blend.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
+        data->offset = probe_blend.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
 
-        frame_textures.gi_cache_distance = data->output_tex =
+        frame_textures.gi_cache_distance = data->output =
             probe_blend.AddStorageImageOutput(frame_textures.gi_cache_distance, Stg::ComputeShader);
 
         probe_blend.set_execute_cb([this, data, &persistent_data](const FgContext &fg) {
-            const Ren::ImageROHandle ray_data_tex = fg.AccessROImage(data->ray_data);
-            const Ren::ImageROHandle offset_tex = fg.AccessROImage(data->offset_tex);
+            const Ren::ImageROHandle ray_data = fg.AccessROImage(data->ray_data);
+            const Ren::ImageROHandle offset = fg.AccessROImage(data->offset);
 
-            const Ren::ImageRWHandle out_dist_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle out_dist = fg.AccessRWImage(data->output);
 
-            const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeBlend::RAY_DATA_TEX_SLOT, ray_data_tex},
-                                             {Trg::TexSampled, ProbeBlend::OFFSET_TEX_SLOT, offset_tex},
-                                             {Trg::ImageRW, ProbeBlend::OUT_IMG_SLOT, out_dist_tex}};
+            const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeBlend::RAY_DATA_TEX_SLOT, ray_data},
+                                             {Trg::TexSampled, ProbeBlend::OFFSET_TEX_SLOT, offset},
+                                             {Trg::ImageRW, ProbeBlend::OUT_IMG_SLOT, out_dist}};
 
             const int volume_to_update = p_list_->volume_to_update;
             const bool partial = (settings.gi_cache_update_mode == eGICacheUpdateMode::Partial);
@@ -196,22 +196,22 @@ void Eng::Renderer::AddGICachePasses(const CommonBuffers &common_buffers, const 
 
         struct PassData {
             FgImgROHandle ray_data;
-            FgImgRWHandle output_tex;
+            FgImgRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         data->ray_data = probe_relocate.AddTextureInput(ray_data, Stg::ComputeShader);
 
-        frame_textures.gi_cache_offset = data->output_tex =
+        frame_textures.gi_cache_offset = data->output =
             probe_relocate.AddStorageImageOutput(frame_textures.gi_cache_offset, Stg::ComputeShader);
 
         probe_relocate.set_execute_cb([this, data, &persistent_data](const FgContext &fg) {
-            const Ren::ImageROHandle ray_data_tex = fg.AccessROImage(data->ray_data);
+            const Ren::ImageROHandle ray_data = fg.AccessROImage(data->ray_data);
 
-            const Ren::ImageRWHandle out_dist_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle out_dist = fg.AccessRWImage(data->output);
 
-            const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeRelocate::RAY_DATA_TEX_SLOT, ray_data_tex},
-                                             {Trg::ImageRW, ProbeRelocate::OUT_IMG_SLOT, out_dist_tex}};
+            const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeRelocate::RAY_DATA_TEX_SLOT, ray_data},
+                                             {Trg::ImageRW, ProbeRelocate::OUT_IMG_SLOT, out_dist}};
 
             const int volume_to_update = p_list_->volume_to_update;
             const bool partial = (settings.gi_cache_update_mode == eGICacheUpdateMode::Partial);
@@ -248,25 +248,25 @@ void Eng::Renderer::AddGICachePasses(const CommonBuffers &common_buffers, const 
         struct PassData {
             FgBufROHandle shared_data;
             FgImgROHandle ray_data;
-            FgImgRWHandle output_tex;
+            FgImgRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         data->shared_data = probe_classify.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
         data->ray_data = probe_classify.AddTextureInput(ray_data, Stg::ComputeShader);
 
-        frame_textures.gi_cache_offset = data->output_tex =
+        frame_textures.gi_cache_offset = data->output =
             probe_classify.AddStorageImageOutput(frame_textures.gi_cache_offset, Stg::ComputeShader);
 
         probe_classify.set_execute_cb([this, data, &persistent_data](const FgContext &fg) {
-            const Ren::BufferROHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::ImageROHandle ray_data_tex = fg.AccessROImage(data->ray_data);
+            const Ren::BufferROHandle shared_data = fg.AccessROBuffer(data->shared_data);
+            const Ren::ImageROHandle ray_data = fg.AccessROImage(data->ray_data);
 
-            const Ren::ImageRWHandle out_dist_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle out_dist = fg.AccessRWImage(data->output);
 
-            const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, shared_data_buf},
-                                             {Trg::TexSampled, ProbeClassify::RAY_DATA_TEX_SLOT, ray_data_tex},
-                                             {Trg::ImageRW, ProbeClassify::OUT_IMG_SLOT, out_dist_tex}};
+            const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, shared_data},
+                                             {Trg::TexSampled, ProbeClassify::RAY_DATA_TEX_SLOT, ray_data},
+                                             {Trg::ImageRW, ProbeClassify::OUT_IMG_SLOT, out_dist}};
 
             const int volume_to_update = p_list_->volume_to_update;
             const bool partial = (settings.gi_cache_update_mode == eGICacheUpdateMode::Partial);

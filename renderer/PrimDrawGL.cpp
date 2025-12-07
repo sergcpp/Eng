@@ -31,12 +31,12 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
             .FindOrCreate(ctx, {}, new_rast_state.depth.test_enabled ? depth_rt : Ren::RenderTarget{},
                           new_rast_state.stencil.enabled ? depth_rt : Ren::RenderTarget{}, color_rts);
 
-    const Ren::FramebufferMain &fb_main = storages.framebuffers.Get(fb).first;
+    const Ren::FramebufferMain &fb_main = storages.framebuffers[fb].first;
     glBindFramebuffer(GL_FRAMEBUFFER, fb_main.id);
 
     for (const auto &b : bindings) {
         if (b.trg == Ren::eBindTarget::Tex || b.trg == Ren::eBindTarget::TexSampled) {
-            const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
+            const auto &[img_main, img_cold] = storages.images[b.handle.img];
             auto texture_id = GLuint(img_main.img);
             if (b.handle.view_index) {
                 texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
@@ -45,12 +45,12 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
                                        texture_id);
 
             if (b.handle.sampler) {
-                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).id);
+                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers[b.handle.sampler].id);
             } else {
                 ren_glBindSampler(GLuint(b.loc + b.offset), 0);
             }
         } else if (b.trg == Ren::eBindTarget::UBuf) {
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers[b.handle.buf];
             if (b.offset || b.size) {
                 glBindBufferRange(GL_UNIFORM_BUFFER, b.loc, buf_main.buf, b.offset,
                                   b.size ? b.size : (buf_cold.size - b.offset));
@@ -58,27 +58,27 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
                 glBindBufferBase(GL_UNIFORM_BUFFER, b.loc, buf_main.buf);
             }
         } else if (b.trg == Ren::eBindTarget::SBufRO || b.trg == Ren::eBindTarget::SBufRW) {
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers[b.handle.buf];
             glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf, b.offset,
                               b.size ? b.size : (buf_cold.size - b.offset));
         } else if (b.trg == Ren::eBindTarget::UTBuf) {
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers[b.handle.buf];
             ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, GLuint(b.loc),
                                        GLuint(buf_main.views[b.handle.view_index].second));
         } else if (b.trg == Ren::eBindTarget::STBufRO) {
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers[b.handle.buf];
             glBindImageTexture(GLuint(b.loc + b.offset), GLuint(buf_main.views[b.handle.view_index].second), 0,
                                GL_FALSE, 0, GL_READ_ONLY,
                                GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == Ren::eBindTarget::STBufRW) {
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers[b.handle.buf];
             glBindImageTexture(GLuint(b.loc + b.offset), GLuint(buf_main.views[b.handle.view_index].second), 0,
                                GL_FALSE, 0, GL_READ_WRITE,
                                GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == Ren::eBindTarget::Sampler) {
-            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).id);
+            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers[b.handle.sampler].id);
         } else if (b.trg == Ren::eBindTarget::ImageRO || b.trg == Ren::eBindTarget::ImageRW) {
-            const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
+            const auto &[img_main, img_cold] = storages.images[b.handle.img];
             auto texture_id = GLuint(img_main.img);
             if (b.handle.view_index) {
                 texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
@@ -89,7 +89,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
         }
     }
 
-    const Ren::ProgramMain &p_main = ctx.programs().Get(p).first;
+    const Ren::ProgramMain &p_main = storages.programs[p].first;
     glUseProgram(p_main.id);
 
     const Ren::ApiContext &api = ctx.api();
@@ -125,13 +125,13 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
     const Ren::BufferROHandle indices_buf = ctx.default_indices_buf().handle();
 
     if (prim == ePrim::Quad) {
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(fs_quad_vtx_input_);
+        const Ren::VertexInput &vi = storages.vtx_inputs[fs_quad_vtx_input_];
 
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_buffers, indices_buf);
         glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, (const GLvoid *)uintptr_t(quad_ndx_.offset),
                                 instance_count);
     } else if (prim == ePrim::Sphere) {
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(sphere_vtx_input_);
+        const Ren::VertexInput &vi = storages.vtx_inputs[sphere_vtx_input_];
 
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_buffers, indices_buf);
         glDrawElementsInstanced(GL_TRIANGLES, GLsizei(SphereIndicesCount), GL_UNSIGNED_SHORT,
@@ -150,7 +150,7 @@ void Eng::PrimDraw::ClearTarget(Ren::CommandBuffer cmd_buf, const Ren::RenderTar
     const Ren::FramebufferHandle fb =
         (framebuffers ? *framebuffers : framebuffers_).FindOrCreate(sh_->ren_ctx(), {}, depth_rt, depth_rt, color_rts);
 
-    const Ren::FramebufferMain &fb_main = sh_->ren_ctx().framebuffers().Get(fb).first;
+    const Ren::FramebufferMain &fb_main = sh_->ren_ctx().storages().framebuffers[fb].first;
     glBindFramebuffer(GL_FRAMEBUFFER, fb_main.id);
 
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);

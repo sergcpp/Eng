@@ -273,7 +273,7 @@ bool Ren::Context::Init(const int w, const int h, ILog *log, int validation_leve
         params.flags |= eImgFlags::NoOwnership;
 
         ImageHandle new_img = images_.Emplace();
-        const auto &[img_main, img_cold] = images_.Get(new_img);
+        const auto &[img_main, img_cold] = images_[new_img];
 
         img_main.img = api_->present_images[i];
         img_main.views.push_back(api_->present_image_views[i]);
@@ -366,7 +366,7 @@ void Ren::Context::Resize(const int w, const int h) {
         params.flags |= eImgFlags::NoOwnership;
 
         ImageHandle new_img = images_.Emplace();
-        const auto &[img_main, img_cold] = images_.Get(new_img);
+        const auto &[img_main, img_cold] = images_[new_img];
 
         img_main.img = api_->present_images[i];
         img_main.views.push_back(api_->present_image_views[i]);

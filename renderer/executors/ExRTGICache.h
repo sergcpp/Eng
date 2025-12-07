@@ -16,32 +16,32 @@ class ExRTGICache final : public FgExecutor {
         FgBufROHandle vtx_buf1;
         FgBufROHandle ndx_buf;
         FgBufROHandle shared_data;
-        FgImgROHandle env_tex;
-        FgBufROHandle lights_buf;
+        FgImgROHandle env;
+        FgBufROHandle lights;
         FgImgROHandle shadow_depth, shadow_color;
         FgImgROHandle ltc_luts;
-        FgBufROHandle cells_buf;
-        FgBufROHandle items_buf;
+        FgBufROHandle cells;
+        FgBufROHandle items;
         FgBufROHandle tlas_buf; // fake read for now
 
         Ren::AccStructROHandle tlas;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgBufROHandle rt_blas_buf;
-            FgBufROHandle prim_ndx_buf;
-            FgBufROHandle mesh_instances_buf;
+            FgBufROHandle rt_blas;
+            FgBufROHandle prim_ndx;
+            FgBufROHandle mesh_instances;
         } swrt;
 
-        FgImgROHandle irradiance_tex;
-        FgImgROHandle distance_tex;
-        FgImgROHandle offset_tex;
+        FgImgROHandle irradiance;
+        FgImgROHandle distance;
+        FgImgROHandle offset;
 
         FgBufROHandle random_seq;
-        FgBufROHandle stoch_lights_buf;
-        FgBufROHandle light_nodes_buf;
+        FgBufROHandle stoch_lights;
+        FgBufROHandle light_nodes;
 
-        FgImgRWHandle out_ray_data_tex;
+        FgImgRWHandle out_ray_data;
 
         const view_state_t *view_state = nullptr;
         bool partial_update = false;

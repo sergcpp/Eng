@@ -23,13 +23,13 @@ void Eng::ExOITDepthPeel::DrawTransparent(const FgContext &fg, const Ren::ImageR
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
     const Ren::ImageROHandle dummy_white = fg.AccessROImage(dummy_white_);
 
-    const Ren::BufferHandle out_depth_buf = fg.AccessRWBuffer(out_depth_buf_);
+    const Ren::BufferHandle out_depth = fg.AccessRWBuffer(out_depth_);
 
     if ((*p_list_)->alpha_blend_start_index == -1) {
         return;
@@ -53,32 +53,32 @@ void Eng::ExOITDepthPeel::DrawTransparent(const FgContext &fg, const Ren::ImageR
     const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer({}, depth_tex, depth_tex, {});
 
     // Bind main buffer for drawing
-    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb).first.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[fb].first.id);
 
-    const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
+    const Ren::BufferMain &materials_buf_main = storages.buffers[materials].first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
     if (fg.ren_ctx().capabilities.bindless_texture) {
-        const Ren::BufferMain &buf_main = storages.buffers.Get(bindless_tex_->rt_inline_textures.buf).first;
+        const Ren::BufferMain &buf_main = storages.buffers[bindless_tex_->rt_inline_textures.buf].first;
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX, GLuint(buf_main.buf));
     }
 
-    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
+    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers[unif_shared_data].first;
     glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
 
     if ((*p_list_)->decals_atlas) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_DECAL_TEX, (*p_list_)->decals_atlas->tex_id(0));
     }
 
-    const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
+    const Ren::BufferMain &instances_buf_main = storages.buffers[instances].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
-    const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
+    const Ren::BufferMain &instance_indices_buf_main = storages.buffers[instance_indices].first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
 
-    const Ren::BufferMain &out_depth_buf_main = storages.buffers.Get(out_depth_buf).first;
+    const Ren::BufferMain &out_depth_buf_main = storages.buffers[out_depth].first;
     glBindImageTexture(GLuint(DepthPeel::OUT_IMG_BUF_SLOT), GLuint(out_depth_buf_main.views[0].second), 0, GL_FALSE, 0,
                        GL_READ_WRITE, GL_R32UI);
 
-    const Ren::ImageMain &dummy_white_main = storages.images.Get(dummy_white).first;
+    const Ren::ImageMain &dummy_white_main = storages.images[dummy_white].first;
 
     const Ren::Span<const basic_draw_batch_t> batches = {(*p_list_)->basic_batches};
     const Ren::Span<const uint32_t> batch_indices = {(*p_list_)->basic_batch_indices};
@@ -92,13 +92,13 @@ void Eng::ExOITDepthPeel::DrawTransparent(const FgContext &fg, const Ren::ImageR
     { // Simple meshes
         Ren::DebugMarker _m(fg.ren_ctx().api(), fg.cmd_buf(), "SIMPLE");
 
-        const Ren::PipelineMain &pi_simple0_main = storages.pipelines.Get(pi_simple_[0]).first;
-        const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
-        const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
+        const Ren::PipelineMain &pi_simple0_main = storages.pipelines[pi_simple_[0]].first;
+        const Ren::PipelineMain &pi_simple1_main = storages.pipelines[pi_simple_[1]].first;
+        const Ren::PipelineMain &pi_simple2_main = storages.pipelines[pi_simple_[2]].first;
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_simple0_main.vtx_input];
         VertexInput_BindBuffers(fg.ren_ctx().api(), vi, storages.buffers, attrib_bufs, ndx_buf);
-        glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
+        glUseProgram(storages.programs[pi_simple0_main.prog].first.id);
 
         { // solid one-sided
             Ren::DebugMarker _mm(fg.ren_ctx().api(), fg.cmd_buf(), "SOLID-ONE-SIDED");

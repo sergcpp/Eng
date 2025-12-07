@@ -10,39 +10,39 @@
 #include "../shaders/rt_shadows_interface.h"
 
 void Eng::ExRTShadows::Execute_HWRT(const FgContext &fg) {
-    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle geo_data = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(args_->noise_tex);
-    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::ImageROHandle normal_tex = fg.AccessROImage(args_->normal_tex);
+    const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
+    const Ren::ImageROHandle noise = fg.AccessROImage(args_->noise);
+    const Ren::ImageROHandle depth = fg.AccessROImage(args_->depth);
+    const Ren::ImageROHandle normal = fg.AccessROImage(args_->normal);
     [[maybe_unused]] const Ren::BufferROHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(args_->tile_list_buf);
-    const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
+    const Ren::BufferROHandle tile_list = fg.AccessROBuffer(args_->tile_list);
+    const Ren::BufferROHandle indir_args = fg.AccessROBuffer(args_->indir_args);
 
-    const Ren::ImageRWHandle out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
+    const Ren::ImageRWHandle out_shadow = fg.AccessRWImage(args_->out_shadow);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
     VkCommandBuffer cmd_buf = fg.cmd_buf();
 
-    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-                                     {Ren::eBindTarget::TexSampled, RTShadows::NOISE_TEX_SLOT, noise_tex},
-                                     {Ren::eBindTarget::TexSampled, RTShadows::DEPTH_TEX_SLOT, {depth_tex, 1}},
-                                     {Ren::eBindTarget::TexSampled, RTShadows::NORM_TEX_SLOT, normal_tex},
+    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
+                                     {Ren::eBindTarget::TexSampled, RTShadows::NOISE_TEX_SLOT, noise},
+                                     {Ren::eBindTarget::TexSampled, RTShadows::DEPTH_TEX_SLOT, {depth, 1}},
+                                     {Ren::eBindTarget::TexSampled, RTShadows::NORM_TEX_SLOT, normal},
                                      {Ren::eBindTarget::AccStruct, RTShadows::TLAS_SLOT, args_->tlas},
-                                     {Ren::eBindTarget::SBufRO, RTShadows::GEO_DATA_BUF_SLOT, geo_data_buf},
-                                     {Ren::eBindTarget::SBufRO, RTShadows::MATERIAL_BUF_SLOT, materials_buf},
+                                     {Ren::eBindTarget::SBufRO, RTShadows::GEO_DATA_BUF_SLOT, geo_data},
+                                     {Ren::eBindTarget::SBufRO, RTShadows::MATERIAL_BUF_SLOT, materials},
                                      {Ren::eBindTarget::SBufRO, RTShadows::VTX_BUF1_SLOT, vtx_buf1},
                                      {Ren::eBindTarget::SBufRO, RTShadows::NDX_BUF_SLOT, ndx_buf},
-                                     {Ren::eBindTarget::SBufRO, RTShadows::TILE_LIST_SLOT, tile_list_buf},
-                                     {Ren::eBindTarget::ImageRW, RTShadows::OUT_SHADOW_IMG_SLOT, out_shadow_tex}};
+                                     {Ren::eBindTarget::SBufRO, RTShadows::TILE_LIST_SLOT, tile_list},
+                                     {Ren::eBindTarget::ImageRW, RTShadows::OUT_SHADOW_IMG_SLOT, out_shadow}};
 
-    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_rt_shadows_).first;
-    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
+    const Ren::PipelineMain &pi = storages.pipelines[pi_rt_shadows_].first;
+    const Ren::ProgramMain &pr = storages.programs[pi.prog].first;
 
     VkDescriptorSet descr_sets[2];
     descr_sets[0] = PrepareDescriptorSet(api, storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
@@ -57,6 +57,6 @@ void Eng::ExRTShadows::Execute_HWRT(const FgContext &fg) {
 
     api.vkCmdPushConstants(cmd_buf, pi.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uniform_params), &uniform_params);
 
-    const Ren::BufferMain &indir_args_buf_main = storages.buffers.Get(indir_args_buf).first;
+    const Ren::BufferMain &indir_args_buf_main = storages.buffers[indir_args].first;
     api.vkCmdDispatchIndirect(cmd_buf, indir_args_buf_main.buf, 0);
 }

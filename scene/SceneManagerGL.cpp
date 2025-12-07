@@ -15,7 +15,10 @@ namespace SceneManagerConstants {} // namespace SceneManagerConstants
 namespace SceneManagerInternal {} // namespace SceneManagerInternal
 
 bool Eng::SceneManager::UpdateMaterialsBuffer() {
-    const uint32_t max_mat_count = ren_ctx_.materials().capacity();
+    const Ren::ApiContext &api = ren_ctx_.api();
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
+
+    const uint32_t max_mat_count = storages.materials.capacity();
     const uint32_t req_mat_buf_size = std::max(1u, max_mat_count) * sizeof(material_data_t);
 
     const uint32_t max_tex_count = std::max(1u, MAX_TEX_PER_MATERIAL * max_mat_count);
@@ -26,18 +29,14 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
             ren_ctx_.CreateBuffer(Ren::String{"Textures Buffer"}, Ren::eBufType::Storage, req_tex_buf_size);
     }
 
-    const Ren::ApiContext &api = ren_ctx_.api();
-    const Ren::StoragesRef &storages = ren_ctx_.storages();
-
-    const auto &[mat_buf_main, mat_buf_cold] = storages.buffers.Get(scene_data_.persistent_data->materials_buf);
-    if (mat_buf_cold.size < req_mat_buf_size) {
-        if (!Buffer_Resize(api, mat_buf_main, mat_buf_cold, req_mat_buf_size, ren_ctx_.log())) {
+    const auto &[mat_main, mat_cold] = storages.buffers[scene_data_.persistent_data->materials];
+    if (mat_cold.size < req_mat_buf_size) {
+        if (!Buffer_Resize(api, mat_main, mat_cold, req_mat_buf_size, ren_ctx_.log())) {
             return false;
         }
     }
 
-    const auto &[textures_buf_main, textures_buf_cold] =
-        storages.buffers.Get(scene_data_.persistent_data->textures_buf);
+    const auto &[textures_buf_main, textures_buf_cold] = storages.buffers[scene_data_.persistent_data->textures_buf];
     if (textures_buf_cold.size < req_tex_buf_size) {
         Buffer_Resize(api, textures_buf_main, textures_buf_cold, req_tex_buf_size, ren_ctx_.log());
     }
@@ -88,17 +87,17 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
         texture_data =
             reinterpret_cast<GLuint64 *>(Buffer_Map(api, textures_upload_buf_main, textures_upload_buf_cold));
 
-        white_tex_handle = glGetTextureHandleARB(storages.images.Get(white_tex_).first.img);
+        white_tex_handle = glGetTextureHandleARB(storages.images[white_tex_].first.img);
         if (!glIsTextureHandleResidentARB(white_tex_handle)) {
             glMakeTextureHandleResidentARB(white_tex_handle);
         }
-        error_tex_handle = glGetTextureHandleARB(storages.images.Get(error_tex_).first.img);
+        error_tex_handle = glGetTextureHandleARB(storages.images[error_tex_].first.img);
         if (!glIsTextureHandleResidentARB(error_tex_handle)) {
             glMakeTextureHandleResidentARB(error_tex_handle);
         }
     }
 
-    const Ren::Sampler &sampler = storages.samplers.Get(scene_data_.persistent_data->trilinear_sampler);
+    const Ren::Sampler &sampler = storages.samplers[scene_data_.persistent_data->trilinear_sampler];
 
     for (uint32_t i = update_range.first; i < update_range.second; ++i) {
         const uint32_t rel_i = i - update_range.first;
@@ -109,8 +108,8 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
             for (; j < int(mat_main.textures.size()); ++j) {
                 material_data[rel_i].texture_indices[j] = i * MAX_TEX_PER_MATERIAL + j;
                 if (texture_data) {
-                    const GLuint64 handle = glGetTextureSamplerHandleARB(
-                        storages.images.Get(mat_main.textures[j]).first.img, sampler.id);
+                    const GLuint64 handle =
+                        glGetTextureSamplerHandleARB(storages.images[mat_main.textures[j]].first.img, sampler.id);
                     if (!glIsTextureHandleResidentARB(handle)) {
                         glMakeTextureHandleResidentARB(handle);
                     }
@@ -150,7 +149,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
 
     Buffer_Unmap(api, materials_upload_buf_main, materials_upload_buf_cold);
 
-    Buffer_UpdateSubRegion(api, mat_buf_main, mat_buf_cold, update_range.first * sizeof(material_data_t),
+    Buffer_UpdateSubRegion(api, mat_main, mat_cold, update_range.first * sizeof(material_data_t),
                            (update_range.second - update_range.first) * sizeof(material_data_t),
                            materials_upload_buf_main);
 

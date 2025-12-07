@@ -10,7 +10,6 @@
 #define SWRT_SUBGROUP 1
 #endif
 
-#define ENABLE_SHEEN 0
 #define ENABLE_CLEARCOAT 0
 #define MIN_SPEC_ROUGHNESS 0.4
 
@@ -21,7 +20,7 @@
 #include "swrt_common.glsl"
 #include "texturing_common.glsl"
 #include "principled_common.glsl"
-#include "gi_common.glsl"
+#include "rt_diffuse_common.glsl"
 #include "gi_cache_common.glsl"
 #include "pmj_common.glsl"
 #include "light_bvh_common.glsl"

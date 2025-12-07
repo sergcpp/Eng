@@ -223,7 +223,7 @@ bool Eng::ScriptedSequence::Load(const std::string_view lookup_name, const Sys::
 
                         action.sound_ref = snd_ctx_.LoadBuffer(name, {&samples[0], size}, params, &status);
                         assert(status == Snd::eBufLoadStatus::Found || status == Snd::eBufLoadStatus::CreatedFromData);
-                        //action.sound_wave_tex = RenderSoundWave(name, &samples[0], samples_count, params);
+                        // action.sound_wave_tex = RenderSoundWave(name, &samples[0], samples_count, params);
                     }
                 }
 
@@ -353,7 +353,7 @@ void Eng::ScriptedSequence::Save(Sys::JsObject &js_seq) {
                         js_action.Insert("rot_end", std::move(js_rot_end));
                     }
                     if (action.anim) {
-                        const auto &[anim_main, anim_cold] = ren_ctx_.anims().Get(action.anim);
+                        const auto &[anim_main, anim_cold] = ren_ctx_.storages().anims[action.anim];
                         js_action.Insert("anim", Sys::JsString{anim_cold.name});
                     }
                     if (!action.caption.empty()) {
@@ -418,6 +418,7 @@ void Eng::ScriptedSequence::Save(Sys::JsObject &js_seq) {
 }
 
 void Eng::ScriptedSequence::Reset() {
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
     const SceneData &scene = scene_manager_.scene_data();
 
     // auto *transforms = (Transform *)scene.comp_store[CompTransform]->Get(0);
@@ -439,9 +440,9 @@ void Eng::ScriptedSequence::Reset() {
                 Eng::Drawable &dr = drawables[actor->components[CompDrawable]];
 
                 if (action.anim) {
-                    Ren::MeshCold &target_mesh = ren_ctx_.meshes().Get(dr.mesh).second;
+                    Ren::MeshCold &target_mesh = storages.meshes[dr.mesh].second;
                     Ren::Skeleton &target_skel = target_mesh.skel;
-                    action.anim_id = target_skel.AddAnimSequence(action.anim, ren_ctx_.anims());
+                    action.anim_id = target_skel.AddAnimSequence(action.anim, storages.anims);
                 }
 
                 if (actor->comp_mask & CompSoundSourceBit) {
@@ -450,9 +451,9 @@ void Eng::ScriptedSequence::Reset() {
                 }
             } else if (track.type == eTrackType::Camera) {
                 if (action.anim) {
-                    Ren::MeshCold &target_mesh = ren_ctx_.meshes().Get(scene_manager_.cam_rig()).second;
+                    Ren::MeshCold &target_mesh = storages.meshes[scene_manager_.cam_rig()].second;
                     Ren::Skeleton &target_skel = target_mesh.skel;
-                    action.anim_id = target_skel.AddAnimSequence(action.anim, ren_ctx_.anims());
+                    action.anim_id = target_skel.AddAnimSequence(action.anim, storages.anims);
                 }
             }
 
@@ -496,6 +497,7 @@ void Eng::ScriptedSequence::Update(const double cur_time_s, bool playing) {
 
 void Eng::ScriptedSequence::UpdateAction(const uint32_t target_actor, SeqAction &action, double time_cur_s,
                                          bool playing) {
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
     const SceneData &scene = scene_manager_.scene_data();
 
     auto *transforms = (Eng::Transform *)scene.comp_store[CompTransform]->SequentialData();
@@ -545,11 +547,11 @@ void Eng::ScriptedSequence::UpdateAction(const uint32_t target_actor, SeqAction 
             std::swap(as.shape_palette_curr, as.shape_palette_prev);
             std::swap(as.shape_palette_count_curr, as.shape_palette_count_prev);
 
-            Ren::MeshCold &target_mesh = ren_ctx_.meshes().Get(dr.mesh).second;
+            Ren::MeshCold &target_mesh = storages.meshes[dr.mesh].second;
             Ren::Skeleton &target_skel = target_mesh.skel;
 
-            target_skel.UpdateAnim(action.anim_id, t, ren_ctx_.anims());
-            target_skel.ApplyAnim(action.anim_id, ren_ctx_.anims());
+            target_skel.UpdateAnim(action.anim_id, t, storages.anims);
+            target_skel.ApplyAnim(action.anim_id, storages.anims);
             target_skel.UpdateBones(&as.matr_palette_curr[0]);
             as.shape_palette_count_curr = target_skel.UpdateShapes(&as.shape_palette_curr[0]);
 
@@ -600,12 +602,12 @@ void Eng::ScriptedSequence::UpdateAction(const uint32_t target_actor, SeqAction 
         }
     } else if (action.type == eActionType::Look) {
         Ren::Camera &cam = scene_manager_.main_cam();
-        Ren::MeshCold &cam_rig = ren_ctx_.meshes().Get(scene_manager_.cam_rig()).second;
+        Ren::MeshCold &cam_rig = storages.meshes[scene_manager_.cam_rig()].second;
         Ren::Skeleton &cam_skel = cam_rig.skel;
 
         if (action.anim) {
-            cam_skel.UpdateAnim(action.anim_id, t, ren_ctx_.anims());
-            cam_skel.ApplyAnim(action.anim_id, ren_ctx_.anims());
+            cam_skel.UpdateAnim(action.anim_id, t, storages.anims);
+            cam_skel.ApplyAnim(action.anim_id, storages.anims);
         }
 
         Ren::Mat4f matrices[4];

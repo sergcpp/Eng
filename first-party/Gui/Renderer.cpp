@@ -110,8 +110,8 @@ bool Gui::Renderer::Init() {
     const Ren::ApiContext &api = ctx_.api();
 
     if (ctx_.capabilities.persistent_buf_mapping) {
-        const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.buffers().Get(vertex_stage_buf_);
-        const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.buffers().Get(index_stage_buf_);
+        const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.storages().buffers[vertex_stage_buf_];
+        const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.storages().buffers[index_stage_buf_];
 
         // map stage buffers directly
         vtx_stage_data_ =
@@ -131,7 +131,7 @@ bool Gui::Renderer::Init() {
     }
 
     { // create renderpass
-        const auto &p = ctx_.images().Get(ctx_.backbuffer_img()).second.params;
+        const auto &p = ctx_.storages().images[ctx_.backbuffer_img()].second.params;
         Ren::RenderTargetInfo rt_info = {p.format, p.samples, Ren::eImageLayout::ColorAttachmentOptimal,
                                          Ren::eLoadOp::Load, Ren::eStoreOp::Store};
         rt_info.flags = (Ren::Bitmask<Ren::eImgFlags>{p.flags} & ~Ren::Bitmask(Ren::eImgFlags::NoOwnership));

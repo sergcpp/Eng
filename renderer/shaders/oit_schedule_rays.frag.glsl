@@ -8,7 +8,7 @@
 #include "texturing_common.glsl"
 #include "principled_common.glsl"
 #include "gi_cache_common.glsl"
-#include "ssr_common.glsl"
+#include "rt_specular_common.glsl"
 #include "oit_schedule_rays_interface.h"
 
 #pragma multi_compile _ NO_BINDLESS

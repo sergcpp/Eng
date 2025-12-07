@@ -12,13 +12,13 @@ class ExDepthHierarchy final : public FgExecutor {
 
     const view_state_t *view_state_ = nullptr;
 
-    FgImgROHandle depth_tex_;
-    FgBufRWHandle atomic_buf_;
-    FgImgRWHandle output_tex_;
+    FgImgROHandle depth_;
+    FgBufRWHandle atomic_;
+    FgImgRWHandle output_;
 
   public:
-    ExDepthHierarchy(ShaderLoader &sh, const view_state_t *view_state, FgImgROHandle depth_tex,
-                     FgBufRWHandle atomic_counter, FgImgRWHandle output_tex);
+    ExDepthHierarchy(ShaderLoader &sh, const view_state_t *view_state, FgImgROHandle depth,
+                     FgBufRWHandle atomic_counter, FgImgRWHandle output);
 
     static const int MipCount = 7;
     // TODO: check if it is actually makes sense to use padding

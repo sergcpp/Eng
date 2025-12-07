@@ -188,7 +188,7 @@ float Gui::BitmapFont::DrawText(Renderer *r, std::string_view text, const Vec2f 
     const Vec2f p = parent->pos() + 0.5f * (pos + Vec2f(1, 1)) * parent->size(),
                 m = scale * parent->size() / (Vec2f)parent->size_px();
 
-    const auto &[reg_main, reg_cold] = storage_->Get(tex_);
+    const auto &[reg_main, reg_cold] = (*storage_)[tex_];
     const uint16_t uvs_offset[2] = {(uint16_t)reg_main.pos[0], (uint16_t)reg_main.pos[1]},
                    tex_layer = f32_to_u16((1.0f / 16.0f) * float(reg_main.pos[2]));
 

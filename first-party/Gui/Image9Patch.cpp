@@ -14,7 +14,7 @@ Gui::Image9Patch::Image9Patch(Ren::Context &ctx, std::string_view tex_name, cons
     : Image(ctx, tex_name, pos, size, parent), offset_px_(offset_px), frame_scale_(frame_scale) {}
 
 void Gui::Image9Patch::Draw(Renderer *r) {
-    const auto &[reg_main, reg_cold] = storage_->Get(tex_);
+    const auto &[reg_main, reg_cold] = (*storage_)[tex_];
     const int tex_layer = reg_main.pos[2];
 
     const Vec2f offset_norm = offset_px_ * dims_[1] / Vec2f{dims_px_[1]};

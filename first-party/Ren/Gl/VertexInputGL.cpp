@@ -87,13 +87,13 @@ void Ren::VertexInput_BindBuffers(const ApiContext &api, const VertexInput &vtx_
             if (!stride) {
                 stride = uint32_t(g_type_sizes[int(a.type)]) * a.size;
             }
-            glBindVertexBuffer(GLuint(bound_buffers.size()), buffers.Get(attrib_bufs[a.buf]).first.buf,
+            glBindVertexBuffer(GLuint(bound_buffers.size()), buffers[attrib_bufs[a.buf]].first.buf,
                                GLintptr(a.base_offset), stride);
             bound_index = int(bound_buffers.size());
             bound_buffers.emplace_back(a.buf, a.base_offset);
         }
     }
     if (elem_buf) {
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers.Get(elem_buf).first.buf);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers[elem_buf].first.buf);
     }
 }

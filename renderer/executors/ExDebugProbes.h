@@ -13,12 +13,12 @@ class ExDebugProbes final : public FgExecutor {
   public:
     struct Args {
         FgBufROHandle shared_data;
-        FgImgROHandle irradiance_tex;
-        FgImgROHandle distance_tex;
-        FgImgROHandle offset_tex;
+        FgImgROHandle irradiance;
+        FgImgROHandle distance;
+        FgImgROHandle offset;
 
-        FgImgRWHandle depth_tex;
-        FgImgRWHandle output_tex;
+        FgImgRWHandle depth;
+        FgImgRWHandle output;
 
         int volume_to_debug = 0;
         Ren::Span<const probe_volume_t> probe_volumes;

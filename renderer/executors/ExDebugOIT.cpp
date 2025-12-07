@@ -15,11 +15,11 @@ Eng::ExDebugOIT::ExDebugOIT(ShaderLoader &sh, const view_state_t *view_state, co
 }
 
 void Eng::ExDebugOIT::Execute(const FgContext &fg) {
-    const Ren::BufferROHandle oit_depth_buf = fg.AccessROBuffer(args_->oit_depth_buf);
-    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(args_->output_tex);
+    const Ren::BufferROHandle oit_depth = fg.AccessROBuffer(args_->oit_depth);
+    const Ren::ImageRWHandle output = fg.AccessRWImage(args_->output);
 
-    const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, OITDebug::OIT_DEPTH_BUF_SLOT, oit_depth_buf},
-                                     {Ren::eBindTarget::ImageRW, OITDebug::OUT_IMG_SLOT, output_tex}};
+    const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, OITDebug::OIT_DEPTH_BUF_SLOT, oit_depth},
+                                     {Ren::eBindTarget::ImageRW, OITDebug::OUT_IMG_SLOT, output}};
 
     const Ren::Vec3u grp_count = Ren::Vec3u(Ren::DivCeil(view_state_->ren_res[0], OITDebug::GRP_SIZE_X),
                                             Ren::DivCeil(view_state_->ren_res[1], OITDebug::GRP_SIZE_Y), 1u);

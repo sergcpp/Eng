@@ -113,7 +113,7 @@ void test_mesh() {
         MeshHandle m_handle = test.CreateMesh(String{"ivy"}, in, on_material_needed);
         require(bool(m_handle));
 
-        const auto &[m_main, m_cold] = test.meshes().Get(m_handle);
+        const auto &[m_main, m_cold] = test.storages().meshes[m_handle];
         require(m_main.type == eMeshType::Simple);
         require(m_cold.name == "ivy");
 
@@ -132,7 +132,7 @@ void test_mesh() {
         require(m_main.flags == eMeshFlags::HasAlpha);
         require(m_cold.groups[0].flags == eMeshFlags::HasAlpha);
 
-        const auto &[mat_main, mat_cold] = test.materials().Get(m_cold.groups[0].front_mat);
+        const auto &[mat_main, mat_cold] = test.storages().materials[m_cold.groups[0].front_mat];
         for (const SamplerHandle s : mat_main.samplers) {
             test.ReleaseSampler(s);
         }

@@ -11,10 +11,10 @@ class ExSkinning final : public FgExecutor {
     Ren::PipelineHandle pi_skinning_;
     const DrawList *&p_list_;
 
-    FgBufROHandle skin_vtx_buf_;
-    FgBufROHandle skin_transforms_buf_;
-    FgBufROHandle shape_keys_buf_;
-    FgBufROHandle delta_buf_;
+    FgBufROHandle skin_vtx_;
+    FgBufROHandle skin_transforms_;
+    FgBufROHandle shape_keys_;
+    FgBufROHandle delta_;
 
     FgBufRWHandle vtx_buf1_;
     FgBufRWHandle vtx_buf2_;
@@ -22,11 +22,11 @@ class ExSkinning final : public FgExecutor {
     void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
 
   public:
-    ExSkinning(const DrawList *&p_list, const FgBufROHandle skin_vtx_buf, const FgBufROHandle skin_transforms_buf,
-               const FgBufROHandle shape_keys_buf, const FgBufROHandle delta_buf, const FgBufRWHandle vtx_buf1,
+    ExSkinning(const DrawList *&p_list, const FgBufROHandle skin_vtx, const FgBufROHandle skin_transforms,
+               const FgBufROHandle shape_keys, const FgBufROHandle delta, const FgBufRWHandle vtx_buf1,
                const FgBufRWHandle vtx_buf2)
-        : p_list_(p_list), skin_vtx_buf_(skin_vtx_buf), skin_transforms_buf_(skin_transforms_buf),
-          shape_keys_buf_(shape_keys_buf), delta_buf_(delta_buf), vtx_buf1_(vtx_buf1), vtx_buf2_(vtx_buf2) {}
+        : p_list_(p_list), skin_vtx_(skin_vtx), skin_transforms_(skin_transforms), shape_keys_(shape_keys),
+          delta_(delta), vtx_buf1_(vtx_buf1), vtx_buf2_(vtx_buf2) {}
 
     void Execute(const FgContext &fg) override;
 };

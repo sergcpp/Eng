@@ -7,17 +7,17 @@
 #include "../framegraph/FgBuilder.h"
 
 void Eng::ExEmissive::Execute(const FgContext &fg) {
-    const Ren::ImageRWHandle color_tex = fg.AccessRWImage(out_color_tex_);
-    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(out_depth_tex_);
+    const Ren::ImageRWHandle color = fg.AccessRWImage(out_color_);
+    const Ren::ImageRWHandle depth = fg.AccessRWImage(out_depth_);
 
-    LazyInit(fg.ren_ctx(), fg.sh(), color_tex, depth_tex);
-    DrawOpaque(fg, color_tex, depth_tex);
+    LazyInit(fg.ren_ctx(), fg.sh(), color, depth);
+    DrawOpaque(fg, color, depth);
 }
 
-void Eng::ExEmissive::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle color_tex,
-                               const Ren::ImageRWHandle depth_tex) {
-    const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
-    const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
+void Eng::ExEmissive::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle color,
+                               const Ren::ImageRWHandle depth) {
+    const Ren::RenderTarget color_targets[] = {{color, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
+    const Ren::RenderTarget depth_target = {depth, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
                                             Ren::eStoreOp::Store};
 
     if (!initialized) {

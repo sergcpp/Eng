@@ -17,7 +17,7 @@ void InitBindings(const ProgramMain &prog_main, ProgramCold &prog_cold,
             continue;
         }
 
-        const auto &[sh_main, sh_cold] = shaders.Get(sh_handle);
+        const auto &[sh_main, sh_cold] = shaders[sh_handle];
         for (const UniformBlock &b : sh_cold.blck_bindings) {
             if (int(prog_cold.uniform_blocks.size()) < b.loc + 1) {
                 prog_cold.uniform_blocks.resize(b.loc + 1);
@@ -69,27 +69,27 @@ bool Ren::Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain
     assert(prog_main.id == 0);
 
     std::string prog_name;
-    prog_name += shaders.Get(vs).second.name;
+    prog_name += shaders[vs].second.name;
     prog_name += "&";
-    prog_name += shaders.Get(fs).second.name;
+    prog_name += shaders[fs].second.name;
     if (tcs && tes) {
         prog_name += "&";
-        prog_name += shaders.Get(tcs).second.name;
+        prog_name += shaders[tcs].second.name;
         prog_name += "&";
-        prog_name += shaders.Get(tes).second.name;
+        prog_name += shaders[tes].second.name;
     }
     log->Info("Initializing program %s", prog_name.c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
-        glAttachShader(program, GLuint(shaders.Get(vs).first.id));
-        glAttachShader(program, GLuint(shaders.Get(fs).first.id));
+        glAttachShader(program, GLuint(shaders[vs].first.id));
+        glAttachShader(program, GLuint(shaders[fs].first.id));
         if (tcs && tes) {
-            glAttachShader(program, GLuint(shaders.Get(tcs).first.id));
-            glAttachShader(program, GLuint(shaders.Get(tes).first.id));
+            glAttachShader(program, GLuint(shaders[tcs].first.id));
+            glAttachShader(program, GLuint(shaders[tes].first.id));
         }
         if (gs) {
-            glAttachShader(program, GLuint(shaders.Get(gs).first.id));
+            glAttachShader(program, GLuint(shaders[gs].first.id));
         }
         glLinkProgram(program);
         GLint link_status = GL_FALSE;
@@ -135,11 +135,11 @@ bool Ren::Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain
                        ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle cs, ILog *log) {
     assert(prog_main.id == 0);
 
-    log->Info("Initializing program %s", shaders.Get(cs).second.name.c_str());
+    log->Info("Initializing program %s", shaders[cs].second.name.c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
-        glAttachShader(program, GLuint(shaders.Get(cs).first.id));
+        glAttachShader(program, GLuint(shaders[cs].first.id));
         glLinkProgram(program);
         GLint link_status = GL_FALSE;
         glGetProgramiv(program, GL_LINK_STATUS, &link_status);
@@ -157,7 +157,7 @@ bool Ren::Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain
             program = 0;
         } else {
 #ifdef ENABLE_GPU_DEBUG
-            glObjectLabel(GL_PROGRAM, program, -1, shaders.Get(cs).second.name.c_str());
+            glObjectLabel(GL_PROGRAM, program, -1, shaders[cs].second.name.c_str());
 #endif
         }
     } else {

@@ -267,8 +267,8 @@ void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const
 void Ren::CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, const BufferROHandle src,
                              const uint32_t src_offset, const BufferHandle dst, const uint32_t dst_offset,
                              const uint32_t size, CommandBuffer cmd_buf) {
-    const auto &[src_main, src_cold] = storages.buffers.Get(src);
-    const auto &[dst_main, dst_cold] = storages.buffers.Get(dst);
+    const auto &[src_main, src_cold] = storages.buffers[src];
+    const auto &[dst_main, dst_cold] = storages.buffers[dst];
 
     glBindBuffer(GL_COPY_READ_BUFFER, GLuint(src_main.buf));
     glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(dst_main.buf));

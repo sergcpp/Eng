@@ -8,58 +8,58 @@
 #include "../shaders/rt_debug_interface.h"
 
 void Eng::ExDebugRT::Execute_HWRT(const FgContext &fg) {
-    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data_buf);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials_buf);
+    const Ren::BufferROHandle geo_data = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(args_->vtx_buf2);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::ImageROHandle env_tex = fg.AccessROImage(args_->env_tex);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(args_->lights);
+    const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
+    const Ren::ImageROHandle env = fg.AccessROImage(args_->env);
     const Ren::ImageROHandle shadow_depth = fg.AccessROImage(args_->shadow_depth);
     const Ren::ImageROHandle shadow_color = fg.AccessROImage(args_->shadow_color);
     const Ren::ImageROHandle ltc_luts = fg.AccessROImage(args_->ltc_luts);
-    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(args_->items_buf);
+    const Ren::BufferROHandle cells = fg.AccessROBuffer(args_->cells);
+    const Ren::BufferROHandle items = fg.AccessROBuffer(args_->items);
 
-    Ren::ImageROHandle irr_tex, dist_tex, off_tex;
-    if (args_->irradiance_tex) {
-        irr_tex = fg.AccessROImage(args_->irradiance_tex);
-        dist_tex = fg.AccessROImage(args_->distance_tex);
-        off_tex = fg.AccessROImage(args_->offset_tex);
+    Ren::ImageROHandle irr, dist, off;
+    if (args_->irradiance) {
+        irr = fg.AccessROImage(args_->irradiance);
+        dist = fg.AccessROImage(args_->distance);
+        off = fg.AccessROImage(args_->offset);
     }
 
-    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(args_->output_tex);
+    const Ren::ImageRWHandle output = fg.AccessRWImage(args_->output);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
+    VkCommandBuffer cmd_buf = fg.cmd_buf();
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
-        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
+        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
         {Ren::eBindTarget::AccStruct, RTDebug::TLAS_SLOT, args_->tlas},
-        {Ren::eBindTarget::TexSampled, RTDebug::ENV_TEX_SLOT, env_tex},
-        {Ren::eBindTarget::SBufRO, RTDebug::GEO_DATA_BUF_SLOT, geo_data_buf},
-        {Ren::eBindTarget::SBufRO, RTDebug::MATERIAL_BUF_SLOT, materials_buf},
+        {Ren::eBindTarget::TexSampled, RTDebug::ENV_TEX_SLOT, env},
+        {Ren::eBindTarget::SBufRO, RTDebug::GEO_DATA_BUF_SLOT, geo_data},
+        {Ren::eBindTarget::SBufRO, RTDebug::MATERIAL_BUF_SLOT, materials},
         {Ren::eBindTarget::SBufRO, RTDebug::VTX_BUF1_SLOT, vtx_buf1},
         {Ren::eBindTarget::SBufRO, RTDebug::VTX_BUF2_SLOT, vtx_buf2},
         {Ren::eBindTarget::SBufRO, RTDebug::NDX_BUF_SLOT, ndx_buf},
-        {Ren::eBindTarget::SBufRO, RTDebug::LIGHTS_BUF_SLOT, lights_buf},
-        {Ren::eBindTarget::UTBuf, RTDebug::CELLS_BUF_SLOT, cells_buf},
-        {Ren::eBindTarget::UTBuf, RTDebug::ITEMS_BUF_SLOT, items_buf},
+        {Ren::eBindTarget::SBufRO, RTDebug::LIGHTS_BUF_SLOT, lights},
+        {Ren::eBindTarget::UTBuf, RTDebug::CELLS_BUF_SLOT, cells},
+        {Ren::eBindTarget::UTBuf, RTDebug::ITEMS_BUF_SLOT, items},
         {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_DEPTH_TEX_SLOT, shadow_depth},
         {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_COLOR_TEX_SLOT, shadow_color},
         {Ren::eBindTarget::TexSampled, RTDebug::LTC_LUTS_TEX_SLOT, ltc_luts},
-        {Ren::eBindTarget::ImageRW, RTDebug::OUT_IMG_SLOT, output_tex}};
-    if (irr_tex) {
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::IRRADIANCE_TEX_SLOT, irr_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::DISTANCE_TEX_SLOT, dist_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, off_tex);
+        {Ren::eBindTarget::ImageRW, RTDebug::OUT_IMG_SLOT, output}};
+    if (irr) {
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::IRRADIANCE_TEX_SLOT, irr);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::DISTANCE_TEX_SLOT, dist);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, off);
     }
 
-    const auto &[pi_main, pi_cold] = storages.pipelines.Get(pi_debug_);
-    const Ren::ProgramMain &pr = storages.programs.Get(pi_main.prog).first;
+    const auto &[pi_main, pi_cold] = storages.pipelines[pi_debug_];
+    const Ren::ProgramMain &pr = storages.programs[pi_main.prog].first;
 
     VkDescriptorSet descr_sets[2];
     descr_sets[0] = PrepareDescriptorSet(api, storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());

@@ -12,10 +12,10 @@
 void Eng::ExSkinning::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
 
-    const Ren::BufferROHandle skin_vtx_buf = fg.AccessROBuffer(skin_vtx_buf_);
-    const Ren::BufferROHandle skin_transforms_buf = fg.AccessROBuffer(skin_transforms_buf_);
-    const Ren::BufferROHandle shape_keys_buf = fg.AccessROBuffer(shape_keys_buf_);
-    const Ren::BufferROHandle delta_buf = fg.AccessROBuffer(delta_buf_);
+    const Ren::BufferROHandle skin_vtx = fg.AccessROBuffer(skin_vtx_);
+    const Ren::BufferROHandle skin_transforms = fg.AccessROBuffer(skin_transforms_);
+    const Ren::BufferROHandle shape_keys = fg.AccessROBuffer(shape_keys_);
+    const Ren::BufferROHandle delta = fg.AccessROBuffer(delta_);
 
     const Ren::BufferHandle vtx_buf1 = fg.AccessRWBuffer(vtx_buf1_);
     const Ren::BufferHandle vtx_buf2 = fg.AccessRWBuffer(vtx_buf2_);
@@ -23,22 +23,22 @@ void Eng::ExSkinning::Execute(const FgContext &fg) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_skinning_).first;
-    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
+    const Ren::PipelineMain &pi = storages.pipelines[pi_skinning_].first;
+    const Ren::ProgramMain &pr = storages.programs[pi.prog].first;
 
     if (!p_list_->skin_regions.empty()) {
-        const GLuint vertex_buf1_id = storages.buffers.Get(vtx_buf1).first.buf;
-        const GLuint vertex_buf2_id = storages.buffers.Get(vtx_buf2).first.buf;
+        const GLuint vertex_buf1_id = storages.buffers[vtx_buf1].first.buf;
+        const GLuint vertex_buf2_id = storages.buffers[vtx_buf2].first.buf;
 
         glUseProgram(pr.id);
-        const Ren::BufferMain &skin_vtx_buf_main = storages.buffers.Get(skin_vtx_buf).first;
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_VERTICES_SLOT, skin_vtx_buf_main.buf);
-        const Ren::BufferMain &skin_transforms_buf_main = storages.buffers.Get(skin_transforms_buf).first;
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_MATRICES_SLOT, GLuint(skin_transforms_buf_main.buf));
-        const Ren::BufferMain &shape_keys_buf_main = storages.buffers.Get(shape_keys_buf).first;
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_SHAPE_KEYS_SLOT, GLuint(shape_keys_buf_main.buf));
-        const Ren::BufferMain &delta_buf_main = storages.buffers.Get(delta_buf).first;
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_DELTAS_SLOT, delta_buf_main.buf);
+        const Ren::BufferMain &skin_vtx_main = storages.buffers[skin_vtx].first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_VERTICES_SLOT, skin_vtx_main.buf);
+        const Ren::BufferMain &skin_transforms_main = storages.buffers[skin_transforms].first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_MATRICES_SLOT, GLuint(skin_transforms_main.buf));
+        const Ren::BufferMain &shape_keys_main = storages.buffers[shape_keys].first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_SHAPE_KEYS_SLOT, GLuint(shape_keys_main.buf));
+        const Ren::BufferMain &delta_main = storages.buffers[delta].first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_DELTAS_SLOT, delta_main.buf);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::OUT_VERTICES0, vertex_buf1_id);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::OUT_VERTICES1, vertex_buf2_id);
 

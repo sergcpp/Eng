@@ -28,33 +28,33 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::Image
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
     const Ren::ImageROHandle dummy_white = fg.AccessROImage(dummy_white_);
     const Ren::ImageROHandle shadow_depth = fg.AccessROImage(shadow_depth_);
     const Ren::ImageROHandle ltc_luts_tex = fg.AccessROImage(ltc_luts_);
-    const Ren::ImageROHandle env_tex = fg.AccessROImage(env_tex_);
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
-    const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
-    const Ren::BufferROHandle oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
-    const Ren::ImageROHandle back_color_tex = fg.AccessROImage(back_color_tex_);
-    const Ren::ImageROHandle back_depth_tex = fg.AccessROImage(back_depth_tex_);
+    const Ren::ImageROHandle env = fg.AccessROImage(env_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
+    const Ren::BufferROHandle cells = fg.AccessROBuffer(cells_);
+    const Ren::BufferROHandle items = fg.AccessROBuffer(items_);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(lights_);
+    const Ren::BufferROHandle decals = fg.AccessROBuffer(decals_);
+    const Ren::BufferROHandle oit_depth = fg.AccessROBuffer(oit_depth_);
+    const Ren::ImageROHandle back_color = fg.AccessROImage(back_color_);
+    const Ren::ImageROHandle back_depth = fg.AccessROImage(back_depth_);
 
-    Ren::ImageROHandle irr_tex, dist_tex, off_tex;
-    if (irradiance_tex_) {
-        irr_tex = fg.AccessROImage(irradiance_tex_);
-        dist_tex = fg.AccessROImage(distance_tex_);
-        off_tex = fg.AccessROImage(offset_tex_);
+    Ren::ImageROHandle irr, dist, off;
+    if (irradiance_) {
+        irr = fg.AccessROImage(irradiance_);
+        dist = fg.AccessROImage(distance_);
+        off = fg.AccessROImage(offset_);
     }
 
-    Ren::ImageROHandle specular_tex = {};
-    if (oit_specular_tex_) {
-        specular_tex = fg.AccessROImage(oit_specular_tex_);
+    Ren::ImageROHandle specular = {};
+    if (oit_specular_) {
+        specular = fg.AccessROImage(oit_specular_);
     }
 
     if ((*p_list_)->alpha_blend_start_index == -1) {
@@ -70,7 +70,7 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::Image
         rast_state.depth.test_enabled = true;
         rast_state.depth.compare_op = unsigned(Ren::eCompareOp::Greater);
 
-        const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, BlitOITDepth::OIT_DEPTH_BUF_SLOT, oit_depth_buf}};
+        const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, BlitOITDepth::OIT_DEPTH_BUF_SLOT, oit_depth}};
 
         BlitOITDepth::Params uniform_params = {};
         uniform_params.img_size = view_state_->ren_res;
@@ -101,66 +101,65 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::Image
     const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer({}, depth_tex, depth_tex, color_targets);
 
     // Bind main buffer for drawing
-    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb).first.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[fb].first.id);
 
-    const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
+    const Ren::BufferMain &materials_main = storages.buffers[materials].first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_main.buf));
     if (fg.ren_ctx().capabilities.bindless_texture) {
-        const Ren::BufferMain &buf_main = storages.buffers.Get(bindless_tex_->rt_inline_textures.buf).first;
+        const Ren::BufferMain &buf_main = storages.buffers[bindless_tex_->rt_inline_textures.buf].first;
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX, GLuint(buf_main.buf));
     }
 
-    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
-    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
+    const Ren::BufferMain &unif_shared_data_main = storages.buffers[unif_shared_data].first;
+    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_main.buf);
 
     if ((*p_list_)->decals_atlas) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_DECAL_TEX, (*p_list_)->decals_atlas->tex_id(0));
     }
 
-    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
+    const Ren::ImageMain &noise_main = storages.images[noise].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_main.img);
 
-    const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
+    const Ren::BufferMain &instances_buf_main = storages.buffers[instances].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
-    const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
+    const Ren::BufferMain &instance_indices_buf_main = storages.buffers[instance_indices].first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
 
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::CELLS_BUF_SLOT,
-                               storages.buffers.Get(cells_buf).first.views[0].second);
+                               storages.buffers[cells].first.views[0].second);
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::ITEMS_BUF_SLOT,
-                               storages.buffers.Get(items_buf).first.views[0].second);
+                               storages.buffers[items].first.views[0].second);
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::LIGHT_BUF_SLOT,
-                               storages.buffers.Get(lights_buf).first.views[0].second);
+                               storages.buffers[lights].first.views[0].second);
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::DECAL_BUF_SLOT,
-                               storages.buffers.Get(decals_buf).first.views[0].second);
+                               storages.buffers[decals].first.views[0].second);
 
-    const Ren::ImageMain &shadow_depth_main = storages.images.Get(shadow_depth).first;
+    const Ren::ImageMain &shadow_depth_main = storages.images[shadow_depth].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::SHADOW_TEX_SLOT, shadow_depth_main.img);
-    const Ren::ImageMain &ltc_luts_main = storages.images.Get(ltc_luts_tex).first;
+    const Ren::ImageMain &ltc_luts_main = storages.images[ltc_luts_tex].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::LTC_LUTS_TEX_SLOT, ltc_luts_main.img);
-    const Ren::ImageMain &env_tex_main = storages.images.Get(env_tex).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::ENV_TEX_SLOT, env_tex_main.img);
+    const Ren::ImageMain &env_main = storages.images[env].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::ENV_TEX_SLOT, env_main.img);
 
-    const Ren::ImageMain &back_color_tex_main = storages.images.Get(back_color_tex).first;
-    const Ren::ImageMain &back_depth_tex_main = storages.images.Get(back_depth_tex).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::BACK_COLOR_TEX_SLOT, back_color_tex_main.img);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::BACK_DEPTH_TEX_SLOT, back_depth_tex_main.img);
+    const Ren::ImageMain &back_color_main = storages.images[back_color].first;
+    const Ren::ImageMain &back_depth_main = storages.images[back_depth].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::BACK_COLOR_TEX_SLOT, back_color_main.img);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::BACK_DEPTH_TEX_SLOT, back_depth_main.img);
 
-    if (irr_tex) {
-        const Ren::ImageMain &irr_main = storages.images.Get(irr_tex).first,
-                             &dist_main = storages.images.Get(dist_tex).first,
-                             &off_main = storages.images.Get(off_tex).first;
+    if (irr) {
+        const Ren::ImageMain &irr_main = storages.images[irr].first, &dist_main = storages.images[dist].first,
+                             &off_main = storages.images[off].first;
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D_ARRAY, OITBlendLayer::IRRADIANCE_TEX_SLOT, irr_main.img);
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D_ARRAY, OITBlendLayer::DISTANCE_TEX_SLOT, dist_main.img);
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D_ARRAY, OITBlendLayer::OFFSET_TEX_SLOT, off_main.img);
     }
 
-    if (specular_tex) {
-        const Ren::ImageMain &specular_tex_main = storages.images.Get(specular_tex).first;
-        ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::SPEC_TEX_SLOT, specular_tex_main.img);
+    if (specular) {
+        const Ren::ImageMain &specular_main = storages.images[specular].first;
+        ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::SPEC_TEX_SLOT, specular_main.img);
     }
 
-    const Ren::ImageMain &dummy_white_main = storages.images.Get(dummy_white).first;
+    const Ren::ImageMain &dummy_white_main = storages.images[dummy_white].first;
 
     const Ren::Span<const basic_draw_batch_t> batches = {(*p_list_)->basic_batches};
     const Ren::Span<const uint32_t> batch_indices = {(*p_list_)->basic_batch_indices};
@@ -176,13 +175,13 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::Image
     { // Simple meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SIMPLE");
 
-        const Ren::PipelineMain &pi_simple0_main = storages.pipelines.Get(pi_simple_[0]).first;
-        const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
-        const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
+        const Ren::PipelineMain &pi_simple0_main = storages.pipelines[pi_simple_[0]].first;
+        const Ren::PipelineMain &pi_simple1_main = storages.pipelines[pi_simple_[1]].first;
+        const Ren::PipelineMain &pi_simple2_main = storages.pipelines[pi_simple_[2]].first;
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_simple0_main.vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-        glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
+        glUseProgram(storages.programs[pi_simple0_main.prog].first.id);
 
         { // solid one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "SOLID-ONE-SIDED");

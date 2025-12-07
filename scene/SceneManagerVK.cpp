@@ -52,7 +52,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
     const uint32_t max_mat_count = storages.materials.capacity();
     const uint32_t req_mat_buf_size = std::max(1u, max_mat_count) * sizeof(material_data_t);
 
-    const auto &[mat_buf_main, mat_buf_cold] = storages.buffers.Get(pers_data.materials_buf);
+    const auto &[mat_buf_main, mat_buf_cold] = storages.buffers[pers_data.materials];
     if (mat_buf_cold.size < req_mat_buf_size) {
         if (!Buffer_Resize(api, mat_buf_main, mat_buf_cold, req_mat_buf_size, ren_ctx_.log())) {
             return false;
@@ -185,7 +185,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
             assert(_res == VK_SUCCESS);
         }
 
-        const Ren::Sampler &sampler = ren_ctx_.samplers().Get(pers_data.trilinear_sampler);
+        const Ren::Sampler &sampler = ren_ctx_.storages().samplers[pers_data.trilinear_sampler];
 
         VkDescriptorImageInfo sampler_info = {};
         sampler_info.sampler = sampler.handle;
@@ -270,20 +270,20 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
             for (; j < int(mat_main.textures.size()); ++j) {
                 material_data[rel_i].texture_indices[j] = arr_offset * MAX_TEX_PER_MATERIAL + j;
 
-                const Ren::ImageMain &img_main = storages.images.Get(mat_main.textures[j]).first;
+                const Ren::ImageMain &img_main = storages.images[mat_main.textures[j]].first;
                 if (img_main.resource_state != Ren::eResState::ShaderResource) {
                     img_transitions.emplace_back(mat_main.textures[j], Ren::eResState::ShaderResource);
                 }
 
                 auto &img_info = img_infos.emplace_back();
-                img_info.sampler = storages.samplers.Get(mat_main.samplers[j]).handle;
+                img_info.sampler = storages.samplers[mat_main.samplers[j]].handle;
                 img_info.imageView = img_main.views[0];
                 img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             }
             for (; j < MAX_TEX_PER_MATERIAL; ++j) {
                 material_data[rel_i].texture_indices[j] = i * MAX_TEX_PER_MATERIAL + j;
 
-                const Ren::ImageMain &white_main = storages.images.Get(white_tex_).first;
+                const Ren::ImageMain &white_main = storages.images[white_tex_].first;
                 img_infos.push_back(Image_GetDescriptorImageInfo(api, white_main));
             }
 
@@ -298,7 +298,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
             for (int j = 0; j < MAX_TEX_PER_MATERIAL; ++j) {
                 material_data[rel_i].texture_indices[j] = i * MAX_TEX_PER_MATERIAL + j;
 
-                const Ren::ImageMain &error_main = storages.images.Get(error_tex_).first;
+                const Ren::ImageMain &error_main = storages.images[error_tex_].first;
                 img_infos.push_back(Image_GetDescriptorImageInfo(api, error_main));
             }
         }
@@ -357,16 +357,16 @@ Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc)
     Ren::ApiContext &api = ren_ctx_.api();
     const Ren::StoragesRef &storages = ren_ctx_.storages();
 
-    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(acc.mesh);
+    const auto &[mesh_main, mesh_cold] = storages.meshes[acc.mesh];
     const Ren::BufferRange &attribs = mesh_main.attribs_buf1, &indices = mesh_main.indices_buf;
 
     VkAccelerationStructureGeometryTrianglesDataKHR tri_data = {
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR};
     tri_data.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-    tri_data.vertexData.deviceAddress = Buffer_GetDeviceAddress(api, storages.buffers.Get(attribs.buf).first);
+    tri_data.vertexData.deviceAddress = Buffer_GetDeviceAddress(api, storages.buffers[attribs.buf].first);
     tri_data.vertexStride = 16;
     tri_data.indexType = VK_INDEX_TYPE_UINT32;
-    tri_data.indexData.deviceAddress = Buffer_GetDeviceAddress(api, storages.buffers.Get(indices.buf).first);
+    tri_data.indexData.deviceAddress = Buffer_GetDeviceAddress(api, storages.buffers[indices.buf].first);
     tri_data.maxVertex = uint32_t(mesh_cold.attribs.size() / 13);
 
     //
@@ -382,11 +382,11 @@ Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc)
         const Ren::tri_group_t &grp = groups[j];
         const Ren::MaterialHandle front_mat =
             (j >= acc.material_override.size()) ? grp.front_mat : acc.material_override[j][0];
-        const Ren::MaterialMain &front_main = storages.materials.Get(front_mat).first;
+        const Ren::MaterialMain &front_main = storages.materials[front_mat].first;
 
         const Ren::MaterialHandle back_mat =
             (j >= acc.material_override.size()) ? grp.back_mat : acc.material_override[j][1];
-        const Ren::MaterialMain &back_main = storages.materials.Get(back_mat).first;
+        const Ren::MaterialMain &back_main = storages.materials[back_mat].first;
 
         const Ren::MaterialHandle vol_mat =
             (j >= acc.material_override.size()) ? grp.vol_mat : acc.material_override[j][2];
@@ -549,7 +549,7 @@ Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc)
         VkCommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
         const auto &[buf_main, buf_cold] =
-            ren_ctx_.buffers().Get(scene_data_.persistent_data->hwrt.rt_blas_buffers[mem_alloc.pool]);
+            storages.buffers[scene_data_.persistent_data->hwrt.rt_blas_buffers[mem_alloc.pool]];
 
         VkAccelerationStructureCreateInfoKHR acc_create_info = {
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR};
@@ -574,7 +574,7 @@ Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc)
 
         api.EndSingleTimeCommands(cmd_buf);
 
-        const auto &[blas_main, blas_cold] = ren_ctx_.acc_structs().Get(compacted_blas);
+        const auto &[blas_main, blas_cold] = storages.acc_structs[compacted_blas];
         if (!AccStruct_Init(blas_main, blas_cold, mesh_cold.name, compact_acc_struct, mem_alloc)) {
             ren_ctx_.ReleaseAccStruct(compacted_blas);
             ren_ctx_.log()->Error("Blas compaction failed!");
@@ -593,6 +593,7 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
     using namespace SceneManagerInternal;
 
     const Ren::ApiContext &api = ren_ctx_.api();
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
 
     const uint32_t max_instance_count = MAX_RT_OBJ_INSTANCES_TOTAL; // allocate for worst case
 
@@ -628,7 +629,7 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
 
     { // Main TLAS
         const auto &[buf_main, buf_cold] =
-            ren_ctx_.buffers().Get(scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Main)]);
+            storages.buffers[scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Main)]];
 
         VkAccelerationStructureCreateInfoKHR create_info = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR};
         create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
@@ -643,7 +644,7 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
         }
 
         const Ren::AccStructHandle tlas = ren_ctx_.CreateAccStruct();
-        const auto &[tlas_main, tlas_cold] = ren_ctx_.acc_structs().Get(tlas);
+        const auto &[tlas_main, tlas_cold] = storages.acc_structs[tlas];
         if (!AccStruct_Init(tlas_main, tlas_cold, Ren::String{"TLAS Main"}, tlas_handle, {})) {
             ren_ctx_.log()->Error("Failed to init TLAS!");
         }
@@ -651,7 +652,7 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
     }
     { // Shadow TLAS
         const auto &[buf_main, buf_cold] =
-            ren_ctx_.buffers().Get(scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Shadow)]);
+            storages.buffers[scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Shadow)]];
 
         VkAccelerationStructureCreateInfoKHR create_info = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR};
         create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
@@ -666,7 +667,7 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
         }
 
         const Ren::AccStructHandle tlas = ren_ctx_.CreateAccStruct();
-        const auto &[tlas_main, tlas_cold] = ren_ctx_.acc_structs().Get(tlas);
+        const auto &[tlas_main, tlas_cold] = storages.acc_structs[tlas];
         if (!AccStruct_Init(tlas_main, tlas_cold, Ren::String{"TLAS Shadow"}, tlas_handle, {})) {
             ren_ctx_.log()->Error("Failed to init TLAS!");
         }
@@ -674,7 +675,7 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
     }
     { // Volume TLAS
         const auto &[buf_main, buf_cold] =
-            ren_ctx_.buffers().Get(scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Volume)]);
+            storages.buffers[scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Volume)]];
 
         VkAccelerationStructureCreateInfoKHR create_info = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR};
         create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
@@ -689,7 +690,7 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
         }
 
         const Ren::AccStructHandle tlas = ren_ctx_.CreateAccStruct();
-        const auto &[tlas_main, tlas_cold] = ren_ctx_.acc_structs().Get(tlas);
+        const auto &[tlas_main, tlas_cold] = storages.acc_structs[tlas];
         if (!AccStruct_Init(tlas_main, tlas_cold, Ren::String{"TLAS Volume"}, tlas_handle, {})) {
             ren_ctx_.log()->Error("Failed to init TLAS!");
         }

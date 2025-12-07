@@ -83,32 +83,32 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
 
     const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_);
 
-    const Ren::BufferMain &materials_buf_main = fg.storages().buffers.Get(materials_buf).first;
+    const Ren::BufferMain &materials_buf_main = fg.storages().buffers[materials_buf].first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
     if (fg.ren_ctx().capabilities.bindless_texture) {
-        const Ren::BufferMain &buf_main = fg.storages().buffers.Get(bindless_tex_->rt_inline_textures.buf).first;
+        const Ren::BufferMain &buf_main = fg.storages().buffers[bindless_tex_->rt_inline_textures.buf].first;
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX, GLuint(buf_main.buf));
     }
 
-    const Ren::BufferMain &instances_buf_main = fg.storages().buffers.Get(instances_buf).first;
+    const Ren::BufferMain &instances_buf_main = fg.storages().buffers[instances_buf].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
-    const Ren::BufferMain &instance_indices_buf_main = fg.storages().buffers.Get(instance_indices_buf).first;
+    const Ren::BufferMain &instance_indices_buf_main = fg.storages().buffers[instance_indices_buf].first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
 
-    const Ren::BufferMain &unif_shared_data_buf_main = fg.storages().buffers.Get(unif_shared_data_buf).first;
+    const Ren::BufferMain &unif_shared_data_buf_main = fg.storages().buffers[unif_shared_data_buf].first;
     glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, GLuint(unif_shared_data_buf_main.buf));
 
-    const Ren::ImageMain &noise_tex_main = fg.storages().images.Get(noise_tex).first;
+    const Ren::ImageMain &noise_tex_main = fg.storages().images[noise_tex].first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
 
-    const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines.Get(pi_solid_[0]).first,
-                                                 &storages.pipelines.Get(pi_solid_[1]).first,
-                                                 &storages.pipelines.Get(pi_solid_[2]).first};
+    const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines[pi_solid_[0]].first,
+                                                 &storages.pipelines[pi_solid_[1]].first,
+                                                 &storages.pipelines[pi_solid_[2]].first};
 
     const Ren::ImageRWHandle color_targets[] = {shadow_color};
     const Ren::FramebufferHandle fb_main =
         fg.FindOrCreateFramebuffer(pi_solid_main[0]->render_pass, shadow_depth, {}, color_targets);
-    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb_main).first.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[fb_main].first.id);
 
     glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
 
@@ -121,13 +121,13 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
     { // draw opaque objects
         Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-SOLID");
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
         static const uint64_t BitFlags[] = {BDB::BitAlphaBlend, BDB::BitAlphaBlend | BDB::BitBackSided,
                                             BDB::BitAlphaBlend | BDB::BitTwoSided};
         for (int pi = 0; pi < 3; ++pi) {
-            const Ren::ProgramMain &p = storages.programs.Get(pi_solid_main[pi]->prog).first;
+            const Ren::ProgramMain &p = storages.programs[pi_solid_main[pi]->prog].first;
             glUseProgram(p.id);
 
             Ren::RastState rast_state = fg.rast_state();
@@ -169,21 +169,21 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         }
     }
 
-    const Ren::PipelineMain *pi_alpha_main[3] = {&storages.pipelines.Get(pi_alpha_[0]).first,
-                                                 &storages.pipelines.Get(pi_alpha_[1]).first,
-                                                 &storages.pipelines.Get(pi_alpha_[2]).first};
+    const Ren::PipelineMain *pi_alpha_main[3] = {&storages.pipelines[pi_alpha_[0]].first,
+                                                 &storages.pipelines[pi_alpha_[1]].first,
+                                                 &storages.pipelines[pi_alpha_[2]].first};
 
     { // draw transparent (alpha-tested) objects
         Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-ALPHA");
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_alpha_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
         static const uint64_t BitFlags[] = {BDB::BitAlphaBlend | BDB::BitAlphaTest,
                                             BDB::BitAlphaBlend | BDB::BitAlphaTest | BDB::BitBackSided,
                                             BDB::BitAlphaBlend | BDB::BitAlphaTest | BDB::BitTwoSided};
         for (int pi = 0; pi < 3; ++pi) {
-            const Ren::ProgramMain &p = storages.programs.Get(pi_alpha_main[pi]->prog).first;
+            const Ren::ProgramMain &p = storages.programs[pi_alpha_main[pi]->prog].first;
             glUseProgram(p.id);
 
             Ren::RastState rast_state = fg.rast_state();

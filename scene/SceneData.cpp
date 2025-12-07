@@ -49,10 +49,10 @@ void Eng::PersistentGpuData::Release() {
     }
     textures_buf = {};
 #endif
-    ctx.ReleaseBuffer(instance_buf);
-    instance_buf = {};
-    ctx.ReleaseBuffer(materials_buf);
-    materials_buf = {};
+    ctx.ReleaseBuffer(instances);
+    instances = {};
+    ctx.ReleaseBuffer(materials);
+    materials = {};
     if (vertex_buf1) {
         vertex_buf1->Release(true /* immediately */);
         vertex_buf1 = {};
@@ -73,14 +73,14 @@ void Eng::PersistentGpuData::Release() {
         indices_buf->Release(true /* immediately */);
         indices_buf = {};
     }
-    if (stoch_lights_buf) {
-        ctx.ReleaseBuffer(stoch_lights_buf);
+    if (stoch_lights) {
+        ctx.ReleaseBuffer(stoch_lights);
     }
-    stoch_lights_buf = {};
-    if (stoch_lights_nodes_buf) {
-        ctx.ReleaseBuffer(stoch_lights_nodes_buf);
+    stoch_lights = {};
+    if (stoch_lights_nodes) {
+        ctx.ReleaseBuffer(stoch_lights_nodes);
     }
-    stoch_lights_nodes_buf = {};
+    stoch_lights_nodes = {};
     for (Ren::BufferHandle &buf : rt_tlas_buf) {
         if (buf) {
             ctx.ReleaseBuffer(buf);

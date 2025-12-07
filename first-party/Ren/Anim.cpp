@@ -241,7 +241,7 @@ int Ren::Skeleton::AddAnimSequence(const AnimSeqHandle handle,
             return i;
         }
     }
-    const auto &[anim_main, anim_cold] = storage.Get(handle);
+    const auto &[anim_main, anim_cold] = storage[handle];
 
     AnimLink &a = anims.emplace_back();
     a.anim = handle;
@@ -261,7 +261,7 @@ void Ren::Skeleton::MarkChildren() {
 }
 
 void Ren::Skeleton::ApplyAnim(const int id, const SparseDualStorage<AnimSeqMain, AnimSeqCold> &storage) {
-    const auto &[anim_main, anim_cold] = storage.Get(anims[id].anim);
+    const auto &[anim_main, anim_cold] = storage[anims[id].anim];
     for (int i = 0; i < int(bones.size()); i++) {
         const int ndx = anims[id].anim_bones[i];
         if (ndx != -1) {
@@ -290,8 +290,8 @@ void Ren::Skeleton::ApplyAnim(const int id, const SparseDualStorage<AnimSeqMain,
 
 void Ren::Skeleton::ApplyAnim(const int anim_id1, const int anim_id2, const float t,
                               const SparseDualStorage<AnimSeqMain, AnimSeqCold> &storage) {
-    const auto &[anim1_main, anim1_cold] = storage.Get(anims[anim_id1].anim);
-    const auto &[anim2_main, anim2_cold] = storage.Get(anims[anim_id2].anim);
+    const auto &[anim1_main, anim1_cold] = storage[anims[anim_id1].anim];
+    const auto &[anim2_main, anim2_cold] = storage[anims[anim_id2].anim];
     for (int i = 0; i < int(bones.size()); i++) {
         if (anims[anim_id1].anim_bones[i] != -1 || anims[anim_id2].anim_bones[i] != -1) {
             const int ndx1 = anims[anim_id1].anim_bones[i];
@@ -326,7 +326,7 @@ void Ren::Skeleton::ApplyAnim(const int anim_id1, const int anim_id2, const floa
 }
 
 void Ren::Skeleton::UpdateAnim(const int anim_id, const float t, SparseDualStorage<AnimSeqMain, AnimSeqCold> &storage) {
-    const auto &[anim_main, anim_cold] = storage.Get(anims[anim_id].anim);
+    const auto &[anim_main, anim_cold] = storage[anims[anim_id].anim];
     AnimSeq_Update(anim_main, anim_cold, t);
 }
 

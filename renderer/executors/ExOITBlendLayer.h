@@ -30,47 +30,46 @@ class ExOITBlendLayer final : public FgExecutor {
     FgBufROHandle vtx_buf1_;
     FgBufROHandle vtx_buf2_;
     FgBufROHandle ndx_buf_;
-    FgBufROHandle instances_buf_;
-    FgBufROHandle instance_indices_buf_;
-    FgBufROHandle shared_data_buf_;
-    FgBufROHandle materials_buf_;
-    FgBufROHandle cells_buf_;
-    FgBufROHandle items_buf_;
-    FgBufROHandle lights_buf_;
-    FgBufROHandle decals_buf_;
-    FgImgROHandle noise_tex_;
+    FgBufROHandle instances_;
+    FgBufROHandle instance_indices_;
+    FgBufROHandle shared_data_;
+    FgBufROHandle materials_;
+    FgBufROHandle cells_;
+    FgBufROHandle items_;
+    FgBufROHandle lights_;
+    FgBufROHandle decals_;
+    FgImgROHandle noise_;
     FgImgROHandle dummy_white_;
     FgImgROHandle shadow_depth_;
     FgImgROHandle ltc_luts_;
-    FgImgROHandle env_tex_;
-    FgBufROHandle oit_depth_buf_;
+    FgImgROHandle env_;
+    FgBufROHandle oit_depth_;
     int depth_layer_index_ = -1;
-    FgImgROHandle oit_specular_tex_;
+    FgImgROHandle oit_specular_;
 
-    FgImgROHandle irradiance_tex_;
-    FgImgROHandle distance_tex_;
-    FgImgROHandle offset_tex_;
+    FgImgROHandle irradiance_;
+    FgImgROHandle distance_;
+    FgImgROHandle offset_;
 
-    FgImgROHandle back_color_tex_;
-    FgImgROHandle back_depth_tex_;
+    FgImgROHandle back_color_;
+    FgImgROHandle back_depth_;
 
-    FgImgRWHandle depth_tex_;
-    FgImgRWHandle color_tex_;
+    FgImgRWHandle depth_;
+    FgImgRWHandle color_;
 
-    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle depth_tex, Ren::ImageRWHandle color_tex);
-    void DrawTransparent(const FgContext &fg, Ren::ImageRWHandle depth_tex, Ren::ImageRWHandle color_tex);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle depth, Ren::ImageRWHandle color);
+    void DrawTransparent(const FgContext &fg, Ren::ImageRWHandle depth, Ren::ImageRWHandle color);
 
   public:
     ExOITBlendLayer(PrimDraw &prim_draw, const DrawList **p_list, const view_state_t *view_state,
-                    FgBufROHandle vtx_buf1, FgBufROHandle vtx_buf2, FgBufROHandle ndx_buf, FgBufROHandle materials_buf,
-                    const BindlessTextureData *bindless_tex, FgBufROHandle cells_buf, FgBufROHandle items_buf,
-                    FgBufROHandle lights_buf, FgBufROHandle decals_buf, FgImgROHandle noise_tex,
-                    FgImgROHandle dummy_white, FgImgROHandle shadow_depth, FgImgROHandle ltc_luts,
-                    FgImgROHandle env_tex, FgBufROHandle instances_buf, FgBufROHandle instance_indices_buf,
-                    FgBufROHandle shared_data_buf, FgImgRWHandle depth_tex, FgImgRWHandle color_tex,
-                    FgBufROHandle oit_depth_buf, FgImgROHandle oit_specular_tex, int depth_layer_index,
-                    FgImgROHandle irradiance_tex, FgImgROHandle distance_tex, FgImgROHandle offset_tex,
-                    FgImgROHandle back_color_tex, FgImgROHandle back_depth_tex);
+                    FgBufROHandle vtx_buf1, FgBufROHandle vtx_buf2, FgBufROHandle ndx_buf, FgBufROHandle materials,
+                    const BindlessTextureData *bindless_tex, FgBufROHandle cells, FgBufROHandle items,
+                    FgBufROHandle lights, FgBufROHandle decals, FgImgROHandle noise, FgImgROHandle dummy_white,
+                    FgImgROHandle shadow_depth, FgImgROHandle ltc_luts, FgImgROHandle env, FgBufROHandle instances,
+                    FgBufROHandle instance_indices, FgBufROHandle shared_data, FgImgRWHandle depth, FgImgRWHandle color,
+                    FgBufROHandle oit_depth, FgImgROHandle oit_specular, int depth_layer_index,
+                    FgImgROHandle irradiance, FgImgROHandle distance, FgImgROHandle offset, FgImgROHandle back_color,
+                    FgImgROHandle back_depth);
 
     void Execute(const FgContext &fg) override;
 };

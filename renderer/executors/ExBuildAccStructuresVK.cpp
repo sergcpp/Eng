@@ -7,14 +7,14 @@
 #include "../framegraph/FgBuilder.h"
 
 void Eng::ExBuildAccStructures::Execute_HWRT(const FgContext &fg) {
-    const Ren::BufferROHandle rt_obj_instances_buf = fg.AccessROBuffer(rt_obj_instances_buf_ro_);
+    const Ren::BufferROHandle rt_obj_instances_buf = fg.AccessROBuffer(rt_obj_instances_ro_);
     [[maybe_unused]] const Ren::BufferHandle rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
-    const Ren::BufferHandle rt_tlas_build_scratch_buf = fg.AccessRWBuffer(rt_tlas_build_scratch_buf_);
+    const Ren::BufferHandle rt_tlas_build_scratch = fg.AccessRWBuffer(rt_tlas_build_scratch_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.ren_ctx().storages();
 
-    const Ren::BufferMain &rt_obj_instances_buf_main = fg.storages().buffers.Get(rt_obj_instances_buf).first;
+    const Ren::BufferMain &rt_obj_instances_buf_main = storages.buffers[rt_obj_instances_buf].first;
     VkAccelerationStructureGeometryInstancesDataKHR instances_data = {
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR};
     instances_data.data.deviceAddress = Buffer_GetDeviceAddress(api, rt_obj_instances_buf_main);
@@ -32,9 +32,9 @@ void Eng::ExBuildAccStructures::Execute_HWRT(const FgContext &fg) {
     tlas_build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
     tlas_build_info.srcAccelerationStructure = VK_NULL_HANDLE;
-    tlas_build_info.dstAccelerationStructure = storages.acc_structs.Get(rt_tlas_).first.hw.handle;
+    tlas_build_info.dstAccelerationStructure = storages.acc_structs[rt_tlas_].first.hw.handle;
 
-    const Ren::BufferMain &rt_tlas_build_scratch_buf_main = fg.storages().buffers.Get(rt_tlas_build_scratch_buf).first;
+    const Ren::BufferMain &rt_tlas_build_scratch_buf_main = storages.buffers[rt_tlas_build_scratch].first;
     tlas_build_info.scratchData.deviceAddress = Buffer_GetDeviceAddress(api, rt_tlas_build_scratch_buf_main);
 
     VkAccelerationStructureBuildRangeInfoKHR range_info = {};

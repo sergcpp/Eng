@@ -10,13 +10,13 @@ struct view_state_t;
 class ExPostprocess final : public FgExecutor {
   public:
     struct Args {
-        FgImgROHandle exposure_tex;
-        FgImgROHandle color_tex;
-        FgImgROHandle bloom_tex;
-        FgImgROHandle lut_tex;
+        FgImgROHandle exposure;
+        FgImgROHandle color;
+        FgImgROHandle bloom;
+        FgImgROHandle lut;
 
-        FgImgRWHandle output_tex;
-        FgImgRWHandle output_tex2;
+        FgImgRWHandle output;
+        FgImgRWHandle output2;
 
         Ren::SamplerHandle linear_sampler;
 

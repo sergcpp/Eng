@@ -16,11 +16,11 @@ class ExRTShadows final : public FgExecutor {
         FgBufROHandle vtx_buf1;
         FgBufROHandle ndx_buf;
         FgBufROHandle shared_data;
-        FgImgROHandle noise_tex;
-        FgImgROHandle depth_tex;
-        FgImgROHandle normal_tex;
+        FgImgROHandle noise;
+        FgImgROHandle depth;
+        FgImgROHandle normal;
         FgBufROHandle tlas_buf;
-        FgBufROHandle tile_list_buf;
+        FgBufROHandle tile_list;
         FgBufROHandle indir_args;
 
         Ren::AccStructROHandle tlas;
@@ -28,11 +28,11 @@ class ExRTShadows final : public FgExecutor {
         struct {
             uint32_t root_node = 0xffffffff;
             FgBufROHandle blas_buf;
-            FgBufROHandle prim_ndx_buf;
-            FgBufROHandle mesh_instances_buf;
+            FgBufROHandle prim_ndx;
+            FgBufROHandle mesh_instances;
         } swrt;
 
-        FgImgRWHandle out_shadow_tex;
+        FgImgRWHandle out_shadow;
     };
 
     ExRTShadows(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args)

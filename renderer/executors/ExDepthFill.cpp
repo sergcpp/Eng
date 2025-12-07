@@ -21,20 +21,20 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
 } // namespace ExSharedInternal
 
 void Eng::ExDepthFill::Execute(const FgContext &fg) {
-    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(depth_tex_);
-    const Ren::ImageRWHandle velocity_tex = fg.AccessRWImage(velocity_tex_);
+    const Ren::ImageRWHandle depth = fg.AccessRWImage(depth_);
+    const Ren::ImageRWHandle velocity = fg.AccessRWImage(velocity_);
 
-    LazyInit(fg.ren_ctx(), fg.sh(), depth_tex, velocity_tex);
-    DrawDepth(fg, depth_tex, velocity_tex);
+    LazyInit(fg.ren_ctx(), fg.sh(), depth, velocity);
+    DrawDepth(fg, depth, velocity);
 }
 
-void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle depth_tex,
-                                const Ren::ImageRWHandle velocity_tex) {
-    const Ren::RenderTarget velocity_target = {velocity_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
-    const Ren::RenderTarget depth_clear_target = {depth_tex, Ren::eLoadOp::Clear, Ren::eStoreOp::Store,
-                                                  Ren::eLoadOp::Clear, Ren::eStoreOp::Store};
-    const Ren::RenderTarget depth_load_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store,
-                                                 Ren::eLoadOp::Load, Ren::eStoreOp::Store};
+void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle depth,
+                                const Ren::ImageRWHandle velocity) {
+    const Ren::RenderTarget velocity_target = {velocity, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
+    const Ren::RenderTarget depth_clear_target = {depth, Ren::eLoadOp::Clear, Ren::eStoreOp::Store, Ren::eLoadOp::Clear,
+                                                  Ren::eStoreOp::Store};
+    const Ren::RenderTarget depth_load_target = {depth, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
+                                                 Ren::eStoreOp::Store};
 
     if (!initialized) {
 #if defined(REN_GL_BACKEND)

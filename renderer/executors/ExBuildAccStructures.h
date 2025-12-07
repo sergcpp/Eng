@@ -19,10 +19,10 @@ class ExBuildAccStructures final : public FgExecutor {
     Ren::AccStructHandle rt_tlas_;
     Ren::Span<const mesh_t> rt_meshes_;
 
-    FgBufROHandle rt_obj_instances_buf_ro_;
-    FgBufRWHandle rt_obj_instances_buf_rw_;
+    FgBufROHandle rt_obj_instances_ro_;
+    FgBufRWHandle rt_obj_instances_rw_;
     FgBufRWHandle rt_tlas_buf_;
-    FgBufRWHandle rt_tlas_build_scratch_buf_;
+    FgBufRWHandle rt_tlas_build_scratch_;
 
     void Execute_HWRT(const FgContext &fg);
     void Execute_SWRT(const FgContext &fg);
@@ -32,19 +32,17 @@ class ExBuildAccStructures final : public FgExecutor {
     static uint32_t ConvertToBVH2(Ren::Span<const gpu_bvh_node_t> nodes, std::vector<gpu_bvh2_node_t> &out_nodes);
 
   public:
-    ExBuildAccStructures(const DrawList *&p_list, int rt_index, const FgBufROHandle rt_obj_instances_buf,
+    ExBuildAccStructures(const DrawList *&p_list, int rt_index, const FgBufROHandle rt_obj_instances,
                          Ren::AccStructHandle rt_tlas, Ren::Span<const mesh_t> rt_meshes,
-                         const FgBufRWHandle rt_tlas_buf, const FgBufRWHandle rt_tlas_scratch_buf)
+                         const FgBufRWHandle rt_tlas_buf, const FgBufRWHandle rt_tlas_scratch)
         : p_list_(p_list), rt_index_(rt_index), rt_tlas_(rt_tlas), rt_meshes_(rt_meshes),
-          rt_obj_instances_buf_ro_(rt_obj_instances_buf), rt_tlas_buf_(rt_tlas_buf),
-          rt_tlas_build_scratch_buf_(rt_tlas_scratch_buf) {}
+          rt_obj_instances_ro_(rt_obj_instances), rt_tlas_buf_(rt_tlas_buf), rt_tlas_build_scratch_(rt_tlas_scratch) {}
 
-    ExBuildAccStructures(const DrawList *&p_list, int rt_index, const FgBufRWHandle rt_obj_instances_buf,
+    ExBuildAccStructures(const DrawList *&p_list, int rt_index, const FgBufRWHandle rt_obj_instances,
                          Ren::AccStructHandle rt_tlas, Ren::Span<const mesh_t> rt_meshes,
-                         const FgBufRWHandle rt_tlas_buf, const FgBufRWHandle rt_tlas_scratch_buf)
+                         const FgBufRWHandle rt_tlas_buf, const FgBufRWHandle rt_tlas_scratch)
         : p_list_(p_list), rt_index_(rt_index), rt_tlas_(rt_tlas), rt_meshes_(rt_meshes),
-          rt_obj_instances_buf_rw_(rt_obj_instances_buf), rt_tlas_buf_(rt_tlas_buf),
-          rt_tlas_build_scratch_buf_(rt_tlas_scratch_buf) {}
+          rt_obj_instances_rw_(rt_obj_instances), rt_tlas_buf_(rt_tlas_buf), rt_tlas_build_scratch_(rt_tlas_scratch) {}
 
     void Execute(const FgContext &fg) override;
 };

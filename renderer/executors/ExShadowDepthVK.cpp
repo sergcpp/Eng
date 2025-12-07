@@ -64,44 +64,44 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
     VkCommandBuffer cmd_buf = fg.cmd_buf();
 
-    const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines.Get(pi_solid_[0]).first,
-                                                 &storages.pipelines.Get(pi_solid_[1]).first,
-                                                 &storages.pipelines.Get(pi_solid_[2]).first};
-    const Ren::ProgramMain &pr_solid0_main = storages.programs.Get(pi_solid_main[0]->prog).first;
+    const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines[pi_solid_[0]].first,
+                                                 &storages.pipelines[pi_solid_[1]].first,
+                                                 &storages.pipelines[pi_solid_[2]].first};
+    const Ren::ProgramMain &pr_solid0_main = storages.programs[pi_solid_main[0]->prog].first;
 
     VkDescriptorSetLayout simple_descr_set_layout = pr_solid0_main.descr_set_layouts[0];
     VkDescriptorSet simple_descr_sets[2];
     { // allocate descriptor sets
-        const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf}};
+        const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances},
+                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices},
+                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials}};
         simple_descr_sets[0] =
             PrepareDescriptorSet(api, storages, simple_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         simple_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
     }
 
-    const Ren::PipelineMain &pi_vege_main = storages.pipelines.Get(pi_vege_solid_).first;
-    const Ren::ProgramMain &pr_vege_main = storages.programs.Get(pi_vege_main.prog).first;
+    const Ren::PipelineMain &pi_vege_main = storages.pipelines[pi_vege_solid_].first;
+    const Ren::ProgramMain &pr_vege_main = storages.programs[pi_vege_main.prog].first;
 
     VkDescriptorSetLayout vege_descr_set_layout = pr_vege_main.descr_set_layouts[0];
     VkDescriptorSet vege_descr_sets[2];
     { // allocate descriptor sets
-        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
-                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
-                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
-                                         {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex}};
+        const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data},
+                                         {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances},
+                                         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices},
+                                         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials},
+                                         {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise}};
         vege_descr_sets[0] =
             PrepareDescriptorSet(api, storages, vege_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         vege_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
@@ -112,14 +112,14 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
 
     const uint32_t materials_per_descriptor = api.max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
 
-    const Ren::RenderPass &rp = storages.render_passes.Get(pi_solid_main[0]->render_pass);
+    const Ren::RenderPass &rp = storages.render_passes[pi_solid_main[0]->render_pass];
 
     const Ren::FramebufferHandle fb_main =
         fg.FindOrCreateFramebuffer(pi_solid_main[0]->render_pass, shadow_depth, {}, {});
 
     VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_begin_info.renderPass = rp.handle;
-    rp_begin_info.framebuffer = storages.framebuffers.Get(fb_main).first.handle;
+    rp_begin_info.framebuffer = storages.framebuffers[fb_main].first.handle;
     rp_begin_info.renderArea = {{0, 0}, {uint32_t(w_), uint32_t(h_)}};
     api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -131,7 +131,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_main[0]->layout, 0, 1,
                                     simple_descr_sets, 0, nullptr);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -218,9 +218,9 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         }
     }*/
 
-    const Ren::PipelineMain *pi_alpha_main[3] = {&storages.pipelines.Get(pi_alpha_[0]).first,
-                                                 &storages.pipelines.Get(pi_alpha_[1]).first,
-                                                 &storages.pipelines.Get(pi_alpha_[2]).first};
+    const Ren::PipelineMain *pi_alpha_main[3] = {&storages.pipelines[pi_alpha_[0]].first,
+                                                 &storages.pipelines[pi_alpha_[1]].first,
+                                                 &storages.pipelines[pi_alpha_[2]].first};
 
     { // alpha-tested objects
         Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-ALPHA");
@@ -228,7 +228,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_main[0]->layout, 0, 2,
                                     simple_descr_sets, 0, nullptr);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_alpha_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 

@@ -74,10 +74,10 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines.Get(pi_solid_[0]).first,
-                                                 &storages.pipelines.Get(pi_solid_[1]).first,
-                                                 &storages.pipelines.Get(pi_solid_[2]).first};
-    const Ren::ProgramMain &pr_solid0_main = storages.programs.Get(pi_solid_main[0]->prog).first;
+    const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines[pi_solid_[0]].first,
+                                                 &storages.pipelines[pi_solid_[1]].first,
+                                                 &storages.pipelines[pi_solid_[2]].first};
+    const Ren::ProgramMain &pr_solid0_main = storages.programs[pi_solid_main[0]->prog].first;
 
     VkCommandBuffer cmd_buf = fg.cmd_buf();
 
@@ -110,7 +110,7 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
 
     const uint32_t materials_per_descriptor = api.max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
 
-    const Ren::RenderPass &rp = storages.render_passes.Get(pi_solid_main[0]->render_pass);
+    const Ren::RenderPass &rp = storages.render_passes[pi_solid_main[0]->render_pass];
 
     const Ren::ImageRWHandle color_targets[] = {shadow_color};
     const Ren::FramebufferHandle fb_main =
@@ -118,7 +118,7 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
 
     VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_begin_info.renderPass = rp.handle;
-    rp_begin_info.framebuffer = storages.framebuffers.Get(fb_main).first.handle;
+    rp_begin_info.framebuffer = storages.framebuffers[fb_main].first.handle;
     rp_begin_info.renderArea = {{0, 0}, {uint32_t(w_), uint32_t(h_)}};
     api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -130,7 +130,7 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_main[0]->layout, 0, 2,
                                     simple_descr_sets, 0, nullptr);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -172,9 +172,9 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         }
     }
 
-    const Ren::PipelineMain *pi_alpha_main[3] = {&storages.pipelines.Get(pi_alpha_[0]).first,
-                                                 &storages.pipelines.Get(pi_alpha_[1]).first,
-                                                 &storages.pipelines.Get(pi_alpha_[2]).first};
+    const Ren::PipelineMain *pi_alpha_main[3] = {&storages.pipelines[pi_alpha_[0]].first,
+                                                 &storages.pipelines[pi_alpha_[1]].first,
+                                                 &storages.pipelines[pi_alpha_[2]].first};
 
     { // alpha-tested objects
         Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-ALPHA");
@@ -182,7 +182,7 @@ void Eng::ExShadowColor::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_main[0]->layout, 0, 2,
                                     simple_descr_sets, 0, nullptr);
 
-        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input);
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_alpha_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 

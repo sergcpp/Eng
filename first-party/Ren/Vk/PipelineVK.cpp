@@ -55,7 +55,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const SparseDualStorage<ShaderMai
                         const SparseDualStorage<ProgramMain, ProgramCold> &programs,
                         SparseDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
                         PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log, int subgroup_size) {
-    const ProgramMain &prog_main = programs.Get(prog).first;
+    const ProgramMain &prog_main = programs[prog].first;
 
     std::string pipeline_name;
     for (const ShaderROHandle sh : prog_main.shaders) {
@@ -65,7 +65,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const SparseDualStorage<ShaderMai
         if (!pipeline_name.empty()) {
             pipeline_name += "&";
         }
-        pipeline_name += shaders.Get(sh).second.name;
+        pipeline_name += shaders[sh].second.name;
     }
     log->Info("Initializing pipeline %s", pipeline_name.c_str());
 
@@ -140,7 +140,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const SparseDualStorage<ShaderMai
         auto &stage_info = shader_stage_create_info.emplace_back();
         stage_info = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
         stage_info.stage = g_shader_stages_vk[i];
-        stage_info.module = shaders.Get(prog_main.shaders[i]).first.vk_module;
+        stage_info.module = shaders[prog_main.shaders[i]].first.vk_module;
         stage_info.pName = "main";
         stage_info.pSpecializationInfo = nullptr;
 
@@ -236,7 +236,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const SparseDualStorage<ShaderMai
 
             pipeline_cold.rt_sbt_buf = buffers.Emplace();
 
-            const auto &[sbt_main, sbt_cold] = buffers.Get(pipeline_cold.rt_sbt_buf);
+            const auto &[sbt_main, sbt_cold] = buffers[pipeline_cold.rt_sbt_buf];
             if (!Buffer_Init(api, sbt_main, sbt_cold, String{pipeline_name + " [SBT Buffer]"}, eBufType::ShaderBinding,
                              uint32_t(sbt_size), log)) {
                 log->Error("Failed to initialize SBT buffer!");
@@ -319,7 +319,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
                         PipelineCold &pipeline_cold, const RastState &rast_state, const ProgramROHandle prog,
                         const VertexInputROHandle vtx_input, const RenderPassROHandle render_pass,
                         const uint32_t subpass_index, ILog *log) {
-    const auto &[pr_main, pr_cold] = storages.programs.Get(prog);
+    const auto &[pr_main, pr_cold] = storages.programs[prog];
 
     std::string pipeline_name;
     for (const ShaderROHandle sh : pr_main.shaders) {
@@ -329,7 +329,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
         if (!pipeline_name.empty()) {
             pipeline_name += "&";
         }
-        pipeline_name += storages.shaders.Get(sh).second.name;
+        pipeline_name += storages.shaders[sh].second.name;
     }
     log->Info("Initializing pipeline %s", pipeline_name.c_str());
 
@@ -345,7 +345,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
         auto &stage_info = shader_stage_create_info.emplace_back();
         stage_info = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
         stage_info.stage = g_shader_stages_vk[i];
-        stage_info.module = storages.shaders.Get(pr_main.shaders[i]).first.vk_module;
+        stage_info.module = storages.shaders[pr_main.shaders[i]].first.vk_module;
         stage_info.pName = "main";
         stage_info.pSpecializationInfo = nullptr;
     }
@@ -375,7 +375,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
     { // create graphics pipeline
         SmallVector<VkVertexInputBindingDescription, 8> bindings;
         SmallVector<VkVertexInputAttributeDescription, 8> attribs;
-        VertexInput_FillVKDescriptions(storages.vtx_inputs.Get(vtx_input), bindings, attribs);
+        VertexInput_FillVKDescriptions(storages.vtx_inputs[vtx_input], bindings, attribs);
 
         VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = {
             VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
@@ -452,7 +452,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
         depth_state_ci.minDepthBounds = 0;
         depth_state_ci.maxDepthBounds = 1;
 
-        const RenderPass &rp = storages.render_passes.Get(render_pass);
+        const RenderPass &rp = storages.render_passes[render_pass];
 
         SmallVector<VkPipelineColorBlendAttachmentState, 4> color_blend_attachment_states;
         for (int i = 0; i < int(rp.color_rts.size()); ++i) {

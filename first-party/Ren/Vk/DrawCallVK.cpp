@@ -26,10 +26,10 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
         if (b.trg == eBindTarget::Tex || b.trg == eBindTarget::TexSampled) {
             auto &info = img_sampler_infos[descr_sizes.img_sampler_count++];
 
-            const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
+            const auto &[img_main, img_cold] = storages.images[b.handle.img];
             if (b.trg == eBindTarget::TexSampled) {
                 if (b.handle.sampler) {
-                    info.sampler = storages.samplers.Get(b.handle.sampler).handle;
+                    info.sampler = storages.samplers[b.handle.sampler].handle;
                 } else {
                     info.sampler = img_main.sampler;
                 }
@@ -49,7 +49,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             assert((used_bindings & (1ull << (b.loc + b.offset))) == 0 && "Bindings overlap detected!");
             used_bindings |= (1ull << (b.loc + b.offset));
         } else if (b.trg == eBindTarget::UBuf) {
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers[b.handle.buf];
 
             auto &ubuf = ubuf_infos[descr_sizes.ubuf_count++];
             ubuf.buffer = buf_main.buf;
@@ -69,7 +69,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
         } else if (b.trg == eBindTarget::UTBuf) {
             ++descr_sizes.utbuf_count;
 
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers[b.handle.buf];
 
             auto &new_write = descr_writes.emplace_back();
             new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -83,7 +83,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             used_bindings |= (1ull << b.loc);
         } else if (b.trg == eBindTarget::SBufRO || b.trg == eBindTarget::SBufRW) {
             assert(b.trg == eBindTarget::SBufRO || !b.handle.readonly);
-            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers[b.handle.buf];
 
             auto &sbuf = sbuf_infos[descr_sizes.sbuf_count++];
             sbuf.buffer = buf_main.buf;
@@ -104,7 +104,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             assert(b.trg == eBindTarget::STBufRO || !b.handle.readonly);
             ++descr_sizes.stbuf_count;
 
-            const Ren::BufferMain &buf_main = storages.buffers.Get(b.handle.buf).first;
+            const Ren::BufferMain &buf_main = storages.buffers[b.handle.buf].first;
 
             auto &new_write = descr_writes.emplace_back();
             new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -118,7 +118,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             used_bindings |= (1ull << b.loc);
         } else if (b.trg == eBindTarget::ImageRO || b.trg == eBindTarget::ImageRW) {
             assert(b.trg == eBindTarget::ImageRO || !b.handle.readonly);
-            const Ren::ImageMain &img_main = storages.images.Get(b.handle.img).first;
+            const Ren::ImageMain &img_main = storages.images[b.handle.img].first;
 
             auto &info = img_storage_infos[descr_sizes.store_img_count++];
             info.sampler = img_main.sampler;
@@ -137,7 +137,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             used_bindings |= (1ull << (b.loc + b.offset));
         } else if (b.trg == eBindTarget::Sampler) {
             auto &info = sampler_infos[descr_sizes.sampler_count++];
-            info.sampler = storages.samplers.Get(b.handle.sampler).handle;
+            info.sampler = storages.samplers[b.handle.sampler].handle;
 
             auto &new_write = descr_writes.emplace_back();
             new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -149,7 +149,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
         } else if (b.trg == eBindTarget::AccStruct) {
             auto &info = desc_tlas_infos[descr_sizes.acc_count++];
             info = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR};
-            info.pAccelerationStructures = &storages.acc_structs.Get(b.handle.acc_struct).first.hw.handle;
+            info.pAccelerationStructures = &storages.acc_structs[b.handle.acc_struct].first.hw.handle;
             info.accelerationStructureCount = 1;
 
             auto &new_write = descr_writes.emplace_back();
@@ -185,8 +185,8 @@ void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, 
                           const int uniform_data_len, DescrMultiPoolAlloc &descr_alloc, ILog *log) {
     const ApiContext &api = descr_alloc.api();
 
-    const auto &[pi_main, pi_cold] = storages.pipelines.Get(pipeline);
-    const auto &[prog_main, prog_cold] = storages.programs.Get(pi_main.prog);
+    const auto &[pi_main, pi_cold] = storages.pipelines[pipeline];
+    const auto &[prog_main, prog_cold] = storages.programs[pi_main.prog];
 
     SmallVector<VkDescriptorSet, 2> descr_sets;
     descr_sets.push_back(
@@ -238,8 +238,8 @@ void Ren::DispatchComputeIndirect(CommandBuffer cmd_buf, const PipelineHandle pi
                                   DescrMultiPoolAlloc &descr_alloc, ILog *log) {
     const ApiContext &api = descr_alloc.api();
 
-    const auto &[pi_main, pi_cold] = storages.pipelines.Get(pipeline);
-    const auto &[prog_main, prog_cold] = storages.programs.Get(pi_main.prog);
+    const auto &[pi_main, pi_cold] = storages.pipelines[pipeline];
+    const auto &[prog_main, prog_cold] = storages.programs[pi_main.prog];
 
     SmallVector<VkDescriptorSet, 2> descr_sets;
     descr_sets.push_back(
@@ -274,6 +274,6 @@ void Ren::DispatchComputeIndirect(CommandBuffer cmd_buf, const PipelineHandle pi
         api.vkCmdPushConstants(cmd_buf, pi_main.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, uniform_data_len, uniform_data);
     }
 
-    const BufferMain indir_buf_main = storages.buffers.Get(indir_buf).first;
+    const BufferMain indir_buf_main = storages.buffers[indir_buf].first;
     api.vkCmdDispatchIndirect(cmd_buf, indir_buf_main.buf, VkDeviceSize(indir_buf_offset));
 }

@@ -180,7 +180,7 @@ __itt_string_handle *itt_proc_occluders_str = __itt_string_handle_create("Proces
     }
 
 #define _CROSS(x, y)                                                                                                   \
-    {(x)[1] * (y)[2] - (x)[2] * (y)[1], (x)[2] * (y)[0] - (x)[0] * (y)[2], (x)[0] * (y)[1] - (x)[1] * (y)[0]}
+    { (x)[1] * (y)[2] - (x)[2] * (y)[1], (x)[2] * (y)[0] - (x)[0] * (y)[2], (x)[0] * (y)[1] - (x)[1] * (y)[0] }
 
 void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &cam, const Ren::Camera &ext_cam,
                                     DrawList &list) {
@@ -319,7 +319,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     list.draw_cam.near());
     swCullCtxClear(&cull_ctx_);
 
-    const Mat4f view_from_identity = view_from_world * Mat4f{1.0f},
+    const Mat4f view_from_identity = view_from_world *Mat4f{1.0f},
                 clip_from_identity = clip_from_view * view_from_identity;
 
     uint32_t stack[MAX_STACK_SIZE];
@@ -374,7 +374,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                                 clip_from_object = cull_clip_from_view * view_from_object;
 
                     const Occluder &occ = occluders[obj.components[CompOccluder]];
-                    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(occ.mesh);
+                    const auto &[mesh_main, mesh_cold] = storages.meshes[occ.mesh];
 
                     SWcull_surf surf[64];
                     int surf_count = 0;
@@ -463,7 +463,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     if (!bool(dr.vis_mask & render_mask)) {
                         continue;
                     }
-                    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(dr.mesh);
+                    const auto &[mesh_main, mesh_cold] = storages.meshes[dr.mesh];
 
                     const float cam_dist = Distance(cam.world_position(), 0.5f * (tr.bbox_min_ws + tr.bbox_max_ws));
                     const auto cam_dist_u8 = uint8_t(std::min(255 * cam_dist / 500.0f, 255.0f));
@@ -486,7 +486,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                         const MaterialHandle front_mat =
                             (j >= dr.material_override.size()) ? grp.front_mat : dr.material_override[j][0];
-                        const Ren::MaterialMain &front_main = storages.materials.Get(front_mat).first;
+                        const Ren::MaterialMain &front_main = storages.materials[front_mat].first;
 
                         __record_textures(list.visible_textures, front_main, (obj.comp_mask & CompAnimStateBit),
                                           cam_dist_u16);
@@ -543,7 +543,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                             const MaterialHandle back_mat =
                                 (j >= dr.material_override.size()) ? grp.back_mat : dr.material_override[j][1];
                             if (front_mat != back_mat) {
-                                const Ren::MaterialMain &back_main = storages.materials.Get(back_mat).first;
+                                const Ren::MaterialMain &back_main = storages.materials[back_mat].first;
                                 __record_textures(list.visible_textures, back_main, (obj.comp_mask & CompAnimStateBit),
                                                   cam_dist_u16);
 
@@ -565,7 +565,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     if (!(acc.vis_mask & AccStructure::eRayType::Volume)) {
                         continue;
                     }
-                    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(acc.mesh);
+                    const auto &[mesh_main, mesh_cold] = storages.meshes[acc.mesh];
                     if (mesh_cold.blas && list.rt_obj_instances[2].count < MAX_RT_OBJ_INSTANCES_TOTAL) {
                         const Mat4f world_from_object_trans = Transpose(tr.world_from_object);
 
@@ -619,8 +619,8 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         auto dir = Vec4f{-light.dir[0], -light.dir[1], -light.dir[2], 0.0f};
                         dir = tr.world_from_object * dir;
 
-                        const auto u = tr.world_from_object * Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
-                        const auto v = tr.world_from_object * Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
+                        const auto u = tr.world_from_object *Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
+                        const auto v = tr.world_from_object *Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
 
                         litem_to_lsource_.emplace_back(obj.components[CompLightSource]);
                         proc_objects_[i.index].li_index = int32_t(list.lights.size());
@@ -749,7 +749,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
             if (!(acc.vis_mask & gi_mask)) {
                 continue;
             }
-            const auto &[mesh_main, mesh_cold] = storages.meshes.Get(acc.mesh);
+            const auto &[mesh_main, mesh_cold] = storages.meshes[acc.mesh];
 
             rt_obj_instance_t &new_instance = list.rt_obj_instances[0].data[list.rt_obj_instances[0].count++];
             memcpy(new_instance.xform, ValuePtr(Transpose(tr.world_from_object)), 12 * sizeof(float));
@@ -767,11 +767,11 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                 const Ren::MaterialHandle front_mat =
                     (j >= acc.material_override.size()) ? grp.front_mat : acc.material_override[j][0];
-                const Ren::MaterialMain &front_main = storages.materials.Get(front_mat).first;
+                const Ren::MaterialMain &front_main = storages.materials[front_mat].first;
 
                 const Ren::MaterialHandle back_mat =
                     (j >= acc.material_override.size()) ? grp.back_mat : acc.material_override[j][1];
-                const Ren::MaterialMain &back_main = storages.materials.Get(back_mat).first;
+                const Ren::MaterialMain &back_main = storages.materials[back_mat].first;
 
                 rt_geo_instance_t &geo = list.rt_geo_instances[0].data[list.rt_geo_instances[0].count++];
                 geo.indices_start = (indices_start + grp.byte_offset) / sizeof(uint32_t);
@@ -812,8 +812,8 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     auto dir = Vec4f{-light.dir[0], -light.dir[1], -light.dir[2], 0.0f};
                     dir = tr.world_from_object * dir;
 
-                    const auto u = tr.world_from_object * Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
-                    const auto v = tr.world_from_object * Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
+                    const auto u = tr.world_from_object *Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
+                    const auto v = tr.world_from_object *Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
 
                     litem_to_lsource_.emplace_back(obj.components[CompLightSource]);
                     light_item_t &ls = list.lights.emplace_back();
@@ -1228,7 +1228,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         continue;
                     }
 
-                    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(dr.mesh);
+                    const auto &[mesh_main, mesh_cold] = storages.meshes[dr.mesh];
 
                     if (proc_objects_[i.index].base_vertex == 0xffffffff) {
                         proc_objects_[i.index].base_vertex = mesh_main.attribs_buf1.sub.offset / 16;
@@ -1245,7 +1245,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         proc_objects_[i.index].rt_sh_index = list.rt_obj_instances[1].count;
 
                         const AccStructure &acc = acc_structs[obj.components[CompAccStructure]];
-                        const auto &[acc_mesh_main, acc_mesh_cold] = storages.meshes.Get(acc.mesh);
+                        const auto &[acc_mesh_main, acc_mesh_cold] = storages.meshes[acc.mesh];
 
                         if (acc_mesh_cold.blas && list.rt_obj_instances[1].count < MAX_RT_OBJ_INSTANCES_TOTAL) {
                             const Mat4f world_from_object_trans = Transpose(tr.world_from_object);
@@ -1267,11 +1267,11 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                                 const Ren::MaterialHandle front_mat =
                                     (j >= acc.material_override.size()) ? grp.front_mat : acc.material_override[j][0];
-                                const Ren::MaterialMain &front_main = storages.materials.Get(front_mat).first;
+                                const Ren::MaterialMain &front_main = storages.materials[front_mat].first;
 
                                 const Ren::MaterialHandle back_mat =
                                     (j >= acc.material_override.size()) ? grp.back_mat : acc.material_override[j][1];
-                                const Ren::MaterialMain &back_main = storages.materials.Get(back_mat).first;
+                                const Ren::MaterialMain &back_main = storages.materials[back_mat].first;
 
                                 const Ren::Bitmask<Ren::eMatFlags> mat_flags = front_main.flags;
                                 if (mat_flags & Ren::eMatFlags::AlphaBlend) {
@@ -1310,7 +1310,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                         const MaterialHandle front_mat =
                             (j >= dr.material_override.size()) ? grp.front_mat : dr.material_override[j][0];
-                        const MaterialMain &front_main = storages.materials.Get(front_mat).first;
+                        const MaterialMain &front_main = storages.materials[front_mat].first;
 
                         if ((front_main.flags & eMatFlags::AlphaTest) && front_main.textures.size() > 4 &&
                             front_main.textures[4]) {
@@ -1329,7 +1329,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                         const MaterialHandle back_mat =
                             (j >= dr.material_override.size()) ? grp.back_mat : dr.material_override[j][1];
-                        const MaterialMain &back_main = storages.materials.Get(back_mat).first;
+                        const MaterialMain &back_main = storages.materials[back_mat].first;
 
                         const bool simple_twosided =
                             (front_main.flags & eMatFlags::TwoSided) ||
@@ -1574,7 +1574,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                             near_clip = std::min(near_clip, dist - max_extent);
                             far_clip = std::max(far_clip, dist + max_extent);
 
-                            const auto &[mesh_main, mesh_cold] = storages.meshes.Get(dr.mesh);
+                            const auto &[mesh_main, mesh_cold] = storages.meshes[dr.mesh];
 
                             if (proc_objects_[n->prim_index].base_vertex == 0xffffffff) {
                                 proc_objects_[n->prim_index].base_vertex = mesh_main.attribs_buf1.sub.offset / 16;
@@ -1592,7 +1592,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                                 const MaterialHandle &front_mat =
                                     (j >= dr.material_override.size()) ? grp.front_mat : dr.material_override[j][0];
-                                const MaterialMain &front_main = storages.materials.Get(front_mat).first;
+                                const MaterialMain &front_main = storages.materials[front_mat].first;
 
                                 if ((front_main.flags & eMatFlags::AlphaTest) && front_main.textures.size() > 4 &&
                                     front_main.textures[4]) {
@@ -1611,7 +1611,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                                 const MaterialHandle back_mat =
                                     (j >= dr.material_override.size()) ? grp.back_mat : dr.material_override[j][1];
-                                const MaterialMain &back_main = storages.materials.Get(back_mat).first;
+                                const MaterialMain &back_main = storages.materials[back_mat].first;
 
                                 const bool simple_twosided = (front_main.flags & eMatFlags::TwoSided) ||
                                                              (!(front_main.flags & eMatFlags::AlphaTest) &&
@@ -2591,11 +2591,11 @@ uint32_t RendererInternal::__push_skeletal_mesh(const uint32_t skinned_buf_vtx_o
         memcpy(out_matr_palette[2 * i + 1].matr, ValuePtr(matr_prev_trans), 12 * sizeof(float));
     }
 
-    const Ren::BufferRange &sk_buf = mesh_main.sk_attribs_buf;
-    const Ren::BufferRange &deltas_buf = mesh_main.sk_deltas_buf;
+    const Ren::BufferRange &sk_attribs = mesh_main.sk_attribs_buf;
+    const Ren::BufferRange &sk_deltas = mesh_main.sk_deltas_buf;
 
-    const uint32_t vertex_beg = sk_buf.sub.offset / 48, vertex_cnt = uint32_t(mesh_cold.attribs.size() / 21);
-    const uint32_t deltas_offset = deltas_buf.sub.offset / 24;
+    const uint32_t vertex_beg = sk_attribs.sub.offset / 48, vertex_cnt = uint32_t(mesh_cold.attribs.size() / 21);
+    const uint32_t deltas_offset = sk_deltas.sub.offset / 24;
 
     const uint32_t curr_out_offset = skinned_buf_vtx_offset + list.skin_vertices_count;
 

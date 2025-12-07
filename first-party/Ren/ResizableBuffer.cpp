@@ -7,7 +7,7 @@ Ren::ResizableBuffer::~ResizableBuffer() { Release(false); }
 bool Ren::ResizableBuffer::Resize(const uint32_t new_size, ILog *log, const bool keep_content,
                                   const bool release_immediately) {
     if (handle_) {
-        const auto &[buf_main, buf_cold] = storage_.Get(handle_);
+        const auto &[buf_main, buf_cold] = storage_[handle_];
         if (buf_cold.size == new_size) {
             return true;
         }
@@ -15,7 +15,7 @@ bool Ren::ResizableBuffer::Resize(const uint32_t new_size, ILog *log, const bool
 
     const BufferHandle new_handle = storage_.Emplace();
 
-    const auto &[buf_main, buf_cold] = storage_.Get(new_handle);
+    const auto &[buf_main, buf_cold] = storage_[new_handle];
     const bool res = Buffer_Init(api_, buf_main, buf_cold, name_, type_, new_size, log, size_alignment_);
     if (!res) {
         return false;
@@ -25,7 +25,7 @@ bool Ren::ResizableBuffer::Resize(const uint32_t new_size, ILog *log, const bool
     }
 
     if (handle_ && keep_content) {
-        const auto &[old_buf_main, old_buf_cold] = storage_.Get(handle_);
+        const auto &[old_buf_main, old_buf_cold] = storage_[handle_];
 
         CommandBuffer cmd_buf = api_.BegSingleTimeCommands();
         Buffer_UpdateSubRegion(api_, buf_main, buf_cold, 0, old_buf_cold.size, old_buf_main, 0, cmd_buf);
@@ -41,7 +41,7 @@ bool Ren::ResizableBuffer::Resize(const uint32_t new_size, ILog *log, const bool
 
 void Ren::ResizableBuffer::Release(const bool immediately) {
     if (handle_) {
-        const auto &[buf_main, buf_cold] = storage_.Get(handle_);
+        const auto &[buf_main, buf_cold] = storage_[handle_];
         if (immediately) {
             Buffer_DestroyImmediately(api_, buf_main, buf_cold);
         } else {
@@ -56,7 +56,7 @@ int Ren::ResizableBuffer::AddView(const eFormat format) {
     const int ret = int(views_.size());
     views_.push_back(format);
     if (handle_) {
-        const auto &[buf_main, buf_cold] = storage_.Get(handle_);
+        const auto &[buf_main, buf_cold] = storage_[handle_];
         const int view_index = Buffer_AddView(api_, buf_main, buf_cold, format);
         assert(view_index == ret);
     }
@@ -66,7 +66,7 @@ int Ren::ResizableBuffer::AddView(const eFormat format) {
 Ren::SubAllocation Ren::ResizableBuffer::AllocSubRegion(uint32_t req_size, uint32_t req_alignment, std::string_view tag,
                                                         ILog *log, const BufferMain *init_buf, CommandBuffer cmd_buf,
                                                         uint32_t init_off) {
-    const auto &[buf_main, buf_cold] = storage_.Get(handle_);
+    const auto &[buf_main, buf_cold] = storage_[handle_];
 
     SubAllocation alloc =
         Buffer_AllocSubRegion(api_, buf_main, buf_cold, req_size, req_alignment, tag, log, init_buf, cmd_buf, init_off);
@@ -84,6 +84,6 @@ Ren::SubAllocation Ren::ResizableBuffer::AllocSubRegion(uint32_t req_size, uint3
 }
 
 void Ren::ResizableBuffer::FreeSubRegion(SubAllocation alloc) {
-    const auto &[buf_main, buf_cold] = storage_.Get(handle_);
+    const auto &[buf_main, buf_cold] = storage_[handle_];
     Buffer_FreeSubRegion(buf_cold, alloc);
 }

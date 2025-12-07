@@ -47,7 +47,7 @@ void test_anim() {
         TestContext test;
 
         const AnimSeqHandle handle = test.CreateAnimSequence(String{"Anim"}, in);
-        const auto &[anim_main, anim_cold] = test.anims().Get(handle);
+        const auto &[anim_main, anim_cold] = test.storages().anims[handle];
 
         require(anim_cold.act_name == "ArmatureAction");
         require(anim_main.fps == 24);

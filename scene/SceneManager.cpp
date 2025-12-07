@@ -307,7 +307,7 @@ void Eng::SceneManager::LoadScene(const Sys::JsObjectP &js_scene, const Ren::Bit
             std::make_unique<Ren::MemAllocators>("Scene Mem Allocs", &api, 16 * 1024 * 1024 /* initial_block_size */,
                                                  1.5f /* growth_factor */, 128 * 1024 * 1024 /* max_pool_size */);
         // Temp. solution (prevent reallocation)
-        ren_ctx_.images().Reserve(16384);
+        ren_ctx_.storages().images.Reserve(16384);
         if (load_flags & eSceneLoadFlags::Textures) {
             StartTextureLoaderThread();
         }
@@ -586,7 +586,7 @@ void Eng::SceneManager::SaveScene(Sys::JsObjectP &js_scene) {
 
             js_env.Insert("env_col", std::move(js_env_col));
         }
-        const auto &[env_main, env_cold] = ren_ctx_.images().Get(scene_data_.env.env_map);
+        const auto &[env_main, env_cold] = ren_ctx_.storages().images[scene_data_.env.env_map];
         if (env_cold.name != "dummy_white_cube") {
             js_env.Insert("env_map", Sys::JsStringP{scene_data_.env.env_map_name, alloc});
         }
@@ -767,7 +767,7 @@ void Eng::SceneManager::LoadEnvMap() {
         scene_data_.env.env_map = ren_ctx_.CreateImage(Ren::String{"Sky Envmap"}, _black_cube, p,
                                                        scene_data_.persistent_data->mem_allocs.get());
 
-        const auto &[env_main, env_cold] = ren_ctx_.images().Get(scene_data_.env.env_map);
+        const auto &[env_main, env_cold] = ren_ctx_.storages().images[scene_data_.env.env_map];
         for (int j = 0; j < env_cold.params.mip_count; ++j) {
             for (int i = 0; i < 6; ++i) {
                 const int view_index =
@@ -926,27 +926,29 @@ void Eng::SceneManager::Release_TLAS(const bool immediately) {
 bool Eng::SceneManager::AllocMeshBuffers() {
     // bool recreate_views = !*scene_data_.persistent_data->vertex_buf1;
 
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
+
     bool success = true;
 
     if (!scene_data_.persistent_data->vertex_buf1) {
         scene_data_.persistent_data->vertex_buf1 = std::make_unique<Ren::ResizableBuffer>(
-            ren_ctx_.api(), Ren::String{"VtxBuf1"}, Ren::eBufType::VertexAttribs, 16, ren_ctx_.buffers());
+            ren_ctx_.api(), Ren::String{"VtxBuf1"}, Ren::eBufType::VertexAttribs, 16, storages.buffers);
         scene_data_.persistent_data->vertex_buf1->AddView(Ren::eFormat::RGBA32F);
     }
     if (!scene_data_.persistent_data->vertex_buf2) {
         scene_data_.persistent_data->vertex_buf2 = std::make_unique<Ren::ResizableBuffer>(
-            ren_ctx_.api(), Ren::String{"VtxBuf2"}, Ren::eBufType::VertexAttribs, 16, ren_ctx_.buffers());
+            ren_ctx_.api(), Ren::String{"VtxBuf2"}, Ren::eBufType::VertexAttribs, 16, storages.buffers);
         scene_data_.persistent_data->vertex_buf2->AddView(Ren::eFormat::RGBA32UI);
     }
     if (!scene_data_.persistent_data->skin_vertex_buf) {
         scene_data_.persistent_data->skin_vertex_buf = std::make_unique<Ren::ResizableBuffer>(
-            ren_ctx_.api(), Ren::String{"SkinVtxBuf"}, Ren::eBufType::VertexAttribs, 16, ren_ctx_.buffers());
+            ren_ctx_.api(), Ren::String{"SkinVtxBuf"}, Ren::eBufType::VertexAttribs, 16, storages.buffers);
         scene_data_.persistent_data->delta_buf = std::make_unique<Ren::ResizableBuffer>(
-            ren_ctx_.api(), Ren::String{"DeltaBuf"}, Ren::eBufType::VertexAttribs, 16, ren_ctx_.buffers());
+            ren_ctx_.api(), Ren::String{"DeltaBuf"}, Ren::eBufType::VertexAttribs, 16, storages.buffers);
     }
     if (!scene_data_.persistent_data->indices_buf) {
         scene_data_.persistent_data->indices_buf = std::make_unique<Ren::ResizableBuffer>(
-            ren_ctx_.api(), Ren::String{"NdxBuf"}, Ren::eBufType::VertexIndices, 4, ren_ctx_.buffers());
+            ren_ctx_.api(), Ren::String{"NdxBuf"}, Ren::eBufType::VertexIndices, 4, storages.buffers);
         scene_data_.persistent_data->indices_buf->AddView(Ren::eFormat::R32UI);
     }
 
@@ -987,7 +989,7 @@ void Eng::SceneManager::LoadMeshBuffers() {
     for (const Eng::SceneObject &obj : scene_data_.objects) {
         if (bool(obj.comp_mask & Eng::CompDrawableBit)) {
             Eng::Drawable &dr = drawables[obj.components[Eng::CompDrawable]];
-            const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(dr.mesh);
+            const auto &[mesh_main, mesh_cold] = ren_ctx_.storages().meshes[dr.mesh];
             assert(mesh_main.type == Ren::eMeshType::Simple);
             Mesh_InitBufferData(ren_ctx_.api(), mesh_main, mesh_cold, *scene_data_.persistent_data->vertex_buf1,
                                 *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
@@ -995,7 +997,7 @@ void Eng::SceneManager::LoadMeshBuffers() {
         }
         if (bool(obj.comp_mask & Eng::CompAccStructureBit)) {
             Eng::AccStructure &acc = acc_structs[obj.components[Eng::CompAccStructure]];
-            const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
+            const auto &[mesh_main, mesh_cold] = ren_ctx_.storages().meshes[acc.mesh];
             assert(mesh_main.type == Ren::eMeshType::Simple);
             Mesh_InitBufferData(ren_ctx_.api(), mesh_main, mesh_cold, *scene_data_.persistent_data->vertex_buf1,
                                 *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
@@ -1016,13 +1018,13 @@ void Eng::SceneManager::ReleaseMeshBuffers(const bool immediately) {
     for (const Eng::SceneObject &obj : scene_data_.objects) {
         if (bool(obj.comp_mask & Eng::CompDrawableBit)) {
             Eng::Drawable &dr = drawables[obj.components[Eng::CompDrawable]];
-            const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(dr.mesh);
+            const auto &[mesh_main, mesh_cold] = ren_ctx_.storages().meshes[dr.mesh];
             assert(mesh_main.type == Ren::eMeshType::Simple);
             mesh_main.attribs_buf1 = mesh_main.attribs_buf2 = mesh_main.indices_buf = {};
         }
         if (bool(obj.comp_mask & Eng::CompAccStructureBit)) {
             Eng::AccStructure &acc = acc_structs[obj.components[Eng::CompAccStructure]];
-            const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
+            const auto &[mesh_main, mesh_cold] = ren_ctx_.storages().meshes[acc.mesh];
             assert(mesh_main.type == Ren::eMeshType::Simple);
             mesh_main.attribs_buf1 = mesh_main.attribs_buf2 = mesh_main.indices_buf = {};
             mesh_cold.blas = {};
@@ -1066,9 +1068,9 @@ void Eng::SceneManager::ReleaseMeshBuffers(const bool immediately) {
 
 void Eng::SceneManager::AllocInstanceBuffer() {
     // TODO: Handle failure properly
-    scene_data_.persistent_data->instance_buf = ren_ctx_.CreateBuffer(
+    scene_data_.persistent_data->instances = ren_ctx_.CreateBuffer(
         Ren::String{"Instance Buf"}, Ren::eBufType::Texture, uint32_t(sizeof(instance_data_t) * MAX_INSTANCES_TOTAL));
-    ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->instance_buf, Ren::eFormat::RGBA32F);
+    ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->instances, Ren::eFormat::RGBA32F);
 
     for (uint32_t i = 0; i < scene_data_.objects.size(); ++i) {
         instance_data_to_update_.push_back(i);
@@ -1076,12 +1078,12 @@ void Eng::SceneManager::AllocInstanceBuffer() {
 }
 
 void Eng::SceneManager::ReleaseInstanceBuffer(const bool immediately) {
-    ren_ctx_.ReleaseBuffer(scene_data_.persistent_data->instance_buf, immediately);
-    scene_data_.persistent_data->instance_buf = {};
+    ren_ctx_.ReleaseBuffer(scene_data_.persistent_data->instances, immediately);
+    scene_data_.persistent_data->instances = {};
 }
 
 void Eng::SceneManager::AllocMaterialsBuffer() {
-    scene_data_.persistent_data->materials_buf = ren_ctx_.CreateBuffer(
+    scene_data_.persistent_data->materials = ren_ctx_.CreateBuffer(
         Ren::String{"Materials Buffer"}, Ren::eBufType::Storage, uint32_t(8 * sizeof(material_data_t)));
     for (auto it = scene_data_.name_to_material.begin(); it != scene_data_.name_to_material.end(); ++it) {
         scene_data_.material_changes.push_back(it->val.index);
@@ -1089,8 +1091,8 @@ void Eng::SceneManager::AllocMaterialsBuffer() {
 }
 
 void Eng::SceneManager::ReleaseMaterialsBuffer(const bool immediately) {
-    ren_ctx_.ReleaseBuffer(scene_data_.persistent_data->materials_buf, immediately);
-    scene_data_.persistent_data->materials_buf = {};
+    ren_ctx_.ReleaseBuffer(scene_data_.persistent_data->materials, immediately);
+    scene_data_.persistent_data->materials = {};
 }
 
 void Eng::SceneManager::LoadProbeCache() {
@@ -1312,7 +1314,7 @@ void Eng::SceneManager::PostloadDrawable(const Sys::JsObjectP &js_comp_obj, void
         }
     }
 
-    const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(dr->mesh);
+    const auto &[mesh_main, mesh_cold] = ren_ctx_.storages().meshes[dr->mesh];
 
     if (const size_t anims_ndx = js_comp_obj.IndexOf("anims"); anims_ndx < js_comp_obj.Size()) {
         const Sys::JsArrayP &js_anims = js_comp_obj.at("anims").as_arr();
@@ -1332,7 +1334,7 @@ void Eng::SceneManager::PostloadDrawable(const Sys::JsObjectP &js_comp_obj, void
             std::istream in_file_stream(&mem);
 
             Ren::AnimSeqHandle anim_handle = ren_ctx_.CreateAnimSequence(Ren::String{js_anim_name.val}, in_file_stream);
-            mesh_cold.skel.AddAnimSequence(anim_handle, ren_ctx_.anims());
+            mesh_cold.skel.AddAnimSequence(anim_handle, ren_ctx_.storages().anims);
         }
     }
 
@@ -1387,7 +1389,7 @@ void Eng::SceneManager::PostloadOccluder(const Sys::JsObjectP &js_comp_obj, void
         occ->mesh = LoadMesh(js_mesh_file_name.val, in_file_stream, std::bind(&SceneManager::OnLoadMaterial, this, _1));
     }
 
-    const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(occ->mesh);
+    const auto &[mesh_main, mesh_cold] = ren_ctx_.storages().meshes[occ->mesh];
 
     obj_bbox[0] = Min(obj_bbox[0], mesh_cold.bbox_min);
     obj_bbox[1] = Max(obj_bbox[1], mesh_cold.bbox_max);
@@ -1584,7 +1586,7 @@ void Eng::SceneManager::PostloadAccStructure(const Sys::JsObjectP &js_comp_obj, 
         }
     }
 
-    const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc->mesh);
+    const auto &[mesh_main, mesh_cold] = ren_ctx_.storages().meshes[acc->mesh];
 
     // TODO: use better surface area estimation
     const Ren::Vec3f e = mesh_cold.bbox_max - mesh_cold.bbox_min;
@@ -1607,7 +1609,7 @@ void Eng::SceneManager::PostsaveDrawable(const void *comp, Sys::JsObjectP &js_ou
     const auto &alloc = js_out.elements.get_allocator();
 
     if (dr.mesh) {
-        js_out.Insert("mesh_file", Sys::JsStringP{ren_ctx_.meshes().Get(dr.mesh).second.name, alloc});
+        js_out.Insert("mesh_file", Sys::JsStringP{ren_ctx_.storages().meshes[dr.mesh].second.name, alloc});
     }
 
     if (!dr.material_override.empty()) {
@@ -1616,9 +1618,9 @@ void Eng::SceneManager::PostsaveDrawable(const void *comp, Sys::JsObjectP &js_ou
         for (const auto &mat : dr.material_override) {
             std::string mat_name;
             if (mat[0]) {
-                mat_name = ren_ctx_.materials().Get(mat[0]).second.name;
+                mat_name = ren_ctx_.storages().materials[mat[0]].second.name;
             } else if (mat[2]) {
-                mat_name = ren_ctx_.materials().Get(mat[2]).second.name;
+                mat_name = ren_ctx_.storages().materials[mat[2]].second.name;
                 mat_name = mat_name.substr(0, mat_name.length() - 4);
             }
             js_material_override.Push(Sys::JsStringP{mat_name, alloc});
@@ -1634,7 +1636,7 @@ void Eng::SceneManager::PostsaveAccStructure(const void *comp, Sys::JsObjectP &j
 
     if (as.mesh) {
         // write mesh file name
-        js_out.Insert("mesh_file", Sys::JsStringP{ren_ctx_.meshes().Get(as.mesh).second.name, alloc});
+        js_out.Insert("mesh_file", Sys::JsStringP{ren_ctx_.storages().meshes[as.mesh].second.name, alloc});
     }
 
     if (!as.material_override.empty()) {
@@ -1643,9 +1645,9 @@ void Eng::SceneManager::PostsaveAccStructure(const void *comp, Sys::JsObjectP &j
         for (const auto &mat : as.material_override) {
             std::string mat_name;
             if (mat[0]) {
-                mat_name = ren_ctx_.materials().Get(mat[0]).second.name;
+                mat_name = ren_ctx_.storages().materials[mat[0]].second.name;
             } else if (mat[2]) {
-                mat_name = ren_ctx_.materials().Get(mat[2]).second.name;
+                mat_name = ren_ctx_.storages().materials[mat[2]].second.name;
                 mat_name = mat_name.substr(0, mat_name.length() - 4);
             }
             js_material_override.Push(Sys::JsStringP{mat_name, alloc});
@@ -1810,7 +1812,7 @@ Ren::ImageHandle Eng::SceneManager::OnLoadTexture(const std::string_view name, c
         TextureRequest new_req;
         new_req.img = ret;
 
-        const Ren::ImageCold &img_cold = ren_ctx_.images().Get(ret).second;
+        const Ren::ImageCold &img_cold = ren_ctx_.storages().images[ret].second;
         if (img_cold.name.StartsWith("lightmaps/")) {
             // set max initial priority for lightmaps
             new_req.sort_key = 0;
@@ -1827,9 +1829,9 @@ Ren::ImageHandle Eng::SceneManager::OnLoadTexture(const std::string_view name, c
 Ren::SamplerHandle Eng::SceneManager::OnLoadSampler(const Ren::SamplingParams params) {
     const auto it = lower_bound(std::begin(scene_data_.samplers), std::end(scene_data_.samplers), params,
                                 [this](const Ren::SamplerHandle lhs_handle, const Ren::SamplingParams s) {
-                                    return ren_ctx_.samplers().Get(lhs_handle).params < s;
+                                    return ren_ctx_.storages().samplers[lhs_handle].params < s;
                                 });
-    if (it != std::end(scene_data_.samplers) && ren_ctx_.samplers().Get(*it).params == params) {
+    if (it != std::end(scene_data_.samplers) && ren_ctx_.storages().samplers[*it].params == params) {
         return *it;
     }
     const Ren::SamplerHandle ret = ren_ctx_.CreateSampler(params);
@@ -2003,10 +2005,10 @@ bool Eng::SceneManager::Serve(const int texture_budget) {
     if (scene_data_.load_flags & eSceneLoadFlags::Textures) {
         finished &= ProcessPendingTextures(texture_budget);
     }
-    if (scene_data_.persistent_data->materials_buf) {
+    if (scene_data_.persistent_data->materials) {
         finished &= UpdateMaterialsBuffer();
     }
-    if (scene_data_.persistent_data->instance_buf) {
+    if (scene_data_.persistent_data->instances) {
         finished &= UpdateInstanceBuffer();
     }
 
@@ -2093,7 +2095,7 @@ void Eng::SceneManager::UpdateInstanceBufferRange(const uint32_t obj_beg, const 
     Buffer_Unmap(ren_ctx_.api(), temp_stage_buf_main, temp_stage_buf_cold);
 
     const auto &[instance_buf_main, instance_buf_cold] =
-        ren_ctx_.buffers().Get(scene_data_.persistent_data->instance_buf);
+        ren_ctx_.storages().buffers[scene_data_.persistent_data->instances];
     Buffer_UpdateSubRegion(ren_ctx_.api(), instance_buf_main, instance_buf_cold, obj_beg * sizeof(instance_data_t),
                            total_data_to_update, temp_stage_buf_main, 0, ren_ctx_.current_cmd_buf());
 }

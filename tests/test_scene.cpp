@@ -502,8 +502,8 @@ void run_image_test(TestContext &ren_ctx, Sys::ThreadPool &threads, std::string_
                                                            {readback_buf, Ren::eResState::CopyDst}};
                 TransitionResourceStates(api, ren_ctx.storages(), cmd_buf, Ren::AllStages, Ren::AllStages, transitions);
 
-                const auto &[img_main, img_cold] = ren_ctx.images().Get(render_result);
-                const auto &[buf_main, buf_cold] = ren_ctx.buffers().Get(readback_buf);
+                const auto &[img_main, img_cold] = ren_ctx.storages().images[render_result];
+                const auto &[buf_main, buf_cold] = ren_ctx.storages().buffers[readback_buf];
 
                 Image_CmdCopyToBuffer(api, img_main, img_cold, buf_main, buf_cold, cmd_buf, 0);
 

@@ -9,21 +9,21 @@
 #include "../shaders/depth_hierarchy_interface.h"
 
 void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
-    const Ren::ImageROHandle depth_tex = fg.AccessROImage(depth_tex_);
+    const Ren::ImageROHandle depth = fg.AccessROImage(depth_);
 
-    const Ren::BufferRWHandle atomic_buf = fg.AccessRWBuffer(atomic_buf_);
-    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(output_tex_);
+    const Ren::BufferRWHandle atomic = fg.AccessRWBuffer(atomic_);
+    const Ren::ImageRWHandle output = fg.AccessRWImage(output_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    const auto &[input_main, input_cold] = storages.images.Get(depth_tex);
-    const auto &[output_main, output_cold] = storages.images.Get(output_tex);
+    const auto &[input_main, input_cold] = storages.images[depth];
+    const auto &[output_main, output_cold] = storages.images[output];
 
     VkCommandBuffer cmd_buf = fg.cmd_buf();
 
-    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_depth_hierarchy_).first;
-    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
+    const Ren::PipelineMain &pi = storages.pipelines[pi_depth_hierarchy_].first;
+    const Ren::ProgramMain &pr = storages.programs[pi.prog].first;
 
     VkDescriptorSetLayout descr_set_layout = pr.descr_set_layouts[0];
     Ren::DescrSizes descr_sizes;
@@ -32,11 +32,11 @@ void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
     VkDescriptorSet descr_set = fg.descr_alloc().Alloc(descr_sizes, descr_set_layout);
 
     { // update descriptor set
-        const Ren::BufferMain &atomic_buf_main = storages.buffers.Get(atomic_buf).first;
+        const Ren::BufferMain &atomic_main = storages.buffers[atomic].first;
 
         const VkDescriptorImageInfo depth_tex_info =
             Image_GetDescriptorImageInfo(api, input_main, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        const VkDescriptorBufferInfo atomic_buf_info = {atomic_buf_main.buf, 0, VK_WHOLE_SIZE};
+        const VkDescriptorBufferInfo atomic_buf_info = {atomic_main.buf, 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo depth_img_infos[7];
         for (int i = 0; i < 7; ++i) {
             depth_img_infos[i] = Image_GetDescriptorImageInfo(

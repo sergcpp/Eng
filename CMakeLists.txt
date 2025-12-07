@@ -130,12 +130,14 @@ set(EXECUTORS_SOURCES   renderer/executors/ExBuildAccStructures.h
                         renderer/executors/ExPostprocess.cpp
                         renderer/executors/ExReadExposure.h
                         renderer/executors/ExReadExposure.cpp
-                        renderer/executors/ExRTGI.h
-                        renderer/executors/ExRTGI.cpp
+                        renderer/executors/ExRTDiffuse.h
+                        renderer/executors/ExRTDiffuse.cpp
                         renderer/executors/ExRTGICache.h
                         renderer/executors/ExRTGICache.cpp
-                        renderer/executors/ExRTReflections.h
-                        renderer/executors/ExRTReflections.cpp
+                        renderer/executors/ExRTSpecularInline.h
+                        renderer/executors/ExRTSpecularInline.cpp
+                        renderer/executors/ExRTSpecular.h
+                        renderer/executors/ExRTSpecular.cpp
                         renderer/executors/ExRTShadows.h
                         renderer/executors/ExRTShadows.cpp
                         renderer/executors/ExSampleLights.h
@@ -193,9 +195,10 @@ elseif(${REN_BACKEND} STREQUAL "VK")
                             renderer/executors/ExOITDepthPeelVK.cpp
                             renderer/executors/ExOITScheduleRaysVK.cpp
                             renderer/executors/ExOpaqueVK.cpp
-                            renderer/executors/ExRTGI_VK.cpp
+                            renderer/executors/ExRTDiffuse_VK.cpp
                             renderer/executors/ExRTGICacheVK.cpp
-                            renderer/executors/ExRTReflectionsVK.cpp
+                            renderer/executors/ExRTSpecularInlineVK.cpp
+                            renderer/executors/ExRTSpecularVK.cpp
                             renderer/executors/ExRTShadows_VK.cpp
                             renderer/executors/ExSampleLightsVK.cpp
                             renderer/executors/ExShadowColorVK.cpp

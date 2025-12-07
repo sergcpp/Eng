@@ -17,7 +17,7 @@ uint32_t _draw_range_ext(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, co
                          Ren::Span<const VkDescriptorSet> descr_sets, int *draws_count);
 }
 
-void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::ImageRWHandle depth_tex) {
+void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::ImageRWHandle depth) {
     using namespace ExSharedInternal;
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
@@ -26,32 +26,32 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferROHandle oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
-    const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(ray_counter_);
-    const Ren::BufferHandle ray_list_buf = fg.AccessRWBuffer(ray_list_);
-    const Ren::BufferHandle ray_bitmask_buf = fg.AccessRWBuffer(ray_bitmask_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
+    const Ren::BufferROHandle oit_depth = fg.AccessROBuffer(oit_depth_);
+    const Ren::BufferHandle ray_counter = fg.AccessRWBuffer(ray_counter_);
+    const Ren::BufferHandle ray_list = fg.AccessRWBuffer(ray_list_);
+    const Ren::BufferHandle ray_bitmask = fg.AccessRWBuffer(ray_bitmask_);
 
     if ((*p_list_)->alpha_blend_start_index == -1) {
         return;
     }
 
-    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
-                                     {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances_buf},
-                                     {Ren::eBindTarget::UTBuf, OITScheduleRays::OIT_DEPTH_BUF_SLOT, oit_depth_buf},
-                                     {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
-                                     {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
-                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_COUNTER_SLOT, ray_counter_buf},
-                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_LIST_SLOT, ray_list_buf},
-                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_BITMASK_SLOT, ray_bitmask_buf},
-                                     {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex}};
+    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data},
+                                     {Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances},
+                                     {Ren::eBindTarget::UTBuf, OITScheduleRays::OIT_DEPTH_BUF_SLOT, oit_depth},
+                                     {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices},
+                                     {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials},
+                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_COUNTER_SLOT, ray_counter},
+                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_LIST_SLOT, ray_list},
+                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_BITMASK_SLOT, ray_bitmask},
+                                     {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise}};
 
-    const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines.Get(pi_vegetation_[0]).first;
-    const Ren::ProgramMain &pr_vegetation0_main = storages.programs.Get(pi_vegetation0_main.prog).first;
+    const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines[pi_vegetation_[0]].first;
+    const Ren::ProgramMain &pr_vegetation0_main = storages.programs[pi_vegetation0_main.prog].first;
 
     VkDescriptorSet descr_sets[2];
     descr_sets[0] = PrepareDescriptorSet(api, storages, pr_vegetation0_main.descr_set_layouts[0], bindings,
@@ -77,16 +77,15 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
     uint32_t i = (*p_list_)->alpha_blend_start_index;
 
     { // solid meshes
-        const Ren::PipelineMain &pi_simple0_main = storages.pipelines.Get(pi_simple_[0]).first;
-        const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
-        const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
+        const Ren::PipelineMain &pi_simple0_main = storages.pipelines[pi_simple_[0]].first;
+        const Ren::PipelineMain &pi_simple1_main = storages.pipelines[pi_simple_[1]].first;
+        const Ren::PipelineMain &pi_simple2_main = storages.pipelines[pi_simple_[2]].first;
 
-        const Ren::FramebufferHandle fb =
-            fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth_tex, depth_tex, {});
+        const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth, depth, {});
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(pi_simple0_main.render_pass).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[pi_simple0_main.render_pass].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         const VkClearValue clear_values[4] = {{}, {}, {}, {}};
         rp_begin_info.pClearValues = clear_values;
@@ -96,7 +95,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
         { // Simple meshes
             Ren::DebugMarker _m(api, cmd_buf, "SIMPLE");
 
-            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs[pi_simple0_main.vtx_input];
             VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 

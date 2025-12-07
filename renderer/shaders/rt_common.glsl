@@ -44,7 +44,7 @@ float GetHitDistanceNormalization(float viewZ, float roughness) {
     return (A + abs(viewZ) * B) * mix(1.0, C, saturate(exp2(D * roughness * roughness)));
 }
 
-float GetNormHitDist(float hitDist, float viewZ, float roughness) {
+float NormalizeHitDist(float hitDist, float viewZ, float roughness) {
     return saturate(hitDist / GetHitDistanceNormalization(viewZ, roughness));
 }
 

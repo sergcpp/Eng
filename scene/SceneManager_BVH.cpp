@@ -589,8 +589,9 @@ Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc)
     using namespace SceneManagerInternal;
 
     const Ren::ApiContext &api = ren_ctx_.api();
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
 
-    const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
+    const auto &[mesh_main, mesh_cold] = storages.meshes[acc.mesh];
     const Ren::BufferRange &attribs = mesh_main.attribs_buf1, &indices = mesh_main.indices_buf;
 
     assert((attribs.sub.offset % 16) == 0);
@@ -602,16 +603,15 @@ Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc)
     const int VertexStride = 13;
 
     if (!scene_data_.persistent_data->swrt.rt_prim_indices_buf) {
-        scene_data_.persistent_data->swrt.rt_prim_indices_buf =
-            std::make_unique<Ren::ResizableBuffer>(ren_ctx_.api(), "SWRT Prim Indices", Ren::eBufType::Texture,
-                                                   uint32_t(sizeof(uint32_t)), ren_ctx_.buffers());
+        scene_data_.persistent_data->swrt.rt_prim_indices_buf = std::make_unique<Ren::ResizableBuffer>(
+            ren_ctx_.api(), "SWRT Prim Indices", Ren::eBufType::Texture, uint32_t(sizeof(uint32_t)), storages.buffers);
         scene_data_.persistent_data->swrt.rt_prim_indices_buf->Resize(uint32_t(1024 * sizeof(uint32_t)),
                                                                       ren_ctx_.log());
         scene_data_.persistent_data->swrt.rt_prim_indices_buf->AddView(Ren::eFormat::R32UI);
     }
     if (!scene_data_.persistent_data->swrt.rt_blas_buf) {
         scene_data_.persistent_data->swrt.rt_blas_buf = std::make_unique<Ren::ResizableBuffer>(
-            ren_ctx_.api(), "SWRT BLAS", Ren::eBufType::Storage, 16, ren_ctx_.buffers());
+            ren_ctx_.api(), "SWRT BLAS", Ren::eBufType::Storage, 16, storages.buffers);
         scene_data_.persistent_data->swrt.rt_blas_buf->Resize(uint32_t(1024 * sizeof(gpu_bvh2_node_t)), ren_ctx_.log());
         scene_data_.persistent_data->swrt.rt_blas_buf->AddView(Ren::eFormat::RGBA32F);
     }
@@ -700,7 +700,7 @@ Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc)
     scene_data_.persistent_data->swrt.rt_meshes[mesh_index] = new_mesh;
 
     const Ren::AccStructHandle new_blas = ren_ctx_.CreateAccStruct();
-    const auto &[blas_main, blas_cold] = ren_ctx_.acc_structs().Get(new_blas);
+    const auto &[blas_main, blas_cold] = storages.acc_structs[new_blas];
     if (!AccStruct_Init(blas_main, blas_cold, mesh_cold.name, mesh_index, nodes_alloc, prim_alloc)) {
         ren_ctx_.ReleaseAccStruct(new_blas);
         return {};
@@ -754,6 +754,8 @@ Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc)
 }
 
 void Eng::SceneManager::Alloc_SWRT_TLAS() {
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
+
     auto &data = *scene_data_.persistent_data;
 
     data.rt_tlas_buf[int(eTLASIndex::Main)] = ren_ctx_.CreateBuffer(
@@ -769,16 +771,15 @@ void Eng::SceneManager::Alloc_SWRT_TLAS() {
     ren_ctx_.FindOrCreateBufferView(data.rt_tlas_buf[int(eTLASIndex::Volume)], Ren::eFormat::RGBA32F);
 
     if (!data.swrt.rt_prim_indices_buf) {
-        scene_data_.persistent_data->swrt.rt_prim_indices_buf =
-            std::make_unique<Ren::ResizableBuffer>(ren_ctx_.api(), "SWRT Prim Indices", Ren::eBufType::Texture,
-                                                   uint32_t(sizeof(uint32_t)), ren_ctx_.buffers());
+        scene_data_.persistent_data->swrt.rt_prim_indices_buf = std::make_unique<Ren::ResizableBuffer>(
+            ren_ctx_.api(), "SWRT Prim Indices", Ren::eBufType::Texture, uint32_t(sizeof(uint32_t)), storages.buffers);
         scene_data_.persistent_data->swrt.rt_prim_indices_buf->Resize(uint32_t(1024 * sizeof(uint32_t)),
                                                                       ren_ctx_.log());
         scene_data_.persistent_data->swrt.rt_prim_indices_buf->AddView(Ren::eFormat::R32UI);
     }
     if (!data.swrt.rt_blas_buf) {
         data.swrt.rt_blas_buf = std::make_unique<Ren::ResizableBuffer>(ren_ctx_.api(), "SWRT BLAS",
-                                                                       Ren::eBufType::Texture, 16, ren_ctx_.buffers());
+                                                                       Ren::eBufType::Texture, 16, storages.buffers);
         data.swrt.rt_blas_buf->Resize(uint32_t(1024 * sizeof(gpu_bvh2_node_t)), ren_ctx_.log());
         data.swrt.rt_blas_buf->AddView(Ren::eFormat::RGBA32F);
     }
@@ -1294,9 +1295,10 @@ uint32_t Eng::SceneManager::ConvertToBVH2(Ren::Span<const gpu_bvh_node_t> nodes,
 }
 
 void Eng::SceneManager::RebuildLightTree() {
-    scene_data_.persistent_data->stoch_lights_buf = {};
-    scene_data_.persistent_data->stoch_lights_nodes_buf = {};
+    scene_data_.persistent_data->stoch_lights = {};
+    scene_data_.persistent_data->stoch_lights_nodes = {};
 
+    const Ren::ApiContext &api = ren_ctx_.api();
     const Ren::StoragesRef &storages = ren_ctx_.storages();
 
     const auto *transforms = (Transform *)scene_data_.comp_store[CompTransform]->SequentialData();
@@ -1322,7 +1324,7 @@ void Eng::SceneManager::RebuildLightTree() {
         const Transform &tr = transforms[obj.components[CompTransform]];
         const AccStructure &acc = acc_structs[obj.components[CompAccStructure]];
 
-        const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
+        const auto &[mesh_main, mesh_cold] = storages.meshes[acc.mesh];
         assert(mesh_main.type == Ren::eMeshType::Simple);
         const int VertexStride = 13;
 
@@ -1336,11 +1338,11 @@ void Eng::SceneManager::RebuildLightTree() {
 
             const Ren::MaterialHandle front_mat =
                 (j >= acc.material_override.size()) ? grp.front_mat : acc.material_override[j][0];
-            const auto &[front_main, front_cold] = storages.materials.Get(front_mat);
+            const auto &[front_main, front_cold] = storages.materials[front_mat];
 
             const Ren::MaterialHandle back_mat =
                 (j >= acc.material_override.size()) ? grp.back_mat : acc.material_override[j][1];
-            const auto &[back_main, back_cold] = storages.materials.Get(back_mat);
+            const auto &[back_main, back_cold] = storages.materials[back_mat];
 
             if (!front_mat || (front_main.flags & Ren::eMatFlags::Emissive) == 0) {
                 continue;
@@ -1585,18 +1587,16 @@ void Eng::SceneManager::RebuildLightTree() {
         light_wnodes.resize(compacted_count);
     }
 
-    const Ren::ApiContext &api = ren_ctx_.api();
-
     { // Init GPU data
         const uint32_t lights_buf_size = uint32_t(stochastic_lights.size() * sizeof(light_item_t));
-        scene_data_.persistent_data->stoch_lights_buf =
+        scene_data_.persistent_data->stoch_lights =
             ren_ctx_.CreateBuffer(Ren::String{"Stochastic Lights"}, Ren::eBufType::Texture, lights_buf_size);
-        ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->stoch_lights_buf, Ren::eFormat::RGBA32UI);
+        ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->stoch_lights, Ren::eFormat::RGBA32UI);
 
         const uint32_t nodes_buf_size = uint32_t(light_wnodes.size() * sizeof(gpu_light_cwbvh_node_t));
-        scene_data_.persistent_data->stoch_lights_nodes_buf =
+        scene_data_.persistent_data->stoch_lights_nodes =
             ren_ctx_.CreateBuffer(Ren::String{"Stochastic Light Nodes"}, Ren::eBufType::Texture, nodes_buf_size);
-        ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->stoch_lights_nodes_buf, Ren::eFormat::RGBA32F);
+        ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->stoch_lights_nodes, Ren::eFormat::RGBA32F);
 
         Ren::BufferMain lights_stage_buf_main = {};
         Ren::BufferCold lights_stage_buf_cold = {};
@@ -1629,13 +1629,11 @@ void Eng::SceneManager::RebuildLightTree() {
 
         Ren::CommandBuffer cmd_buf = ren_ctx_.BegTempSingleTimeCommands();
 
-        const auto &[lights_buf_main, lights_buf_cold] =
-            ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_buf);
-        CopyBufferToBuffer(api, lights_stage_buf_main, 0, lights_buf_main, 0, lights_buf_size, cmd_buf);
+        const auto &[lights_main, lights_cold] = storages.buffers[scene_data_.persistent_data->stoch_lights];
+        CopyBufferToBuffer(api, lights_stage_buf_main, 0, lights_main, 0, lights_buf_size, cmd_buf);
 
-        const auto &[nodes_buf_main, nodes_buf_cold] =
-            ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_nodes_buf);
-        CopyBufferToBuffer(api, nodes_stage_buf_main, 0, nodes_buf_main, 0, nodes_buf_size, cmd_buf);
+        const auto &[nodes_main, nodes_cold] = storages.buffers[scene_data_.persistent_data->stoch_lights_nodes];
+        CopyBufferToBuffer(api, nodes_stage_buf_main, 0, nodes_main, 0, nodes_buf_size, cmd_buf);
 
         ren_ctx_.EndTempSingleTimeCommands(cmd_buf);
 
@@ -1645,22 +1643,21 @@ void Eng::SceneManager::RebuildLightTree() {
 }
 
 void Eng::SceneManager::ReleaseLightTree(const bool immediate) {
-    if (scene_data_.persistent_data->stoch_lights_buf) {
-        const auto &[lights_buf_main, lights_buf_cold] =
-            ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_buf);
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
+    if (scene_data_.persistent_data->stoch_lights) {
+        const auto &[lights_main, lights_cold] = storages.buffers[scene_data_.persistent_data->stoch_lights];
         if (immediate) {
-            Buffer_DestroyImmediately(ren_ctx_.api(), lights_buf_main, lights_buf_cold);
+            Buffer_DestroyImmediately(ren_ctx_.api(), lights_main, lights_cold);
         } else {
-            Buffer_Destroy(ren_ctx_.api(), lights_buf_main, lights_buf_cold);
+            Buffer_Destroy(ren_ctx_.api(), lights_main, lights_cold);
         }
     }
-    if (scene_data_.persistent_data->stoch_lights_nodes_buf) {
-        const auto &[nodes_buf_main, nodes_buf_cold] =
-            ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_nodes_buf);
+    if (scene_data_.persistent_data->stoch_lights_nodes) {
+        const auto &[nodes_main, nodes_cold] = storages.buffers[scene_data_.persistent_data->stoch_lights_nodes];
         if (immediate) {
-            Buffer_DestroyImmediately(ren_ctx_.api(), nodes_buf_main, nodes_buf_cold);
+            Buffer_DestroyImmediately(ren_ctx_.api(), nodes_main, nodes_cold);
         } else {
-            Buffer_Destroy(ren_ctx_.api(), nodes_buf_main, nodes_buf_cold);
+            Buffer_Destroy(ren_ctx_.api(), nodes_main, nodes_cold);
         }
     }
 }

@@ -315,13 +315,13 @@ class SparseStorage : Allocator {
         --size_;
     }
 
-    T &Get(const Handle<T, RWTag> handle) {
+    T &operator[](const Handle<T, RWTag> handle) {
         assert((ctrl_[handle.index / 64] & (1ull << (handle.index % 64))) && "Invalid handle!");
         assert((generation_[handle.index] == handle.generation) && "Invalid handle!");
         return data_[handle.index];
     }
 
-    const T &Get(const Handle<T, ROTag> handle) const {
+    const T &operator[](const Handle<T, ROTag> handle) const {
         assert((ctrl_[handle.index / 64] & (1ull << (handle.index % 64))) && "Invalid handle!");
         assert((generation_[handle.index] == handle.generation) && "Invalid handle!");
         return data_[handle.index];
@@ -809,13 +809,13 @@ class SparseDualStorage : Allocator {
         --size_;
     }
 
-    std::pair<T &, U &> Get(const Handle<T, RWTag> handle) {
+    std::pair<T &, U &> operator[](const Handle<T, RWTag> handle) {
         assert((ctrl_[handle.index / 64] & (1ull << (handle.index % 64))) && "Invalid handle!");
         assert((generation_[handle.index] == handle.generation) && "Invalid handle!");
         return {data_main_[handle.index], data_cold_[handle.index]};
     }
 
-    std::pair<const T &, const U &> Get(const Handle<T, ROTag> handle) const {
+    std::pair<const T &, const U &> operator[](const Handle<T, ROTag> handle) const {
         assert((ctrl_[handle.index / 64] & (1ull << (handle.index % 64))) && "Invalid handle!");
         assert((generation_[handle.index] == handle.generation) && "Invalid handle!");
         return {data_main_[handle.index], data_cold_[handle.index]};

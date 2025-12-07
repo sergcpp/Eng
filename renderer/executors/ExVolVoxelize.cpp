@@ -30,41 +30,41 @@ void Eng::ExVolVoxelize::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
 }
 
 void Eng::ExVolVoxelize::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::ImageROHandle stbn_tex = fg.AccessROImage(args_->stbn_tex);
+    const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
+    const Ren::ImageROHandle stbn = fg.AccessROImage(args_->stbn);
 
-    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle geo_data = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
     const Ren::BufferROHandle blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
-    const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferROHandle prim_ndx = fg.AccessROBuffer(args_->swrt.prim_ndx);
+    const Ren::BufferROHandle mesh_instances = fg.AccessROBuffer(args_->swrt.mesh_instances);
 
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->swrt.vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->swrt.ndx_buf);
 
-    const Ren::ImageRWHandle out_emission_tex = fg.AccessRWImage(args_->out_emission_tex);
-    const Ren::ImageRWHandle out_scatter_tex = fg.AccessRWImage(args_->out_scatter_tex);
+    const Ren::ImageRWHandle out_emission = fg.AccessRWImage(args_->out_emission);
+    const Ren::ImageRWHandle out_scatter = fg.AccessRWImage(args_->out_scatter);
 
     if (view_state_->skip_volumetrics) {
         return;
     }
 
-    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-                                     {Ren::eBindTarget::TexSampled, Fog::STBN_TEX_SLOT, stbn_tex},
-                                     {Ren::eBindTarget::SBufRO, Fog::GEO_DATA_BUF_SLOT, geo_data_buf},
-                                     {Ren::eBindTarget::SBufRO, Fog::MATERIAL_BUF_SLOT, materials_buf},
+    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
+                                     {Ren::eBindTarget::TexSampled, Fog::STBN_TEX_SLOT, stbn},
+                                     {Ren::eBindTarget::SBufRO, Fog::GEO_DATA_BUF_SLOT, geo_data},
+                                     {Ren::eBindTarget::SBufRO, Fog::MATERIAL_BUF_SLOT, materials},
                                      {Ren::eBindTarget::UTBuf, Fog::BLAS_BUF_SLOT, blas_buf},
                                      {Ren::eBindTarget::UTBuf, Fog::TLAS_BUF_SLOT, tlas_buf},
-                                     {Ren::eBindTarget::UTBuf, Fog::PRIM_NDX_BUF_SLOT, prim_ndx_buf},
-                                     {Ren::eBindTarget::UTBuf, Fog::MESH_INSTANCES_BUF_SLOT, mesh_instances_buf},
+                                     {Ren::eBindTarget::UTBuf, Fog::PRIM_NDX_BUF_SLOT, prim_ndx},
+                                     {Ren::eBindTarget::UTBuf, Fog::MESH_INSTANCES_BUF_SLOT, mesh_instances},
                                      {Ren::eBindTarget::UTBuf, Fog::VTX_BUF1_SLOT, vtx_buf1},
                                      {Ren::eBindTarget::UTBuf, Fog::NDX_BUF_SLOT, ndx_buf},
-                                     {Ren::eBindTarget::ImageRW, Fog::OUT_FR_EMISSION_IMG_SLOT, out_emission_tex},
-                                     {Ren::eBindTarget::ImageRW, Fog::OUT_FR_SCATTER_IMG_SLOT, out_scatter_tex}};
+                                     {Ren::eBindTarget::ImageRW, Fog::OUT_FR_EMISSION_IMG_SLOT, out_emission},
+                                     {Ren::eBindTarget::ImageRW, Fog::OUT_FR_SCATTER_IMG_SLOT, out_scatter}};
 
-    const Ren::ImageCold &img_cold = fg.storages().images.Get(out_emission_tex).second;
+    const Ren::ImageCold &img_cold = fg.storages().images[out_emission].second;
     const auto froxel_res = Ren::Vec4i{img_cold.params.w, img_cold.params.h, img_cold.params.d, 0};
 
     const Ren::Vec3u grp_count = Ren::Vec3u(Ren::DivCeil(froxel_res[0], Fog::GRP_SIZE_2D_X),

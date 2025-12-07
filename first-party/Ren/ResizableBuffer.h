@@ -21,8 +21,8 @@ class ResizableBuffer {
     BufferRWHandle handle() { return handle_; }
     BufferROHandle handle() const { return handle_; }
 
-    std::pair<BufferMain &, BufferCold &> buffer() { return storage_.Get(handle_); }
-    std::pair<const BufferMain &, const BufferCold &> buffer() const { return storage_.Get(handle_); }
+    std::pair<BufferMain &, BufferCold &> buffer() { return storage_[handle_]; }
+    std::pair<const BufferMain &, const BufferCold &> buffer() const { return storage_[handle_]; }
 
     bool Resize(uint32_t new_size, ILog *log, bool keep_content = true, bool release_immediately = false);
     void Release(bool immediately);

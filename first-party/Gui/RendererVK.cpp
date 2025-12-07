@@ -21,11 +21,11 @@ Gui::Renderer::~Renderer() {
     // TODO: Remove this
     api.vkDeviceWaitIdle(api.device);
 
-    const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.buffers().Get(vertex_stage_buf_);
+    const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.storages().buffers[vertex_stage_buf_];
     Buffer_Unmap(api, vtx_stage_main, vtx_stage_cold);
     ctx_.ReleaseBuffer(vertex_stage_buf_, true /* immediately */);
 
-    const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.buffers().Get(index_stage_buf_);
+    const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.storages().buffers[index_stage_buf_];
     Buffer_Unmap(api, ndx_stage_main, ndx_stage_cold);
     ctx_.ReleaseBuffer(index_stage_buf_, true /* immediately */);
 
@@ -47,6 +47,8 @@ Gui::Renderer::~Renderer() {
 
 void Gui::Renderer::Draw(const int w, const int h) {
     const Ren::ApiContext &api = ctx_.api();
+    const Ren::StoragesRef &storages = ctx_.storages();
+
     VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
     const int stage_frame = ctx_.in_flight_frontend_frame[api.backend_frame];
@@ -79,11 +81,11 @@ void Gui::Renderer::Draw(const int w, const int h) {
     const uint32_t ndx_data_offset = uint32_t(stage_frame * MaxIndicesPerRange * sizeof(uint16_t));
     const uint32_t ndx_data_size = uint32_t(ndx_count_[stage_frame]) * sizeof(uint16_t);
 
-    const auto &[vtx_main, vtx_cold] = ctx_.buffers().Get(vertex_buf_);
-    const auto &[ndx_main, ndx_cold] = ctx_.buffers().Get(index_buf_);
+    const auto &[vtx_main, vtx_cold] = storages.buffers[vertex_buf_];
+    const auto &[ndx_main, ndx_cold] = storages.buffers[index_buf_];
 
-    const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.buffers().Get(vertex_stage_buf_);
-    const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.buffers().Get(index_stage_buf_);
+    const auto &[vtx_stage_main, vtx_stage_cold] = storages.buffers[vertex_stage_buf_];
+    const auto &[ndx_stage_main, ndx_stage_cold] = storages.buffers[index_stage_buf_];
 
     { // insert needed barriers before copying
         VkPipelineStageFlags src_stages = 0, dst_stages = 0;
@@ -242,11 +244,10 @@ void Gui::Renderer::Draw(const int w, const int h) {
     if (!framebuffers_[api.active_present_image]) {
         framebuffers_[api.active_present_image] = ctx_.CreateFramebuffer(render_pass_, {}, {}, attachments);
     } else {
-        const auto &[fb_main, fb_cold] = ctx_.framebuffers().Get(framebuffers_[api.active_present_image]);
+        const auto &[fb_main, fb_cold] = storages.framebuffers[framebuffers_[api.active_present_image]];
         if (!Framebuffer_Equals(fb_main, fb_cold, render_pass_, {}, {}, attachments)) {
             Framebuffer_Destroy(ctx_.api(), fb_main, fb_cold);
-            Framebuffer_Init(ctx_.api(), fb_main, fb_cold, ctx_.storages(), render_pass_, {}, {}, attachments,
-                             ctx_.log());
+            Framebuffer_Init(ctx_.api(), fb_main, fb_cold, storages, render_pass_, {}, {}, attachments, ctx_.log());
         }
     }
 
@@ -254,8 +255,8 @@ void Gui::Renderer::Draw(const int w, const int h) {
     // Update descriptor set
     //
 
-    const Ren::PipelineMain &pi_main = ctx_.pipelines().Get(pipeline_).first;
-    const Ren::ProgramMain &pr_main = ctx_.programs().Get(pi_main.prog).first;
+    const Ren::PipelineMain &pi_main = storages.pipelines[pipeline_].first;
+    const Ren::ProgramMain &pr_main = storages.programs[pi_main.prog].first;
 
     VkDescriptorSetLayout descr_set_layout = pr_main.descr_set_layouts[0];
     Ren::DescrSizes descr_sizes;
@@ -264,8 +265,8 @@ void Gui::Renderer::Draw(const int w, const int h) {
 
     VkDescriptorImageInfo img_info = {};
     img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    img_info.imageView = ctx_.image_atlas().img_view();
-    img_info.sampler = ctx_.image_atlas().sampler().handle;
+    img_info.imageView = atlas.img_view();
+    img_info.sampler = atlas.sampler().handle;
 
     VkWriteDescriptorSet descr_write;
     descr_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -289,8 +290,8 @@ void Gui::Renderer::Draw(const int w, const int h) {
     assert(ndx_main.resource_state == Ren::eResState::IndexBuffer);
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    render_pass_begin_info.renderPass = ctx_.render_passes().Get(render_pass_).handle;
-    render_pass_begin_info.framebuffer = ctx_.framebuffers().Get(framebuffers_[api.active_present_image]).first.handle;
+    render_pass_begin_info.renderPass = storages.render_passes[render_pass_].handle;
+    render_pass_begin_info.framebuffer = storages.framebuffers[framebuffers_[api.active_present_image]].first.handle;
     render_pass_begin_info.renderArea = {{0, 0}, {uint32_t(w), uint32_t(h)}};
 
     api.vkCmdBeginRenderPass(cmd_buf, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);

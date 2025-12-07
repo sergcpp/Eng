@@ -560,8 +560,8 @@ void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const
 void Ren::CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, const BufferROHandle src,
                              const uint32_t src_offset, const BufferHandle dst, const uint32_t dst_offset,
                              const uint32_t size, CommandBuffer cmd_buf) {
-    const auto &[src_main, src_cold] = storages.buffers.Get(src);
-    const auto &[dst_main, dst_cold] = storages.buffers.Get(dst);
+    const auto &[src_main, src_cold] = storages.buffers[src];
+    const auto &[dst_main, dst_cold] = storages.buffers[dst];
 
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 2> barriers;

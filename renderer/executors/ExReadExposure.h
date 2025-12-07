@@ -7,8 +7,8 @@ namespace Eng {
 class ExReadExposure final : public FgExecutor {
   public:
     struct Args {
-        FgImgROHandle input_tex;
-        FgBufRWHandle output_buf;
+        FgImgROHandle input;
+        FgBufRWHandle output;
     };
 
     void Setup(const Args *args) { args_ = args; }

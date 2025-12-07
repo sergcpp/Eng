@@ -120,37 +120,8 @@ class Context {
 
     ILog *log() const { return log_; }
 
-    SparseStorage<VertexInput> &vtx_inputs() { return vtx_inputs_; }
-    SparseDualStorage<ShaderMain, ShaderCold> &shaders() { return shaders_; }
-    SparseDualStorage<ProgramMain, ProgramCold> &programs() { return programs_; }
-    SparseDualStorage<PipelineMain, PipelineCold> &pipelines() { return pipelines_; }
-    SparseStorage<RenderPass> &render_passes() { return render_passes_; }
-    SparseDualStorage<BufferMain, BufferCold> &buffers() { return buffers_; }
-    SparseDualStorage<ImageMain, ImageCold> &images() { return images_; }
-    SparseStorage<Sampler> &samplers() { return samplers_; }
-    SparseDualStorage<FramebufferMain, FramebufferCold> &framebuffers() { return framebuffers_; }
-    SparseDualStorage<AccStructMain, AccStructCold> &acc_structs() { return acc_structs_; }
-    SparseDualStorage<MaterialMain, MaterialCold> &materials() { return materials_; }
-    SparseDualStorage<MeshMain, MeshCold> &meshes() { return meshes_; }
-    SparseDualStorage<AnimSeqMain, AnimSeqCold> &anims() { return anims_; }
+    const SparseDualStorage<ImageRegionMain, ImageRegionCold> &image_regions() const { return image_regions_; }
     SparseDualStorage<ImageRegionMain, ImageRegionCold> &image_regions() { return image_regions_; }
-
-    const SparseStorage<VertexInput> &vtx_inputs() const { return vtx_inputs_; }
-    const SparseDualStorage<ShaderMain, ShaderCold> &shaders() const { return shaders_; }
-    const SparseDualStorage<ProgramMain, ProgramCold> &programs() const { return programs_; }
-    const SparseDualStorage<PipelineMain, PipelineCold> &pipelines() const { return pipelines_; }
-    const SparseStorage<RenderPass> &render_passes() const { return render_passes_; }
-    const SparseDualStorage<BufferMain, BufferCold> &buffers() const { return buffers_; }
-    const SparseDualStorage<ImageMain, ImageCold> &images() const { return images_; }
-    const SparseStorage<Sampler> &samplers() const { return samplers_; }
-    const SparseDualStorage<FramebufferMain, FramebufferCold> &framebuffers() const { return framebuffers_; }
-    const SparseDualStorage<AccStructMain, AccStructCold> &acc_structs() const { return acc_structs_; }
-    const SparseDualStorage<MaterialMain, MaterialCold> &materials() const { return materials_; }
-    const SparseDualStorage<MeshMain, MeshCold> &meshes() const { return meshes_; }
-    const SparseDualStorage<AnimSeqMain, AnimSeqCold> &anims() const { return anims_; }
-    const SparseDualStorage<ImageRegionMain, ImageRegionCold> &image_regions() const {
-        return image_regions_;
-    }
 
     const StoragesRef &storages() const { return storages_; }
 

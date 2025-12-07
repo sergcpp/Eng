@@ -13,13 +13,13 @@
 namespace ExSharedInternal {
 void _bind_texture0_and_sampler0(const Ren::StoragesRef &storages, const Ren::MaterialMain &mat) {
     assert(mat.textures.size() >= 1 && mat.samplers.size() >= 1);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0, storages.images.Get(mat.textures[0]).first.img);
-    glBindSampler(Eng::BIND_MAT_TEX0, storages.samplers.Get(mat.samplers[0]).id);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0, storages.images[mat.textures[0]].first.img);
+    glBindSampler(Eng::BIND_MAT_TEX0, storages.samplers[mat.samplers[0]].id);
 }
 void _bind_texture4_and_sampler4(const Ren::StoragesRef &storages, const Ren::MaterialMain &mat) {
     assert(mat.textures.size() >= 1 && mat.samplers.size() >= 1);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX4, storages.images.Get(mat.textures[4]).first.img);
-    glBindSampler(Eng::BIND_MAT_TEX4, storages.samplers.Get(mat.samplers[4]).id);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX4, storages.images[mat.textures[4]].first.img);
+    glBindSampler(Eng::BIND_MAT_TEX4, storages.samplers[mat.samplers[4]].id);
 }
 uint32_t _draw_range(Ren::Span<const uint32_t> zfill_batch_indices,
                      Ren::Span<const Eng::basic_draw_batch_t> zfill_batches, uint32_t i, uint64_t mask,
@@ -117,29 +117,29 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
 
     const Ren::StoragesRef &storages = fg.storages();
 
-    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
-    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, GLuint(unif_shared_data_buf_main.buf));
+    const Ren::BufferMain &unif_shared_data_main = storages.buffers[unif_shared_data].first;
+    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, GLuint(unif_shared_data_main.buf));
 
-    const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
-    const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
+    const Ren::BufferMain &instances_main = storages.buffers[instances].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_main.views[0].second));
+    const Ren::BufferMain &instance_indices_main = storages.buffers[instance_indices].first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_main.buf));
 
-    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
+    const Ren::ImageMain &noise_main = storages.images[noise].first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_main.img);
 
-    const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
+    const Ren::BufferMain &materials_main = storages.buffers[materials].first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_main.buf));
     if (fg.ren_ctx().capabilities.bindless_texture) {
-        const Ren::BufferMain &buf_main = storages.buffers.Get(bindless_tex_->rt_inline_textures.buf).first;
+        const Ren::BufferMain &buf_main = storages.buffers[bindless_tex_->rt_inline_textures.buf].first;
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX, GLuint(buf_main.buf));
     }
 
@@ -152,7 +152,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
     const Ren::FramebufferHandle depth_vel_fb = fg.FindOrCreateFramebuffer({}, depth_tex, depth_tex, velocity_target);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(depth_fb).first.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[depth_fb].first.id);
     if (clear_depth_) {
         glClearDepthf(0.0f);
         glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -174,13 +174,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     { // solid meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "STATIC-SOLID-SIMPLE");
 
-        const Ren::PipelineMain *pi_static_solid_main[3] = {&storages.pipelines.Get(pi_static_solid_[0]).first,
-                                                            &storages.pipelines.Get(pi_static_solid_[1]).first,
-                                                            &storages.pipelines.Get(pi_static_solid_[2]).first};
+        const Ren::PipelineMain *pi_static_solid_main[3] = {&storages.pipelines[pi_static_solid_[0]].first,
+                                                            &storages.pipelines[pi_static_solid_[1]].first,
+                                                            &storages.pipelines[pi_static_solid_[2]].first};
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_static_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_static_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-        glUseProgram(storages.programs.Get(pi_static_solid_main[0]->prog).first.id);
+        glUseProgram(storages.programs[pi_static_solid_main[0]->prog].first.id);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -220,12 +220,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     { // moving solid meshes (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "STATIC-SOLID-MOVING");
 
-        const Ren::PipelineMain *pi_moving_solid_main[3] = {&storages.pipelines.Get(pi_moving_solid_[0]).first,
-                                                            &storages.pipelines.Get(pi_moving_solid_[1]).first,
-                                                            &storages.pipelines.Get(pi_moving_solid_[2]).first};
+        const Ren::PipelineMain *pi_moving_solid_main[3] = {&storages.pipelines[pi_moving_solid_[0]].first,
+                                                            &storages.pipelines[pi_moving_solid_[1]].first,
+                                                            &storages.pipelines[pi_moving_solid_[2]].first};
 
-        glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(depth_vel_fb).first.id);
-        glUseProgram(storages.programs.Get(pi_moving_solid_main[0]->prog).first.id);
+        glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[depth_vel_fb].first.id);
+        glUseProgram(storages.programs[pi_moving_solid_main[0]->prog].first.id);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -259,15 +259,15 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         { // simple meshes (depth only)
             Ren::DebugMarker _m(api, fg.cmd_buf(), "STATIC-ALPHA-SIMPLE");
 
-            const Ren::PipelineMain *pi_static_transp_main[3] = {&storages.pipelines.Get(pi_static_transp_[0]).first,
-                                                                 &storages.pipelines.Get(pi_static_transp_[1]).first,
-                                                                 &storages.pipelines.Get(pi_static_transp_[2]).first};
+            const Ren::PipelineMain *pi_static_transp_main[3] = {&storages.pipelines[pi_static_transp_[0]].first,
+                                                                 &storages.pipelines[pi_static_transp_[1]].first,
+                                                                 &storages.pipelines[pi_static_transp_[2]].first};
 
-            glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(depth_vel_fb).first.id);
+            glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[depth_vel_fb].first.id);
 
-            const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_static_transp_main[0]->vtx_input);
+            const Ren::VertexInput &vi = storages.vtx_inputs[pi_static_transp_main[0]->vtx_input];
             VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-            glUseProgram(storages.programs.Get(pi_static_transp_main[0]->prog).first.id);
+            glUseProgram(storages.programs[pi_static_transp_main[0]->prog].first.id);
 
             { // one-sided
                 Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -299,12 +299,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         { // moving meshes (depth and velocity)
             Ren::DebugMarker _m(api, fg.cmd_buf(), "STATIC-ALPHA-MOVING");
 
-            const Ren::PipelineMain *pi_moving_transp_main[3] = {&storages.pipelines.Get(pi_moving_transp_[0]).first,
-                                                                 &storages.pipelines.Get(pi_moving_transp_[1]).first,
-                                                                 &storages.pipelines.Get(pi_moving_transp_[2]).first};
+            const Ren::PipelineMain *pi_moving_transp_main[3] = {&storages.pipelines[pi_moving_transp_[0]].first,
+                                                                 &storages.pipelines[pi_moving_transp_[1]].first,
+                                                                 &storages.pipelines[pi_moving_transp_[2]].first};
 
-            glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(depth_vel_fb).first.id);
-            glUseProgram(storages.programs.Get(pi_moving_transp_main[0]->prog).first.id);
+            glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[depth_vel_fb].first.id);
+            glUseProgram(storages.programs[pi_moving_transp_main[0]->prog].first.id);
 
             { // one-sided
                 Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -337,15 +337,14 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     { // static solid vegetation
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-SOLID-SIMPLE");
 
-        const Ren::PipelineMain *pi_vege_static_solid_main[2] = {
-            &storages.pipelines.Get(pi_vege_static_solid_[0]).first,
-            &storages.pipelines.Get(pi_vege_static_solid_[1]).first};
+        const Ren::PipelineMain *pi_vege_static_solid_main[2] = {&storages.pipelines[pi_vege_static_solid_[0]].first,
+                                                                 &storages.pipelines[pi_vege_static_solid_[1]].first};
 
-        glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(depth_vel_fb).first.id);
+        glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers[depth_vel_fb].first.id);
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_vege_static_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_vege_static_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-        glUseProgram(storages.programs.Get(pi_vege_static_solid_main[0]->prog).first.id);
+        glUseProgram(storages.programs[pi_vege_static_solid_main[0]->prog].first.id);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -376,11 +375,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     { // moving solid vegetation (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-SOLID-MOVING");
 
-        const Ren::PipelineMain *pi_vege_moving_solid_main[2] = {
-            &storages.pipelines.Get(pi_vege_moving_solid_[0]).first,
-            &storages.pipelines.Get(pi_vege_moving_solid_[1]).first};
+        const Ren::PipelineMain *pi_vege_moving_solid_main[2] = {&storages.pipelines[pi_vege_moving_solid_[0]].first,
+                                                                 &storages.pipelines[pi_vege_moving_solid_[1]].first};
 
-        glUseProgram(storages.programs.Get(pi_vege_moving_solid_main[0]->prog).first.id);
+        glUseProgram(storages.programs[pi_vege_moving_solid_main[0]->prog].first.id);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -416,12 +414,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
             Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-ALPHA-SIMPLE");
 
             const Ren::PipelineMain *pi_vege_static_transp_main[2] = {
-                &storages.pipelines.Get(pi_vege_static_transp_[0]).first,
-                &storages.pipelines.Get(pi_vege_static_transp_[1]).first};
+                &storages.pipelines[pi_vege_static_transp_[0]].first,
+                &storages.pipelines[pi_vege_static_transp_[1]].first};
 
-            const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_vege_static_transp_main[0]->vtx_input);
+            const Ren::VertexInput &vi = storages.vtx_inputs[pi_vege_static_transp_main[0]->vtx_input];
             VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-            glUseProgram(storages.programs.Get(pi_vege_static_transp_main[0]->prog).first.id);
+            glUseProgram(storages.programs[pi_vege_static_transp_main[0]->prog].first.id);
 
             { // one-sided
                 Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -454,10 +452,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
             Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-ALPHA-MOVING");
 
             const Ren::PipelineMain *pi_vege_moving_transp_main[2] = {
-                &storages.pipelines.Get(pi_vege_moving_transp_[0]).first,
-                &storages.pipelines.Get(pi_vege_moving_transp_[1]).first};
+                &storages.pipelines[pi_vege_moving_transp_[0]].first,
+                &storages.pipelines[pi_vege_moving_transp_[1]].first};
 
-            glUseProgram(storages.programs.Get(pi_vege_moving_transp_main[0]->prog).first.id);
+            glUseProgram(storages.programs[pi_vege_moving_transp_main[0]->prog].first.id);
 
             { // one-sided
                 Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -490,13 +488,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     { // solid skinned meshes (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-SOLID-SIMPLE");
 
-        const Ren::PipelineMain *pi_skin_static_solid_main[2] = {
-            &storages.pipelines.Get(pi_skin_static_solid_[0]).first,
-            &storages.pipelines.Get(pi_skin_static_solid_[1]).first};
+        const Ren::PipelineMain *pi_skin_static_solid_main[2] = {&storages.pipelines[pi_skin_static_solid_[0]].first,
+                                                                 &storages.pipelines[pi_skin_static_solid_[1]].first};
 
-        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_skin_static_solid_main[0]->vtx_input);
+        const Ren::VertexInput &vi = storages.vtx_inputs[pi_skin_static_solid_main[0]->vtx_input];
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-        glUseProgram(storages.programs.Get(pi_skin_static_solid_main[0]->prog).first.id);
+        glUseProgram(storages.programs[pi_skin_static_solid_main[0]->prog].first.id);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -527,11 +524,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
     { // moving solid skinned (depth and velocity)
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-SOLID-MOVING");
 
-        const Ren::PipelineMain *pi_skin_moving_solid_main[2] = {
-            &storages.pipelines.Get(pi_skin_moving_solid_[0]).first,
-            &storages.pipelines.Get(pi_skin_moving_solid_[1]).first};
+        const Ren::PipelineMain *pi_skin_moving_solid_main[2] = {&storages.pipelines[pi_skin_moving_solid_[0]].first,
+                                                                 &storages.pipelines[pi_skin_moving_solid_[1]].first};
 
-        glUseProgram(storages.programs.Get(pi_skin_moving_solid_main[0]->prog).first.id);
+        glUseProgram(storages.programs[pi_skin_moving_solid_main[0]->prog].first.id);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -567,12 +563,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
             Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-ALPHA-SIMPLE");
 
             const Ren::PipelineMain *pi_skin_static_transp_main[2] = {
-                &storages.pipelines.Get(pi_skin_static_transp_[0]).first,
-                &storages.pipelines.Get(pi_skin_static_transp_[1]).first};
+                &storages.pipelines[pi_skin_static_transp_[0]].first,
+                &storages.pipelines[pi_skin_static_transp_[1]].first};
 
-            const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_skin_static_transp_main[0]->vtx_input);
+            const Ren::VertexInput &vi = storages.vtx_inputs[pi_skin_static_transp_main[0]->vtx_input];
             VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
-            glUseProgram(storages.programs.Get(pi_skin_static_transp_main[0]->prog).first.id);
+            glUseProgram(storages.programs[pi_skin_static_transp_main[0]->prog].first.id);
 
             { // one-sided
                 Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
@@ -605,10 +601,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
             Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-ALPHA-MOVING");
 
             const Ren::PipelineMain *pi_skin_moving_transp_main[2] = {
-                &storages.pipelines.Get(pi_skin_moving_transp_[0]).first,
-                &storages.pipelines.Get(pi_skin_moving_transp_[1]).first};
+                &storages.pipelines[pi_skin_moving_transp_[0]].first,
+                &storages.pipelines[pi_skin_moving_transp_[1]].first};
 
-            glUseProgram(storages.programs.Get(pi_skin_moving_transp_main[0]->prog).first.id);
+            glUseProgram(storages.programs[pi_skin_moving_transp_main[0]->prog].first.id);
 
             { // one-sided
                 Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");

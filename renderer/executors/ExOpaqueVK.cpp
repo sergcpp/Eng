@@ -101,9 +101,8 @@ uint32_t _draw_list_range_full_rev(const Ren::ApiContext &api, VkCommandBuffer c
 }
 } // namespace ExSharedInternal
 
-void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle color_tex,
-                               const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex,
-                               const Ren::ImageRWHandle depth_tex) {
+void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle color, const Ren::ImageRWHandle normal,
+                               const Ren::ImageRWHandle spec, const Ren::ImageRWHandle depth) {
     using namespace ExSharedInternal;
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
@@ -115,22 +114,22 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
     const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
-    const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferROHandle instances = fg.AccessROBuffer(instances_);
+    const Ren::BufferROHandle instance_indices = fg.AccessROBuffer(instance_indices_);
+    const Ren::BufferROHandle unif_shared_data = fg.AccessROBuffer(shared_data_);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(materials_);
+    const Ren::BufferROHandle cells = fg.AccessROBuffer(cells_);
+    const Ren::BufferROHandle items = fg.AccessROBuffer(items_);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(lights_);
+    const Ren::BufferROHandle decals = fg.AccessROBuffer(decals_);
 
-    const Ren::ImageROHandle shadow_depth_tex = fg.AccessROImage(shadow_depth_);
+    const Ren::ImageROHandle shadow_depth = fg.AccessROImage(shadow_depth_);
     [[maybe_unused]] const Ren::ImageROHandle brdf_lut = fg.AccessROImage(brdf_lut_);
-    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise = fg.AccessROImage(noise_);
     [[maybe_unused]] const Ren::ImageROHandle cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
 
     const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
-    const Ren::ImageROHandle ssao_tex = fg.AccessROImage(ssao_tex_);
+    const Ren::ImageROHandle ssao = fg.AccessROImage(ssao_);
 
     /*const Ren::Image *lm_tex[4];
     for (int i = 0; i < 4; ++i) {
@@ -153,9 +152,9 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
     const VkDescriptorSet res_descr_set = fg.descr_alloc().Alloc(descr_sizes, descr_set_layout_);
 
     { // update descriptor set
-        const Ren::ImageMain &dummy_black_main = storages.images.Get(dummy_black).first;
-        const Ren::ImageMain &ssao_tex_main = storages.images.Get(ssao_tex).first;
-        const Ren::ImageMain &shadow_depth_main = storages.images.Get(shadow_depth_tex).first;
+        const Ren::ImageMain &dummy_black_main = storages.images[dummy_black].first;
+        const Ren::ImageMain &ssao_main = storages.images[ssao].first;
+        const Ren::ImageMain &shadow_depth_main = storages.images[shadow_depth].first;
 
         const VkDescriptorImageInfo shad_info = Image_GetDescriptorImageInfo(api, shadow_depth_main);
         VkDescriptorImageInfo lm_infos[4];
@@ -167,9 +166,9 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
         const VkDescriptorImageInfo decal_info = (*p_list_)->decals_atlas
                                                      ? (*p_list_)->decals_atlas->vk_desc_image_info()
                                                      : Image_GetDescriptorImageInfo(api, dummy_black_main);
-        const VkDescriptorImageInfo ssao_info = Image_GetDescriptorImageInfo(api, ssao_tex_main);
+        const VkDescriptorImageInfo ssao_info = Image_GetDescriptorImageInfo(api, ssao_main);
 
-        const Ren::ImageMain &noise_main = storages.images.Get(noise_tex).first;
+        const Ren::ImageMain &noise_main = storages.images[noise].first;
         const VkDescriptorImageInfo noise_info = Image_GetDescriptorImageInfo(api, noise_main);
         /*const VkDescriptorImageInfo env_info = {(*p_list_)->probe_storage->handle().sampler,
                                                 (*p_list_)->probe_storage->handle().views[0],
@@ -177,19 +176,19 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
         // const VkDescriptorImageInfo cone_rt_info = cone_rt_lut.vk_desc_image_info();
         // const VkDescriptorImageInfo brdf_info = brdf_lut.vk_desc_image_info();
 
-        const VkBufferView lights_buf_view = storages.buffers.Get(lights_buf).first.views[0].second;
-        const VkBufferView decals_buf_view = storages.buffers.Get(decals_buf).first.views[0].second;
-        const VkBufferView cells_buf_view = storages.buffers.Get(cells_buf).first.views[0].second;
-        const VkBufferView items_buf_view = storages.buffers.Get(items_buf).first.views[0].second;
+        const VkBufferView lights_buf_view = storages.buffers[lights].first.views[0].second;
+        const VkBufferView decals_buf_view = storages.buffers[decals].first.views[0].second;
+        const VkBufferView cells_buf_view = storages.buffers[cells].first.views[0].second;
+        const VkBufferView items_buf_view = storages.buffers[items].first.views[0].second;
 
-        const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
+        const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers[unif_shared_data].first;
         const VkDescriptorBufferInfo ubuf_info = {unif_shared_data_buf_main.buf, 0, VK_WHOLE_SIZE};
 
-        const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
+        const Ren::BufferMain &instances_buf_main = storages.buffers[instances].first;
         const VkBufferView instances_buf_view = instances_buf_main.views[0].second;
-        const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
+        const Ren::BufferMain &instance_indices_buf_main = storages.buffers[instance_indices].first;
         const VkDescriptorBufferInfo instance_indices_buf_info = {instance_indices_buf_main.buf, 0, VK_WHOLE_SIZE};
-        const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
+        const Ren::BufferMain &materials_buf_main = storages.buffers[materials].first;
         const VkDescriptorBufferInfo mat_buf_info = {materials_buf_main.buf, 0, VK_WHOLE_SIZE};
 
         Ren::SmallVector<VkWriteDescriptorSet, 16> descr_writes;
@@ -384,16 +383,16 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
 
         uint32_t i = 0;
 
-        const Ren::ImageRWHandle color_targets[] = {color_tex, normal_tex, spec_tex};
-        const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_opaque_, depth_tex, depth_tex, color_targets);
+        const Ren::ImageRWHandle color_targets[] = {color, normal, spec};
+        const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_opaque_, depth, depth, color_targets);
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_opaque_).handle;
-        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
+        rp_begin_info.renderPass = storages.render_passes[rp_opaque_].handle;
+        rp_begin_info.framebuffer = storages.framebuffers[fb].first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInput &vi_main = storages.vtx_inputs.Get(draw_pass_vi_);
+        const Ren::VertexInput &vi_main = storages.vtx_inputs[draw_pass_vi_];
         VertexInput_BindBuffers(api, vi_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         { // one-sided1

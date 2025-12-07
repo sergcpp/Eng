@@ -19,11 +19,11 @@ void Eng::Renderer::InitSkyResources() {
         // release resources
         sky_transmittance_lut_ = {};
         sky_multiscatter_lut_ = {};
-        sky_moon_tex_ = {};
-        sky_weather_tex_ = {};
-        sky_cirrus_tex_ = {};
-        sky_curl_tex_ = {};
-        sky_noise3d_tex_ = {};
+        sky_moon_ = {};
+        sky_weather_ = {};
+        sky_cirrus_ = {};
+        sky_curl_ = {};
+        sky_noise3d_ = {};
     } else {
         if (!sky_transmittance_lut_) {
             const std::vector<Ren::Vec4f> transmittance_lut = Generate_SkyTransmittanceLUT(p_list_->env.atmosphere);
@@ -69,8 +69,8 @@ void Eng::Renderer::InitSkyResources() {
 
                 const std::vector<uint8_t> data = LoadDDS(moon_diff, &p);
                 if (!data.empty()) {
-                    sky_moon_tex_ = ctx_.CreateImage(Ren::String{moon_diff}, data, p, ctx_.default_mem_allocs());
-                    assert(sky_moon_tex_);
+                    sky_moon_ = ctx_.CreateImage(Ren::String{moon_diff}, data, p, ctx_.default_mem_allocs());
+                    assert(sky_moon_);
                 } else {
                     ctx_.log()->Error("Failed to load %s", moon_diff.data());
                 }
@@ -87,8 +87,8 @@ void Eng::Renderer::InitSkyResources() {
                 if (!data.empty()) {
                     assert(p.format == Ren::eFormat::BC1_srgb);
                     p.format = Ren::eFormat::BC1;
-                    sky_weather_tex_ = ctx_.CreateImage(Ren::String{weather}, data, p, ctx_.default_mem_allocs());
-                    assert(sky_weather_tex_);
+                    sky_weather_ = ctx_.CreateImage(Ren::String{weather}, data, p, ctx_.default_mem_allocs());
+                    assert(sky_weather_);
                 } else {
                     ctx_.log()->Error("Failed to load %s", weather.data());
                 }
@@ -103,8 +103,8 @@ void Eng::Renderer::InitSkyResources() {
 
                 const std::vector<uint8_t> data = LoadDDS(cirrus, &p);
                 if (!data.empty()) {
-                    sky_cirrus_tex_ = ctx_.CreateImage(Ren::String{cirrus}, data, p, ctx_.default_mem_allocs());
-                    assert(sky_cirrus_tex_);
+                    sky_cirrus_ = ctx_.CreateImage(Ren::String{cirrus}, data, p, ctx_.default_mem_allocs());
+                    assert(sky_cirrus_);
                 } else {
                     ctx_.log()->Error("Failed to load %s", cirrus.data());
                 }
@@ -123,8 +123,8 @@ void Eng::Renderer::InitSkyResources() {
                 p.format = Ren::eFormat::RGBA8_srgb;
 
                 if (!data.empty()) {
-                    sky_curl_tex_ = ctx_.CreateImage(Ren::String{curl}, data, p, ctx_.default_mem_allocs());
-                    assert(sky_curl_tex_);
+                    sky_curl_ = ctx_.CreateImage(Ren::String{curl}, data, p, ctx_.default_mem_allocs());
+                    assert(sky_curl_);
                 } else {
                     ctx_.log()->Error("Failed to load %s", curl.data());
                 }
@@ -184,8 +184,8 @@ void Eng::Renderer::InitSkyResources() {
                         data = std::move(decompressed_data);
                     }
 
-                    sky_noise3d_tex_ = ctx_.CreateImage(Ren::String{noise}, data, p, ctx_.default_mem_allocs());
-                    assert(sky_noise3d_tex_);
+                    sky_noise3d_ = ctx_.CreateImage(Ren::String{noise}, data, p, ctx_.default_mem_allocs());
+                    assert(sky_noise3d_);
                 } else {
                     ctx_.log()->Error("Failed to load %s", noise.data());
                 }
@@ -214,12 +214,12 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
         data->transmittance_lut =
             skydome_cube.AddTextureInput(frame_textures.sky_transmittance_lut, Stg::FragmentShader);
         data->multiscatter_lut = skydome_cube.AddTextureInput(frame_textures.sky_multiscatter_lut, Stg::FragmentShader);
-        data->moon_tex = skydome_cube.AddTextureInput(frame_textures.sky_moon_tex, Stg::FragmentShader);
-        data->weather_tex = skydome_cube.AddTextureInput(frame_textures.sky_weather_tex, Stg::FragmentShader);
-        data->cirrus_tex = skydome_cube.AddTextureInput(frame_textures.sky_cirrus_tex, Stg::FragmentShader);
-        data->curl_tex = skydome_cube.AddTextureInput(frame_textures.sky_curl_tex, Stg::FragmentShader);
-        data->noise3d_tex = skydome_cube.AddTextureInput(frame_textures.sky_noise3d_tex, Stg::FragmentShader);
-        frame_textures.envmap = data->color_tex = skydome_cube.AddColorOutput(frame_textures.envmap);
+        data->moon = skydome_cube.AddTextureInput(frame_textures.sky_moon, Stg::FragmentShader);
+        data->weather = skydome_cube.AddTextureInput(frame_textures.sky_weather, Stg::FragmentShader);
+        data->cirrus = skydome_cube.AddTextureInput(frame_textures.sky_cirrus, Stg::FragmentShader);
+        data->curl = skydome_cube.AddTextureInput(frame_textures.sky_curl, Stg::FragmentShader);
+        data->noise3d = skydome_cube.AddTextureInput(frame_textures.sky_noise3d, Stg::FragmentShader);
+        frame_textures.envmap = data->color = skydome_cube.AddColorOutput(frame_textures.envmap);
 
         skydome_cube.make_executor<ExSkydomeCube>(prim_draw_, &view_state_, data);
     }
@@ -232,25 +232,24 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
         data->shared_data = skymap.AddUniformBufferInput(common_buffers.shared_data,
                                                          Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
         if (p_list_->env.env_map_name != "physical_sky") {
-            data->env_tex = skymap.AddTextureInput(frame_textures.envmap, Stg::FragmentShader);
-            frame_textures.color = data->color_tex = skymap.AddColorOutput(MAIN_COLOR_TEX, frame_textures.color_desc);
-            frame_textures.depth = data->depth_rw_tex =
-                skymap.AddDepthOutput(MAIN_DEPTH_TEX, frame_textures.depth_desc);
+            data->env = skymap.AddTextureInput(frame_textures.envmap, Stg::FragmentShader);
+            frame_textures.color = data->color = skymap.AddColorOutput(MAIN_COLOR_TEX, frame_textures.color_desc);
+            frame_textures.depth = data->depth_rw = skymap.AddDepthOutput(MAIN_DEPTH_TEX, frame_textures.depth_desc);
         } else {
             data->sky_quality = settings.sky_quality;
-            data->env_tex = skymap.AddTextureInput(frame_textures.envmap, Stg::FragmentShader);
+            data->env = skymap.AddTextureInput(frame_textures.envmap, Stg::FragmentShader);
             data->phys.transmittance_lut =
                 skymap.AddTextureInput(frame_textures.sky_transmittance_lut, Stg::FragmentShader);
             data->phys.multiscatter_lut =
                 skymap.AddTextureInput(frame_textures.sky_multiscatter_lut, Stg::FragmentShader);
-            data->phys.moon_tex = skymap.AddTextureInput(frame_textures.sky_moon_tex, Stg::FragmentShader);
-            data->phys.weather_tex = skymap.AddTextureInput(frame_textures.sky_weather_tex, Stg::FragmentShader);
-            data->phys.cirrus_tex = skymap.AddTextureInput(frame_textures.sky_cirrus_tex, Stg::FragmentShader);
-            data->phys.curl_tex = skymap.AddTextureInput(frame_textures.sky_curl_tex, Stg::FragmentShader);
-            data->phys.noise3d_tex = skymap.AddTextureInput(frame_textures.sky_noise3d_tex, Stg::FragmentShader);
+            data->phys.moon = skymap.AddTextureInput(frame_textures.sky_moon, Stg::FragmentShader);
+            data->phys.weather = skymap.AddTextureInput(frame_textures.sky_weather, Stg::FragmentShader);
+            data->phys.cirrus = skymap.AddTextureInput(frame_textures.sky_cirrus, Stg::FragmentShader);
+            data->phys.curl = skymap.AddTextureInput(frame_textures.sky_curl, Stg::FragmentShader);
+            data->phys.noise3d = skymap.AddTextureInput(frame_textures.sky_noise3d, Stg::FragmentShader);
 
             if (settings.sky_quality == eSkyQuality::High) {
-                data->depth_ro_tex = skymap.AddTextureInput(frame_textures.depth, Stg::FragmentShader);
+                data->depth_ro = skymap.AddTextureInput(frame_textures.depth, Stg::FragmentShader);
 
                 FgImgDesc desc;
                 desc.w = (view_state_.ren_res[0] + 3) / 4;
@@ -259,11 +258,10 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
                 desc.sampling.filter = Ren::eFilter::Bilinear;
                 desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
-                sky_temp = data->color_tex = skymap.AddColorOutput("SKY TEMP", desc);
+                sky_temp = data->color = skymap.AddColorOutput("SKY TEMP", desc);
             } else {
-                frame_textures.color = data->color_tex =
-                    skymap.AddColorOutput(MAIN_COLOR_TEX, frame_textures.color_desc);
-                frame_textures.depth = data->depth_rw_tex =
+                frame_textures.color = data->color = skymap.AddColorOutput(MAIN_COLOR_TEX, frame_textures.color_desc);
+                frame_textures.depth = data->depth_rw =
                     skymap.AddDepthOutput(MAIN_DEPTH_TEX, frame_textures.depth_desc);
             }
         }
@@ -283,15 +281,15 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
             struct PassData {
                 FgBufROHandle shared_data;
                 FgImgROHandle env_map;
-                FgImgROHandle sky_temp_tex;
-                FgImgROHandle sky_hist_tex;
-                FgImgRWHandle output_tex;
+                FgImgROHandle sky_temp;
+                FgImgROHandle sky_hist;
+                FgImgRWHandle output;
             };
 
             auto *data = fg_builder_.AllocTempData<PassData>();
             data->shared_data = sky_upsample.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
             data->env_map = sky_upsample.AddTextureInput(frame_textures.envmap, Stg::ComputeShader);
-            data->sky_temp_tex = sky_upsample.AddTextureInput(sky_temp, Stg::ComputeShader);
+            data->sky_temp = sky_upsample.AddTextureInput(sky_temp, Stg::ComputeShader);
 
             { //
                 FgImgDesc desc;
@@ -301,24 +299,23 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
                 desc.sampling.filter = Ren::eFilter::Bilinear;
                 desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
-                sky_upsampled = data->output_tex =
-                    sky_upsample.AddStorageImageOutput("SKY HIST", desc, Stg::ComputeShader);
+                sky_upsampled = data->output = sky_upsample.AddStorageImageOutput("SKY HIST", desc, Stg::ComputeShader);
             }
-            data->sky_hist_tex = sky_upsample.AddHistoryTextureInput(sky_upsampled, Stg::ComputeShader);
+            data->sky_hist = sky_upsample.AddHistoryTextureInput(sky_upsampled, Stg::ComputeShader);
 
             sky_upsample.set_execute_cb([data, this](const FgContext &fg) {
-                const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-                const Ren::ImageROHandle env_map_tex = fg.AccessROImage(data->env_map);
-                const Ren::ImageROHandle sky_temp_tex = fg.AccessROImage(data->sky_temp_tex);
-                const Ren::ImageROHandle sky_hist_tex = fg.AccessROImage(data->sky_hist_tex);
+                const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(data->shared_data);
+                const Ren::ImageROHandle env_map = fg.AccessROImage(data->env_map);
+                const Ren::ImageROHandle sky_temp = fg.AccessROImage(data->sky_temp);
+                const Ren::ImageROHandle sky_hist = fg.AccessROImage(data->sky_hist);
 
-                const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
+                const Ren::ImageRWHandle output = fg.AccessRWImage(data->output);
 
-                const Ren::Binding bindings[] = {{Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-                                                 {Trg::TexSampled, Skydome::ENV_TEX_SLOT, env_map_tex},
-                                                 {Trg::TexSampled, Skydome::SKY_TEX_SLOT, sky_temp_tex},
-                                                 {Trg::TexSampled, Skydome::SKY_HIST_TEX_SLOT, sky_hist_tex},
-                                                 {Trg::ImageRW, Skydome::OUT_IMG_SLOT, output_tex}};
+                const Ren::Binding bindings[] = {{Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
+                                                 {Trg::TexSampled, Skydome::ENV_TEX_SLOT, env_map},
+                                                 {Trg::TexSampled, Skydome::SKY_TEX_SLOT, sky_temp},
+                                                 {Trg::TexSampled, Skydome::SKY_HIST_TEX_SLOT, sky_hist},
+                                                 {Trg::ImageRW, Skydome::OUT_IMG_SLOT, output}};
 
                 const Ren::Vec3u grp_count =
                     Ren::Vec3u{(view_state_.ren_res[0] + Skydome::GRP_SIZE_X - 1u) / Skydome::GRP_SIZE_X,
@@ -338,22 +335,21 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
             auto &sky_blit = fg_builder_.AddNode("SKY BLIT");
 
             struct PassData {
-                FgImgROHandle sky_tex;
-                FgImgRWHandle depth_tex;
-                FgImgRWHandle output_tex;
+                FgImgROHandle sky;
+                FgImgRWHandle depth;
+                FgImgRWHandle output;
             };
 
             auto *data = fg_builder_.AllocTempData<PassData>();
-            frame_textures.depth = data->depth_tex = sky_blit.AddDepthOutput(frame_textures.depth);
-            data->sky_tex = sky_blit.AddTextureInput(sky_upsampled, Stg::FragmentShader);
+            frame_textures.depth = data->depth = sky_blit.AddDepthOutput(frame_textures.depth);
+            data->sky = sky_blit.AddTextureInput(sky_upsampled, Stg::FragmentShader);
 
-            frame_textures.color = data->output_tex =
-                sky_blit.AddColorOutput(MAIN_COLOR_TEX, frame_textures.color_desc);
+            frame_textures.color = data->output = sky_blit.AddColorOutput(MAIN_COLOR_TEX, frame_textures.color_desc);
 
             sky_blit.set_execute_cb([data, this](const FgContext &fg) {
-                const Ren::ImageROHandle sky_tex = fg.AccessROImage(data->sky_tex);
-                const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(data->depth_tex);
-                const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
+                const Ren::ImageROHandle sky = fg.AccessROImage(data->sky);
+                const Ren::ImageRWHandle depth = fg.AccessRWImage(data->depth);
+                const Ren::ImageRWHandle output = fg.AccessRWImage(data->output);
 
                 Ren::RastState rast_state;
                 rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
@@ -364,14 +360,14 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
                 rast_state.viewport[2] = view_state_.ren_res[0];
                 rast_state.viewport[3] = view_state_.ren_res[1];
 
-                const Ren::Binding bindings[] = {{Trg::TexSampled, FXAA::INPUT_TEX_SLOT, sky_tex}};
+                const Ren::Binding bindings[] = {{Trg::TexSampled, FXAA::INPUT_TEX_SLOT, sky}};
 
                 FXAA::Params uniform_params;
                 uniform_params.transform = Ren::Vec4f{0.0f, 0.0f, 1.0f, 1.0f};
                 uniform_params.inv_resolution = 1.0f / Ren::Vec2f{view_state_.ren_res};
 
-                const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
-                const Ren::RenderTarget render_targets[] = {{output_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
+                const Ren::RenderTarget depth_target = {depth, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
+                const Ren::RenderTarget render_targets[] = {{output, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
 
                 prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad, blit_fxaa_prog_, depth_target, render_targets,
                                     rast_state, fg.rast_state(), bindings, &uniform_params, sizeof(FXAA::Params), 0,
@@ -398,11 +394,11 @@ void Eng::Renderer::AddSunColorUpdatePass(CommonBuffers &common_buffers, const F
             FgBufROHandle shared_data;
             FgImgROHandle transmittance_lut;
             FgImgROHandle multiscatter_lut;
-            FgImgROHandle moon_tex;
-            FgImgROHandle weather_tex;
-            FgImgROHandle cirrus_tex;
-            FgImgROHandle noise3d_tex;
-            FgBufRWHandle output_buf;
+            FgImgROHandle moon;
+            FgImgROHandle weather;
+            FgImgROHandle cirrus;
+            FgImgROHandle noise3d;
+            FgBufRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
@@ -410,35 +406,35 @@ void Eng::Renderer::AddSunColorUpdatePass(CommonBuffers &common_buffers, const F
         data->shared_data = sun_color.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
         data->transmittance_lut = sun_color.AddTextureInput(frame_textures.sky_transmittance_lut, Stg::ComputeShader);
         data->multiscatter_lut = sun_color.AddTextureInput(frame_textures.sky_multiscatter_lut, Stg::ComputeShader);
-        data->moon_tex = sun_color.AddTextureInput(frame_textures.sky_moon_tex, Stg::ComputeShader);
-        data->weather_tex = sun_color.AddTextureInput(frame_textures.sky_weather_tex, Stg::ComputeShader);
-        data->cirrus_tex = sun_color.AddTextureInput(frame_textures.sky_cirrus_tex, Stg::ComputeShader);
-        data->noise3d_tex = sun_color.AddTextureInput(frame_textures.sky_noise3d_tex, Stg::ComputeShader);
+        data->moon = sun_color.AddTextureInput(frame_textures.sky_moon, Stg::ComputeShader);
+        data->weather = sun_color.AddTextureInput(frame_textures.sky_weather, Stg::ComputeShader);
+        data->cirrus = sun_color.AddTextureInput(frame_textures.sky_cirrus, Stg::ComputeShader);
+        data->noise3d = sun_color.AddTextureInput(frame_textures.sky_noise3d, Stg::ComputeShader);
 
         FgBufDesc desc = {};
         desc.type = Ren::eBufType::Storage;
         desc.size = 8 * sizeof(float);
-        output = data->output_buf = sun_color.AddStorageOutput("Sun Brightness Result", desc, Stg::ComputeShader);
+        output = data->output = sun_color.AddStorageOutput("Sun Brightness Result", desc, Stg::ComputeShader);
 
         sun_color.set_execute_cb([data, this](const FgContext &fg) {
-            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(data->shared_data);
             const Ren::ImageROHandle transmittance_lut = fg.AccessROImage(data->transmittance_lut);
             const Ren::ImageROHandle multiscatter_lut = fg.AccessROImage(data->multiscatter_lut);
-            const Ren::ImageROHandle moon_tex = fg.AccessROImage(data->moon_tex);
-            const Ren::ImageROHandle weather_tex = fg.AccessROImage(data->weather_tex);
-            const Ren::ImageROHandle cirrus_tex = fg.AccessROImage(data->cirrus_tex);
-            const Ren::ImageROHandle noise3d_tex = fg.AccessROImage(data->noise3d_tex);
-            const Ren::BufferHandle output_buf = fg.AccessRWBuffer(data->output_buf);
+            const Ren::ImageROHandle moon = fg.AccessROImage(data->moon);
+            const Ren::ImageROHandle weather = fg.AccessROImage(data->weather);
+            const Ren::ImageROHandle cirrus = fg.AccessROImage(data->cirrus);
+            const Ren::ImageROHandle noise3d = fg.AccessROImage(data->noise3d);
+            const Ren::BufferHandle output = fg.AccessRWBuffer(data->output);
 
             const Ren::Binding bindings[] = {
-                {Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
+                {Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
                 {Trg::TexSampled, SunBrightness::TRANSMITTANCE_LUT_SLOT, transmittance_lut},
                 {Trg::TexSampled, SunBrightness::MULTISCATTER_LUT_SLOT, multiscatter_lut},
-                {Trg::TexSampled, SunBrightness::MOON_TEX_SLOT, moon_tex},
-                {Trg::TexSampled, SunBrightness::WEATHER_TEX_SLOT, weather_tex},
-                {Trg::TexSampled, SunBrightness::CIRRUS_TEX_SLOT, cirrus_tex},
-                {Trg::TexSampled, SunBrightness::NOISE3D_TEX_SLOT, noise3d_tex},
-                {Trg::SBufRW, SunBrightness::OUT_BUF_SLOT, output_buf}};
+                {Trg::TexSampled, SunBrightness::MOON_TEX_SLOT, moon},
+                {Trg::TexSampled, SunBrightness::WEATHER_TEX_SLOT, weather},
+                {Trg::TexSampled, SunBrightness::CIRRUS_TEX_SLOT, cirrus},
+                {Trg::TexSampled, SunBrightness::NOISE3D_TEX_SLOT, noise3d},
+                {Trg::SBufRW, SunBrightness::OUT_BUF_SLOT, output}};
 
             DispatchCompute(fg.cmd_buf(), pi_sun_brightness_, fg.storages(), Ren::Vec3u{1u, 1u, 1u}, bindings, nullptr,
                             0, fg.descr_alloc(), fg.log());
@@ -448,22 +444,22 @@ void Eng::Renderer::AddSunColorUpdatePass(CommonBuffers &common_buffers, const F
         auto &sun_color = fg_builder_.AddNode("SUN COLOR UPDATE");
 
         struct PassData {
-            FgBufROHandle sample_buf;
+            FgBufROHandle samples;
             FgBufRWHandle shared_data;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
 
-        data->sample_buf = sun_color.AddTransferInput(output);
+        data->samples = sun_color.AddTransferInput(output);
         common_buffers.shared_data = data->shared_data = sun_color.AddTransferOutput(common_buffers.shared_data);
 
         sun_color.set_execute_cb([data](const FgContext &fg) {
-            const Ren::BufferROHandle sample_buf = fg.AccessROBuffer(data->sample_buf);
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessRWBuffer(data->shared_data);
+            const Ren::BufferROHandle samples = fg.AccessROBuffer(data->samples);
+            const Ren::BufferHandle unif_sh_data = fg.AccessRWBuffer(data->shared_data);
 
-            CopyBufferToBuffer(fg.ren_ctx().api(), fg.storages(), sample_buf, 0, unif_sh_data_buf,
+            CopyBufferToBuffer(fg.ren_ctx().api(), fg.storages(), samples, 0, unif_sh_data,
                                offsetof(shared_data_t, sun_col), 3 * sizeof(float), fg.cmd_buf());
-            CopyBufferToBuffer(fg.ren_ctx().api(), fg.storages(), sample_buf, 4 * sizeof(float), unif_sh_data_buf,
+            CopyBufferToBuffer(fg.ren_ctx().api(), fg.storages(), samples, 4 * sizeof(float), unif_sh_data,
                                offsetof(shared_data_t, sun_col_point_sh), 3 * sizeof(float), fg.cmd_buf());
         });
     }
@@ -482,16 +478,16 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
     const int TileSize = (p_list_->render_settings.vol_quality == Eng::eVolQuality::Ultra) ? 8 : 12;
     const bool AllCascades = (p_list_->render_settings.vol_quality == Eng::eVolQuality::Ultra);
 
-    FgImgRWHandle fr_emission_tex, fr_scatter_tex;
+    FgImgRWHandle fr_emission, fr_scatter;
     { // Voxelize
         auto &voxelize = fg_builder_.AddNode("VOL VOXELIZE");
 
         auto *data = fg_builder_.AllocTempData<ExVolVoxelize::Args>();
         data->shared_data = voxelize.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
-        data->stbn_tex = voxelize.AddTextureInput(frame_textures.stbn_1D_64spp, Stg::ComputeShader);
+        data->stbn = voxelize.AddTextureInput(frame_textures.stbn_1D_64spp, Stg::ComputeShader);
 
         data->geo_data = voxelize.AddStorageReadonlyInput(rt_geo_instances_res, Stg::ComputeShader);
-        data->materials = voxelize.AddStorageReadonlyInput(common_buffers.materials_buf, Stg::ComputeShader);
+        data->materials = voxelize.AddStorageReadonlyInput(common_buffers.materials, Stg::ComputeShader);
 
         data->tlas_buf =
             voxelize.AddStorageReadonlyInput(acc_structs.rt_tlas_buf[int(eTLASIndex::Volume)], Stg::ComputeShader);
@@ -500,9 +496,9 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
         if (!ctx_.capabilities.hwrt) {
             data->swrt.root_node = acc_structs.swrt.rt_root_node;
             data->swrt.rt_blas_buf = voxelize.AddStorageReadonlyInput(acc_structs.swrt.rt_blas_buf, Stg::ComputeShader);
-            data->swrt.prim_ndx_buf =
-                voxelize.AddStorageReadonlyInput(acc_structs.swrt.rt_prim_indices_buf, Stg::ComputeShader);
-            data->swrt.mesh_instances_buf = voxelize.AddStorageReadonlyInput(rt_obj_instances_res, Stg::ComputeShader);
+            data->swrt.prim_ndx =
+                voxelize.AddStorageReadonlyInput(acc_structs.swrt.rt_prim_indices, Stg::ComputeShader);
+            data->swrt.mesh_instances = voxelize.AddStorageReadonlyInput(rt_obj_instances_res, Stg::ComputeShader);
             data->swrt.vtx_buf1 = voxelize.AddStorageReadonlyInput(common_buffers.vertex_buf1, Stg::ComputeShader);
             data->swrt.ndx_buf = voxelize.AddStorageReadonlyInput(common_buffers.indices_buf, Stg::ComputeShader);
         }
@@ -516,9 +512,9 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
             desc.sampling.filter = Ren::eFilter::Bilinear;
             desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
-            fr_emission_tex = data->out_emission_tex =
+            fr_emission = data->out_emission =
                 voxelize.AddStorageImageOutput("Vol Emission/Density", desc, Stg::ComputeShader);
-            fr_scatter_tex = data->out_scatter_tex =
+            fr_scatter = data->out_scatter =
                 voxelize.AddStorageImageOutput("Vol Scatter/Absorption", desc, Stg::ComputeShader);
         }
 
@@ -529,90 +525,89 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
 
         struct PassData {
             FgBufROHandle shared_data;
-            FgImgROHandle stbn_tex;
+            FgImgROHandle stbn;
             FgImgROHandle shadow_depth, shadow_color;
-            FgImgROHandle fr_emission_tex, fr_scatter_tex;
-            FgBufROHandle cells_buf, items_buf, lights_buf, decals_buf;
-            FgImgROHandle envmap_tex;
-            FgImgROHandle irradiance_tex, distance_tex, offset_tex;
-            FgImgRWHandle out_emission_tex, out_scatter_tex;
+            FgImgROHandle fr_emission, fr_scatter;
+            FgBufROHandle cells, items, lights, decals;
+            FgImgROHandle envmap;
+            FgImgROHandle irradiance, distance, offset;
+            FgImgRWHandle out_emission, out_scatter;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         data->shared_data = scatter.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
-        data->stbn_tex = scatter.AddTextureInput(frame_textures.stbn_1D_64spp, Stg::ComputeShader);
+        data->stbn = scatter.AddTextureInput(frame_textures.stbn_1D_64spp, Stg::ComputeShader);
         data->shadow_depth = scatter.AddTextureInput(frame_textures.shadow_depth, Stg::ComputeShader);
         data->shadow_color = scatter.AddTextureInput(frame_textures.shadow_color, Stg::ComputeShader);
 
-        fr_emission_tex = data->out_emission_tex = scatter.AddStorageImageOutput(fr_emission_tex, Stg::ComputeShader);
-        fr_scatter_tex = data->out_scatter_tex = scatter.AddStorageImageOutput(fr_scatter_tex, Stg::ComputeShader);
+        fr_emission = data->out_emission = scatter.AddStorageImageOutput(fr_emission, Stg::ComputeShader);
+        fr_scatter = data->out_scatter = scatter.AddStorageImageOutput(fr_scatter, Stg::ComputeShader);
 
-        data->fr_emission_tex = scatter.AddHistoryTextureInput(fr_emission_tex, Stg::ComputeShader);
-        data->fr_scatter_tex = scatter.AddHistoryTextureInput(fr_scatter_tex, Stg::ComputeShader);
+        data->fr_emission = scatter.AddHistoryTextureInput(fr_emission, Stg::ComputeShader);
+        data->fr_scatter = scatter.AddHistoryTextureInput(fr_scatter, Stg::ComputeShader);
 
-        data->cells_buf = scatter.AddStorageReadonlyInput(common_buffers.cells, Stg::ComputeShader);
-        data->items_buf = scatter.AddStorageReadonlyInput(common_buffers.items, Stg::ComputeShader);
-        data->lights_buf = scatter.AddStorageReadonlyInput(common_buffers.lights, Stg::ComputeShader);
-        data->decals_buf = scatter.AddStorageReadonlyInput(common_buffers.decals, Stg::ComputeShader);
-        data->envmap_tex = scatter.AddTextureInput(frame_textures.envmap, Stg::ComputeShader);
+        data->cells = scatter.AddStorageReadonlyInput(common_buffers.cells, Stg::ComputeShader);
+        data->items = scatter.AddStorageReadonlyInput(common_buffers.items, Stg::ComputeShader);
+        data->lights = scatter.AddStorageReadonlyInput(common_buffers.lights, Stg::ComputeShader);
+        data->decals = scatter.AddStorageReadonlyInput(common_buffers.decals, Stg::ComputeShader);
+        data->envmap = scatter.AddTextureInput(frame_textures.envmap, Stg::ComputeShader);
 
         if (settings.gi_quality != eGIQuality::Off) {
-            data->irradiance_tex = scatter.AddTextureInput(frame_textures.gi_cache_irradiance, Stg::ComputeShader);
-            data->distance_tex = scatter.AddTextureInput(frame_textures.gi_cache_distance, Stg::ComputeShader);
-            data->offset_tex = scatter.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
+            data->irradiance = scatter.AddTextureInput(frame_textures.gi_cache_irradiance, Stg::ComputeShader);
+            data->distance = scatter.AddTextureInput(frame_textures.gi_cache_distance, Stg::ComputeShader);
+            data->offset = scatter.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
         }
 
         scatter.set_execute_cb([data, this, AllCascades](const FgContext &fg) {
-            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(data->shared_data);
 
-            const Ren::ImageROHandle stbn_tex = fg.AccessROImage(data->stbn_tex);
+            const Ren::ImageROHandle stbn = fg.AccessROImage(data->stbn);
             const Ren::ImageROHandle shadow_depth = fg.AccessROImage(data->shadow_depth);
             const Ren::ImageROHandle shadow_color = fg.AccessROImage(data->shadow_color);
 
-            const Ren::ImageROHandle fr_emission_tex = fg.AccessROImage(data->fr_emission_tex);
-            const Ren::ImageROHandle fr_scatter_tex = fg.AccessROImage(data->fr_scatter_tex);
+            const Ren::ImageROHandle fr_emission = fg.AccessROImage(data->fr_emission);
+            const Ren::ImageROHandle fr_scatter = fg.AccessROImage(data->fr_scatter);
 
-            const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
-            const Ren::BufferROHandle items_buf = fg.AccessROBuffer(data->items_buf);
-            const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
-            const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(data->decals_buf);
-            const Ren::ImageROHandle envmap_tex = fg.AccessROImage(data->envmap_tex);
+            const Ren::BufferROHandle cells = fg.AccessROBuffer(data->cells);
+            const Ren::BufferROHandle items = fg.AccessROBuffer(data->items);
+            const Ren::BufferROHandle lights = fg.AccessROBuffer(data->lights);
+            const Ren::BufferROHandle decals = fg.AccessROBuffer(data->decals);
+            const Ren::ImageROHandle envmap = fg.AccessROImage(data->envmap);
 
-            Ren::ImageROHandle irr_tex, dist_tex, off_tex;
-            if (data->irradiance_tex) {
-                irr_tex = fg.AccessROImage(data->irradiance_tex);
-                dist_tex = fg.AccessROImage(data->distance_tex);
-                off_tex = fg.AccessROImage(data->offset_tex);
+            Ren::ImageROHandle irr, dist, off;
+            if (data->irradiance) {
+                irr = fg.AccessROImage(data->irradiance);
+                dist = fg.AccessROImage(data->distance);
+                off = fg.AccessROImage(data->offset);
             }
 
-            const Ren::ImageRWHandle out_emission_tex = fg.AccessRWImage(data->out_emission_tex);
-            const Ren::ImageRWHandle out_scatter_tex = fg.AccessRWImage(data->out_scatter_tex);
+            const Ren::ImageRWHandle out_emission = fg.AccessRWImage(data->out_emission);
+            const Ren::ImageRWHandle out_scatter = fg.AccessRWImage(data->out_scatter);
 
             if (view_state_.skip_volumetrics) {
                 return;
             }
 
-            Ren::SmallVector<Ren::Binding, 16> bindings = {
-                {Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-                {Trg::TexSampled, Fog::STBN_TEX_SLOT, stbn_tex},
-                {Trg::TexSampled, Fog::SHADOW_DEPTH_TEX_SLOT, shadow_depth},
-                {Trg::TexSampled, Fog::SHADOW_COLOR_TEX_SLOT, shadow_color},
-                {Trg::TexSampled, Fog::FR_EMISSION_TEX_SLOT, fr_emission_tex},
-                {Trg::TexSampled, Fog::FR_SCATTER_TEX_SLOT, fr_scatter_tex},
-                {Trg::UTBuf, Fog::CELLS_BUF_SLOT, cells_buf},
-                {Trg::UTBuf, Fog::ITEMS_BUF_SLOT, items_buf},
-                {Trg::UTBuf, Fog::LIGHT_BUF_SLOT, lights_buf},
-                {Trg::UTBuf, Fog::DECAL_BUF_SLOT, decals_buf},
-                {Trg::TexSampled, Fog::ENVMAP_TEX_SLOT, envmap_tex},
-                {Trg::ImageRW, Fog::OUT_FR_EMISSION_IMG_SLOT, out_emission_tex},
-                {Trg::ImageRW, Fog::OUT_FR_SCATTER_IMG_SLOT, out_scatter_tex}};
-            if (irr_tex) {
-                bindings.emplace_back(Ren::eBindTarget::TexSampled, Fog::IRRADIANCE_TEX_SLOT, irr_tex);
-                bindings.emplace_back(Ren::eBindTarget::TexSampled, Fog::DISTANCE_TEX_SLOT, dist_tex);
-                bindings.emplace_back(Ren::eBindTarget::TexSampled, Fog::OFFSET_TEX_SLOT, off_tex);
+            Ren::SmallVector<Ren::Binding, 16> bindings = {{Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
+                                                           {Trg::TexSampled, Fog::STBN_TEX_SLOT, stbn},
+                                                           {Trg::TexSampled, Fog::SHADOW_DEPTH_TEX_SLOT, shadow_depth},
+                                                           {Trg::TexSampled, Fog::SHADOW_COLOR_TEX_SLOT, shadow_color},
+                                                           {Trg::TexSampled, Fog::FR_EMISSION_TEX_SLOT, fr_emission},
+                                                           {Trg::TexSampled, Fog::FR_SCATTER_TEX_SLOT, fr_scatter},
+                                                           {Trg::UTBuf, Fog::CELLS_BUF_SLOT, cells},
+                                                           {Trg::UTBuf, Fog::ITEMS_BUF_SLOT, items},
+                                                           {Trg::UTBuf, Fog::LIGHT_BUF_SLOT, lights},
+                                                           {Trg::UTBuf, Fog::DECAL_BUF_SLOT, decals},
+                                                           {Trg::TexSampled, Fog::ENVMAP_TEX_SLOT, envmap},
+                                                           {Trg::ImageRW, Fog::OUT_FR_EMISSION_IMG_SLOT, out_emission},
+                                                           {Trg::ImageRW, Fog::OUT_FR_SCATTER_IMG_SLOT, out_scatter}};
+            if (irr) {
+                bindings.emplace_back(Ren::eBindTarget::TexSampled, Fog::IRRADIANCE_TEX_SLOT, irr);
+                bindings.emplace_back(Ren::eBindTarget::TexSampled, Fog::DISTANCE_TEX_SLOT, dist);
+                bindings.emplace_back(Ren::eBindTarget::TexSampled, Fog::OFFSET_TEX_SLOT, off);
             }
 
-            const Ren::ImageCold &img_cold = fg.storages().images.Get(out_emission_tex).second;
+            const Ren::ImageCold &img_cold = fg.storages().images[out_emission].second;
             const auto froxel_res = Ren::Vec4i{img_cold.params.w, img_cold.params.h, img_cold.params.d, 0};
 
             const Ren::Vec3u grp_count = Ren::Vec3u(Ren::DivCeil(froxel_res[0], Fog::GRP_SIZE_3D_X) + 1,
@@ -632,25 +627,25 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
             uniform_params.frame_index = view_state_.frame_index;
             uniform_params.hist_weight = (view_state_.pre_exposure / view_state_.prev_pre_exposure);
 
-            DispatchCompute(fg.cmd_buf(), pi_vol_scatter_[AllCascades][bool(irr_tex)], fg.storages(), grp_count,
-                            bindings, &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
+            DispatchCompute(fg.cmd_buf(), pi_vol_scatter_[AllCascades][bool(irr)], fg.storages(), grp_count, bindings,
+                            &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
         });
     }
-    FgImgRWHandle froxel_tex;
+    FgImgRWHandle froxel;
     { // Ray march
         auto &ray_march = fg_builder_.AddNode("VOL RAY MARCH");
 
         struct PassData {
             FgBufROHandle shared_data;
-            FgImgROHandle fr_emission_tex;
-            FgImgROHandle fr_scatter_tex;
-            FgImgRWHandle output_tex;
+            FgImgROHandle fr_emission;
+            FgImgROHandle fr_scatter;
+            FgImgRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         data->shared_data = ray_march.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
-        data->fr_emission_tex = ray_march.AddTextureInput(fr_emission_tex, Stg::ComputeShader);
-        data->fr_scatter_tex = ray_march.AddTextureInput(fr_scatter_tex, Stg::ComputeShader);
+        data->fr_emission = ray_march.AddTextureInput(fr_emission, Stg::ComputeShader);
+        data->fr_scatter = ray_march.AddTextureInput(fr_scatter, Stg::ComputeShader);
 
         { //
             FgImgDesc desc;
@@ -661,27 +656,26 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
             desc.sampling.filter = Ren::eFilter::Bilinear;
             desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
-            froxel_tex = data->output_tex =
-                ray_march.AddStorageImageOutput("Vol Scattering Final", desc, Stg::ComputeShader);
+            froxel = data->output = ray_march.AddStorageImageOutput("Vol Scattering Final", desc, Stg::ComputeShader);
         }
 
         ray_march.set_execute_cb([data, this](const FgContext &fg) {
-            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::ImageROHandle fr_emission_tex = fg.AccessROImage(data->fr_emission_tex);
-            const Ren::ImageROHandle fr_scatter_tex = fg.AccessROImage(data->fr_scatter_tex);
+            const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(data->shared_data);
+            const Ren::ImageROHandle fr_emission = fg.AccessROImage(data->fr_emission);
+            const Ren::ImageROHandle fr_scatter = fg.AccessROImage(data->fr_scatter);
 
-            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle output = fg.AccessRWImage(data->output);
 
             if (view_state_.skip_volumetrics) {
                 return;
             }
 
-            const Ren::Binding bindings[] = {{Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-                                             {Trg::TexSampled, Fog::FR_EMISSION_TEX_SLOT, fr_emission_tex},
-                                             {Trg::TexSampled, Fog::FR_SCATTER_TEX_SLOT, fr_scatter_tex},
-                                             {Trg::ImageRW, Fog::OUT_FR_FINAL_IMG_SLOT, output_tex}};
+            const Ren::Binding bindings[] = {{Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
+                                             {Trg::TexSampled, Fog::FR_EMISSION_TEX_SLOT, fr_emission},
+                                             {Trg::TexSampled, Fog::FR_SCATTER_TEX_SLOT, fr_scatter},
+                                             {Trg::ImageRW, Fog::OUT_FR_FINAL_IMG_SLOT, output}};
 
-            const Ren::ImageCold &img_cold = fg.storages().images.Get(output_tex).second;
+            const Ren::ImageCold &img_cold = fg.storages().images[output].second;
             const auto froxel_res = Ren::Vec4i{img_cold.params.w, img_cold.params.h, img_cold.params.d, 0};
 
             const Ren::Vec3u grp_count = Ren::Vec3u(Ren::DivCeil(froxel_res[0], Fog::GRP_SIZE_2D_X),
@@ -701,24 +695,24 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
 
         struct PassData {
             FgBufROHandle shared_data;
-            FgImgROHandle depth_tex;
-            FgImgROHandle froxel_tex;
-            FgImgRWHandle output_tex;
+            FgImgROHandle depth;
+            FgImgROHandle froxel;
+            FgImgRWHandle output;
         };
 
         auto *data = fg_builder_.AllocTempData<PassData>();
         data->shared_data = apply.AddUniformBufferInput(common_buffers.shared_data, Stg::FragmentShader);
-        data->depth_tex = apply.AddTextureInput(frame_textures.depth, Stg::FragmentShader);
-        data->froxel_tex = apply.AddTextureInput(froxel_tex, Stg::FragmentShader);
+        data->depth = apply.AddTextureInput(frame_textures.depth, Stg::FragmentShader);
+        data->froxel = apply.AddTextureInput(froxel, Stg::FragmentShader);
 
-        frame_textures.color = data->output_tex = apply.AddColorOutput(frame_textures.color);
+        frame_textures.color = data->output = apply.AddColorOutput(frame_textures.color);
 
         apply.set_execute_cb([data, this](const FgContext &fg) {
-            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
-            const Ren::ImageROHandle froxel_tex = fg.AccessROImage(data->froxel_tex);
+            const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(data->shared_data);
+            const Ren::ImageROHandle depth = fg.AccessROImage(data->depth);
+            const Ren::ImageROHandle froxel = fg.AccessROImage(data->froxel);
 
-            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle output = fg.AccessRWImage(data->output);
 
             if (view_state_.skip_volumetrics) {
                 return;
@@ -737,18 +731,18 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
             rast_state.viewport[2] = view_state_.ren_res[0];
             rast_state.viewport[3] = view_state_.ren_res[1];
 
-            const Ren::Binding bindings[] = {{Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-                                             {Trg::TexSampled, VolCompose::DEPTH_TEX_SLOT, {depth_tex, 1}},
-                                             {Trg::TexSampled, VolCompose::FROXELS_TEX_SLOT, froxel_tex}};
+            const Ren::Binding bindings[] = {{Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
+                                             {Trg::TexSampled, VolCompose::DEPTH_TEX_SLOT, {depth, 1}},
+                                             {Trg::TexSampled, VolCompose::FROXELS_TEX_SLOT, froxel}};
 
             // TODO: Get rid of this!
-            const Ren::ImageCold &depth_cold = fg.storages().images.Get(depth_tex).second;
+            const Ren::ImageCold &depth_cold = fg.storages().images[depth].second;
             const auto img_res = Ren::Vec2i{depth_cold.params.w, depth_cold.params.h};
 
-            const Ren::ImageCold &img_cold = fg.storages().images.Get(froxel_tex).second;
+            const Ren::ImageCold &img_cold = fg.storages().images[froxel].second;
             const auto froxel_res = Ren::Vec4i{img_cold.params.w, img_cold.params.h, img_cold.params.d, 0};
 
-            const Ren::RenderTarget render_targets[] = {{output_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
+            const Ren::RenderTarget render_targets[] = {{output, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
 
             VolCompose::Params uniform_params;
             uniform_params.transform = Ren::Vec4f{0.0f, 0.0f, 1.0f, 1.0f};

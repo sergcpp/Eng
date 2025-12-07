@@ -40,7 +40,7 @@ bool Ren::UpdateBuffer(const ApiContext &api, const StoragesRef &storages, const
         return true;
     }
 
-    const auto &[stage_buf_main, stage_buf_cold] = storages.buffers.Get(stage);
+    const auto &[stage_buf_main, stage_buf_cold] = storages.buffers[stage];
 
     uint8_t *stage_mem = Buffer_MapRange(api, stage_buf_main, stage_buf_cold, map_offset, map_size);
     if (stage_mem) {
