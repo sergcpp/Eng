@@ -1182,7 +1182,7 @@ bool Ren::ApiContext::InitPresentImageViews(ILog *log) {
     return true;
 }
 
-VkCommandBuffer Ren::ApiContext::BegSingleTimeCommands() {
+VkCommandBuffer Ren::ApiContext::BegSingleTimeCommands() const {
     VkCommandBufferAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc_info.commandPool = temp_command_pool;
@@ -1201,7 +1201,7 @@ VkCommandBuffer Ren::ApiContext::BegSingleTimeCommands() {
     return command_buf;
 }
 
-void Ren::ApiContext::EndSingleTimeCommands(VkCommandBuffer command_buf) {
+void Ren::ApiContext::EndSingleTimeCommands(VkCommandBuffer command_buf) const {
     VkResult res = vkEndCommandBuffer(command_buf);
     assert(res == VK_SUCCESS);
 
@@ -1217,7 +1217,7 @@ void Ren::ApiContext::EndSingleTimeCommands(VkCommandBuffer command_buf) {
     vkFreeCommandBuffers(device, temp_command_pool, 1, &command_buf);
 }
 
-void Ren::ApiContext::EndSingleTimeCommands(VkCommandBuffer command_buf, VkFence fence_to_insert) {
+void Ren::ApiContext::EndSingleTimeCommands(VkCommandBuffer command_buf, VkFence fence_to_insert) const {
     vkEndCommandBuffer(command_buf);
 
     VkSubmitInfo submit_info = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -1243,104 +1243,104 @@ bool Ren::MatchDeviceNames(std::string_view name, std::string_view pattern) {
     return std::regex_search(name.data(), match_name) || name == pattern;
 }
 
-bool Ren::ReadbackTimestampQueries(ApiContext *api_ctx, int i) {
-    VkQueryPool query_pool = api_ctx->query_pools[i];
-    const uint32_t query_count = api_ctx->query_counts[i];
+bool Ren::ReadbackTimestampQueries(const ApiContext &api, int i) {
+    VkQueryPool query_pool = api.query_pools[i];
+    const uint32_t query_count = api.query_counts[i];
     if (!query_count) {
         // nothing to readback
         return true;
     }
 
-    const VkResult res = api_ctx->vkGetQueryPoolResults(
-        api_ctx->device, query_pool, 0, query_count, query_count * sizeof(uint64_t), api_ctx->query_results[i],
-        sizeof(uint64_t), VK_QUERY_RESULT_WAIT_BIT | VK_QUERY_RESULT_64_BIT);
-    api_ctx->query_counts[api_ctx->backend_frame] = 0;
+    const VkResult res = api.vkGetQueryPoolResults(api.device, query_pool, 0, query_count,
+                                                   query_count * sizeof(uint64_t), api.query_results[i],
+                                                   sizeof(uint64_t), VK_QUERY_RESULT_WAIT_BIT | VK_QUERY_RESULT_64_BIT);
+    api.query_counts[api.backend_frame] = 0;
 
     return (res == VK_SUCCESS);
 }
 
-void Ren::DestroyDeferredResources(ApiContext *api_ctx, const int i) {
-    for (VkFramebuffer fb : api_ctx->framebuffers_to_destroy[i]) {
-        api_ctx->vkDestroyFramebuffer(api_ctx->device, fb, nullptr);
+void Ren::DestroyDeferredResources(const ApiContext &api, const int i) {
+    for (VkFramebuffer fb : api.framebuffers_to_destroy[i]) {
+        api.vkDestroyFramebuffer(api.device, fb, nullptr);
     }
-    api_ctx->framebuffers_to_destroy[i].clear();
+    api.framebuffers_to_destroy[i].clear();
 
-    for (VkRenderPass rp : api_ctx->render_passes_to_destroy[i]) {
-        api_ctx->vkDestroyRenderPass(api_ctx->device, rp, nullptr);
+    for (VkRenderPass rp : api.render_passes_to_destroy[i]) {
+        api.vkDestroyRenderPass(api.device, rp, nullptr);
     }
-    api_ctx->render_passes_to_destroy[i].clear();
+    api.render_passes_to_destroy[i].clear();
 
-    for (VkImageView view : api_ctx->image_views_to_destroy[i]) {
-        api_ctx->vkDestroyImageView(api_ctx->device, view, nullptr);
+    for (VkImageView view : api.image_views_to_destroy[i]) {
+        api.vkDestroyImageView(api.device, view, nullptr);
     }
-    api_ctx->image_views_to_destroy[i].clear();
-    for (VkImage img : api_ctx->images_to_destroy[i]) {
-        api_ctx->vkDestroyImage(api_ctx->device, img, nullptr);
+    api.image_views_to_destroy[i].clear();
+    for (VkImage img : api.images_to_destroy[i]) {
+        api.vkDestroyImage(api.device, img, nullptr);
     }
-    api_ctx->images_to_destroy[i].clear();
-    for (VkSampler sampler : api_ctx->samplers_to_destroy[i]) {
-        api_ctx->vkDestroySampler(api_ctx->device, sampler, nullptr);
+    api.images_to_destroy[i].clear();
+    for (VkSampler sampler : api.samplers_to_destroy[i]) {
+        api.vkDestroySampler(api.device, sampler, nullptr);
     }
-    api_ctx->samplers_to_destroy[i].clear();
+    api.samplers_to_destroy[i].clear();
 
-    api_ctx->allocations_to_free[i].clear();
-    api_ctx->allocators_to_release[i].clear();
+    api.allocations_to_free[i].clear();
+    api.allocators_to_release[i].clear();
 
-    for (VkBufferView view : api_ctx->buf_views_to_destroy[i]) {
-        api_ctx->vkDestroyBufferView(api_ctx->device, view, nullptr);
+    for (VkBufferView view : api.buf_views_to_destroy[i]) {
+        api.vkDestroyBufferView(api.device, view, nullptr);
     }
-    api_ctx->buf_views_to_destroy[i].clear();
-    for (VkBuffer buf : api_ctx->bufs_to_destroy[i]) {
-        api_ctx->vkDestroyBuffer(api_ctx->device, buf, nullptr);
+    api.buf_views_to_destroy[i].clear();
+    for (VkBuffer buf : api.bufs_to_destroy[i]) {
+        api.vkDestroyBuffer(api.device, buf, nullptr);
     }
-    api_ctx->bufs_to_destroy[i].clear();
+    api.bufs_to_destroy[i].clear();
 
-    for (VkDeviceMemory mem : api_ctx->mem_to_free[i]) {
-        api_ctx->vkFreeMemory(api_ctx->device, mem, nullptr);
+    for (VkDeviceMemory mem : api.mem_to_free[i]) {
+        api.vkFreeMemory(api.device, mem, nullptr);
     }
-    api_ctx->mem_to_free[i].clear();
+    api.mem_to_free[i].clear();
 
-    for (VkDescriptorPool pool : api_ctx->descriptor_pools_to_destroy[i]) {
-        api_ctx->vkDestroyDescriptorPool(api_ctx->device, pool, nullptr);
+    for (VkDescriptorPool pool : api.descriptor_pools_to_destroy[i]) {
+        api.vkDestroyDescriptorPool(api.device, pool, nullptr);
     }
-    api_ctx->descriptor_pools_to_destroy[i].clear();
+    api.descriptor_pools_to_destroy[i].clear();
 
-    for (VkPipelineLayout pipe_layout : api_ctx->pipeline_layouts_to_destroy[i]) {
-        api_ctx->vkDestroyPipelineLayout(api_ctx->device, pipe_layout, nullptr);
+    for (VkPipelineLayout pipe_layout : api.pipeline_layouts_to_destroy[i]) {
+        api.vkDestroyPipelineLayout(api.device, pipe_layout, nullptr);
     }
-    api_ctx->pipeline_layouts_to_destroy[i].clear();
+    api.pipeline_layouts_to_destroy[i].clear();
 
-    for (VkPipeline pipe : api_ctx->pipelines_to_destroy[i]) {
-        api_ctx->vkDestroyPipeline(api_ctx->device, pipe, nullptr);
+    for (VkPipeline pipe : api.pipelines_to_destroy[i]) {
+        api.vkDestroyPipeline(api.device, pipe, nullptr);
     }
-    api_ctx->pipelines_to_destroy[i].clear();
+    api.pipelines_to_destroy[i].clear();
 
-    for (VkAccelerationStructureKHR acc_struct : api_ctx->acc_structs_to_destroy[i]) {
-        api_ctx->vkDestroyAccelerationStructureKHR(api_ctx->device, acc_struct, nullptr);
+    for (VkAccelerationStructureKHR acc_struct : api.acc_structs_to_destroy[i]) {
+        api.vkDestroyAccelerationStructureKHR(api.device, acc_struct, nullptr);
     }
-    api_ctx->acc_structs_to_destroy[i].clear();
+    api.acc_structs_to_destroy[i].clear();
 }
 
-void Ren::_SubmitCurrentCommandsWaitForCompletionAndResume(ApiContext *api_ctx) {
+void Ren::_SubmitCurrentCommandsWaitForCompletionAndResume(ApiContext *api) {
     // Finish command buffer
-    api_ctx->vkEndCommandBuffer(api_ctx->draw_cmd_buf[api_ctx->backend_frame]);
+    api->vkEndCommandBuffer(api->draw_cmd_buf[api->backend_frame]);
 
     { // Submit commands
         VkSubmitInfo submit_info = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
 
         submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+        submit_info.pCommandBuffers = &api->draw_cmd_buf[api->backend_frame];
 
-        VkResult res = api_ctx->vkQueueSubmit(api_ctx->graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+        VkResult res = api->vkQueueSubmit(api->graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
         assert(res == VK_SUCCESS);
     }
 
     // Wait for completion
-    api_ctx->vkDeviceWaitIdle(api_ctx->device);
+    api->vkDeviceWaitIdle(api->device);
 
     // Restart command buffer
     VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    api_ctx->vkBeginCommandBuffer(api_ctx->draw_cmd_buf[api_ctx->backend_frame], &begin_info);
+    api->vkBeginCommandBuffer(api->draw_cmd_buf[api->backend_frame], &begin_info);
 }

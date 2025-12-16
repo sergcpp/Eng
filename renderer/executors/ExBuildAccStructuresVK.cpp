@@ -3,18 +3,19 @@
 #include <Ren/Context.h>
 #include <Ren/VKCtx.h>
 
-void Eng::ExBuildAccStructures::Execute_HWRT(FgContext &fg) {
-    const Ren::Buffer &rt_obj_instances_buf = fg.AccessROBuffer(rt_obj_instances_buf_);
-    [[maybe_unused]] Ren::Buffer &rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
-    Ren::Buffer &rt_tlas_build_scratch_buf = fg.AccessRWBuffer(rt_tlas_build_scratch_buf_);
+void Eng::ExBuildAccStructures::Execute_HWRT(const FgContext &fg) {
+    const Ren::BufferHandle rt_obj_instances_buf = fg.AccessROBuffer(rt_obj_instances_buf_);
+    [[maybe_unused]] const Ren::BufferHandle rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
+    const Ren::BufferHandle rt_tlas_build_scratch_buf = fg.AccessRWBuffer(rt_tlas_build_scratch_buf_);
 
-    Ren::ApiContext *api_ctx = fg.ren_ctx().api_ctx();
+    const Ren::ApiContext &api = fg.ren_ctx().api();
 
     auto *vk_tlas = reinterpret_cast<Ren::AccStructureVK *>(acc_struct_data_->rt_tlases[rt_index_]);
 
+    const Ren::BufferMain &rt_obj_instances_buf_main = fg.storages().buffers.Get(rt_obj_instances_buf).first;
     VkAccelerationStructureGeometryInstancesDataKHR instances_data = {
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR};
-    instances_data.data.deviceAddress = rt_obj_instances_buf.vk_device_address();
+    instances_data.data.deviceAddress = Buffer_GetDeviceAddress(api, rt_obj_instances_buf_main);
 
     VkAccelerationStructureGeometryKHR tlas_geo = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
     tlas_geo.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
@@ -31,7 +32,8 @@ void Eng::ExBuildAccStructures::Execute_HWRT(FgContext &fg) {
     tlas_build_info.srcAccelerationStructure = VK_NULL_HANDLE;
     tlas_build_info.dstAccelerationStructure = vk_tlas->vk_handle();
 
-    tlas_build_info.scratchData.deviceAddress = rt_tlas_build_scratch_buf.vk_device_address();
+    const Ren::BufferMain &rt_tlas_build_scratch_buf_main = fg.storages().buffers.Get(rt_tlas_build_scratch_buf).first;
+    tlas_build_info.scratchData.deviceAddress = Buffer_GetDeviceAddress(api, rt_tlas_build_scratch_buf_main);
 
     VkAccelerationStructureBuildRangeInfoKHR range_info = {};
     range_info.primitiveOffset = 0;
@@ -42,5 +44,5 @@ void Eng::ExBuildAccStructures::Execute_HWRT(FgContext &fg) {
     VkCommandBuffer cmd_buf = fg.cmd_buf();
 
     const VkAccelerationStructureBuildRangeInfoKHR *build_range = &range_info;
-    api_ctx->vkCmdBuildAccelerationStructuresKHR(cmd_buf, 1, &tlas_build_info, &build_range);
+    api.vkCmdBuildAccelerationStructuresKHR(cmd_buf, 1, &tlas_build_info, &build_range);
 }

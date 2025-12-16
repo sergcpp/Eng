@@ -7,6 +7,7 @@
 #include <Ren/Context.h>
 #include <Sys/BinaryTree.h>
 #include <Sys/MonoAlloc.h>
+#include <Sys/ScopeExit.h>
 
 #include <optick/optick.h>
 #include <vtune/ittnotify.h>
@@ -586,7 +587,7 @@ void Eng::SceneManager::UpdateObjects() {
 std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc) {
     using namespace SceneManagerInternal;
 
-    Ren::ApiContext *api_ctx = ren_ctx_.api_ctx();
+    const Ren::ApiContext &api = ren_ctx_.api();
 
     const Ren::BufferRange &attribs = acc.mesh->attribs_buf1(), &indices = acc.mesh->indices_buf();
 
@@ -598,19 +599,22 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_SWRT_BLAS(const Acc
     assert(acc.mesh->type() == Ren::eMeshType::Simple);
     const int VertexStride = 13;
 
-    if (!scene_data_.persistent_data.swrt.rt_prim_indices_buf) {
-        scene_data_.persistent_data.swrt.rt_prim_indices_buf =
-            scene_data_.buffers.Insert("SWRT Prim Indices", api_ctx, Ren::eBufType::Texture,
-                                       uint32_t(1024 * sizeof(uint32_t)), uint32_t(sizeof(uint32_t)));
-        scene_data_.persistent_data.swrt.rt_prim_indices_buf->AddView(Ren::eFormat::R32UI);
+    if (!scene_data_.persistent_data->swrt.rt_prim_indices_buf) {
+        scene_data_.persistent_data->swrt.rt_prim_indices_buf = ren_ctx_.FindOrCreateBuffer(
+            "SWRT Prim Indices", Ren::eBufType::Texture, uint32_t(1024 * sizeof(uint32_t)), uint32_t(sizeof(uint32_t)));
+        const int view_index =
+            ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->swrt.rt_prim_indices_buf, Ren::eFormat::R32UI);
+        assert(view_index == 0);
     }
-    if (!scene_data_.persistent_data.swrt.rt_blas_buf) {
-        scene_data_.persistent_data.swrt.rt_blas_buf = scene_data_.buffers.Insert(
-            "SWRT BLAS", api_ctx, Ren::eBufType::Storage, uint32_t(1024 * sizeof(gpu_bvh2_node_t)), 16);
-        scene_data_.persistent_data.swrt.rt_blas_buf->AddView(Ren::eFormat::RGBA32F);
+    if (!scene_data_.persistent_data->swrt.rt_blas_buf) {
+        scene_data_.persistent_data->swrt.rt_blas_buf = ren_ctx_.FindOrCreateBuffer(
+            "SWRT BLAS", Ren::eBufType::Storage, uint32_t(1024 * sizeof(gpu_bvh2_node_t)), 16);
+        const int view_index =
+            ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->swrt.rt_blas_buf, Ren::eFormat::RGBA32F);
+        assert(view_index == 0);
     }
 
-    const uint32_t mesh_index = scene_data_.persistent_data.swrt.rt_meshes.emplace();
+    const uint32_t mesh_index = scene_data_.persistent_data->swrt.rt_meshes.emplace();
 
     //
     // Gather geometries
@@ -655,10 +659,17 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_SWRT_BLAS(const Acc
     std::vector<gpu_bvh2_node_t> temp_bvh2_nodes;
     ConvertToBVH2(temp_nodes, temp_bvh2_nodes);
 
-    const Ren::SubAllocation nodes_alloc = scene_data_.persistent_data.swrt.rt_blas_buf->AllocSubRegion(
-        uint32_t(temp_bvh2_nodes.size()) * sizeof(gpu_bvh2_node_t), sizeof(gpu_bvh2_node_t), {});
-    const Ren::SubAllocation prim_alloc = scene_data_.persistent_data.swrt.rt_prim_indices_buf->AllocSubRegion(
-        uint32_t(prim_indices.size()) * sizeof(uint32_t), sizeof(uint32_t), {});
+    const auto &[rt_blas_buf_main, rt_blas_buf_cold] =
+        ren_ctx_.buffers().Get(scene_data_.persistent_data->swrt.rt_blas_buf);
+    const Ren::SubAllocation nodes_alloc = Buffer_AllocSubRegion(
+        api, rt_blas_buf_main, rt_blas_buf_cold, uint32_t(temp_bvh2_nodes.size()) * sizeof(gpu_bvh2_node_t),
+        sizeof(gpu_bvh2_node_t), {}, ren_ctx_.log());
+
+    const auto &[rt_prim_indices_buf_main, rt_prim_indices_buf_cold] =
+        ren_ctx_.buffers().Get(scene_data_.persistent_data->swrt.rt_prim_indices_buf);
+    const Ren::SubAllocation prim_alloc =
+        Buffer_AllocSubRegion(api, rt_prim_indices_buf_main, rt_prim_indices_buf_cold,
+                              uint32_t(prim_indices.size()) * sizeof(uint32_t), sizeof(uint32_t), {}, ren_ctx_.log());
 
     new_mesh.node_index = nodes_alloc.offset / sizeof(gpu_bvh2_node_t);
     new_mesh.node_count = uint32_t(temp_bvh2_nodes.size());
@@ -687,66 +698,95 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_SWRT_BLAS(const Acc
         prim_indices[i] = prim_offset + temp_indices[prim_indices[i]];
     }
 
-    scene_data_.persistent_data.swrt.rt_meshes[mesh_index] = new_mesh;
+    scene_data_.persistent_data->swrt.rt_meshes[mesh_index] = new_mesh;
 
     auto new_blas = std::make_unique<Ren::AccStructureSW>(mesh_index, nodes_alloc, prim_alloc);
 
     const auto total_nodes_size = uint32_t(temp_bvh2_nodes.size() * sizeof(gpu_bvh2_node_t));
     const auto total_prim_indices_size = uint32_t(prim_indices.size() * sizeof(uint32_t));
 
-    Ren::Buffer rt_blas_stage_buf("SWRT BLAS Upload", api_ctx, Ren::eBufType::Upload, total_nodes_size);
+    Ren::BufferMain rt_blas_stage_buf_main = {};
+    Ren::BufferCold rt_blas_stage_buf_cold = {};
+    if (!Ren::Buffer_Init(api, rt_blas_stage_buf_main, rt_blas_stage_buf_cold, Ren::String{"SWRT BLAS Upload"},
+                          Ren::eBufType::Upload, total_nodes_size, ren_ctx_.log())) {
+        ren_ctx_.log()->Error("Failed to initialize staging buffer for SWRT BLAS");
+        return {};
+    }
+    SCOPE_EXIT({ Buffer_DestroyImmediately(api, rt_blas_stage_buf_main, rt_blas_stage_buf_cold); })
+
     {
-        uint8_t *rt_blas_stage = rt_blas_stage_buf.Map();
+        uint8_t *rt_blas_stage = Buffer_Map(api, rt_blas_stage_buf_main, rt_blas_stage_buf_cold);
         memcpy(rt_blas_stage, temp_bvh2_nodes.data(), total_nodes_size);
-        rt_blas_stage_buf.Unmap();
+        Buffer_Unmap(api, rt_blas_stage_buf_main, rt_blas_stage_buf_cold);
     }
 
-    Ren::Buffer rt_prim_indices_stage_buf("SWRT Prim Indices Upload", api_ctx, Ren::eBufType::Upload,
-                                          total_prim_indices_size);
+    Ren::BufferMain rt_prim_indices_stage_buf_main = {};
+    Ren::BufferCold rt_prim_indices_stage_buf_cold = {};
+    if (!Ren::Buffer_Init(api, rt_prim_indices_stage_buf_main, rt_prim_indices_stage_buf_cold,
+                          Ren::String{"SWRT Prim Indices Upload"}, Ren::eBufType::Upload, total_prim_indices_size,
+                          ren_ctx_.log())) {
+        ren_ctx_.log()->Error("Failed to initialize staging buffer for SWRT primitive indices");
+        return {};
+    }
+    SCOPE_EXIT({ Buffer_DestroyImmediately(api, rt_prim_indices_stage_buf_main, rt_prim_indices_stage_buf_cold); })
+
     {
-        uint8_t *rt_prim_indices_stage = rt_prim_indices_stage_buf.Map();
+        uint8_t *rt_prim_indices_stage =
+            Buffer_Map(api, rt_prim_indices_stage_buf_main, rt_prim_indices_stage_buf_cold);
         memcpy(rt_prim_indices_stage, prim_indices.data(), total_prim_indices_size);
-        rt_prim_indices_stage_buf.Unmap();
+        Buffer_Unmap(api, rt_prim_indices_stage_buf_main, rt_prim_indices_stage_buf_cold);
     }
 
     Ren::CommandBuffer cmd_buf = ren_ctx_.BegTempSingleTimeCommands();
 
-    CopyBufferToBuffer(rt_blas_stage_buf, 0, *scene_data_.persistent_data.swrt.rt_blas_buf, nodes_alloc.offset,
-                       total_nodes_size, cmd_buf);
-    CopyBufferToBuffer(rt_prim_indices_stage_buf, 0, *scene_data_.persistent_data.swrt.rt_prim_indices_buf,
-                       prim_alloc.offset, total_prim_indices_size, cmd_buf);
+    CopyBufferToBuffer(api, rt_blas_stage_buf_main, 0, rt_blas_buf_main, nodes_alloc.offset, total_nodes_size, cmd_buf);
+    CopyBufferToBuffer(api, rt_prim_indices_stage_buf_main, 0, rt_prim_indices_buf_main, prim_alloc.offset,
+                       total_prim_indices_size, cmd_buf);
 
     ren_ctx_.EndTempSingleTimeCommands(cmd_buf);
-
-    rt_blas_stage_buf.FreeImmediate();
-    rt_prim_indices_stage_buf.FreeImmediate();
 
     return new_blas;
 }
 
 void Eng::SceneManager::Alloc_SWRT_TLAS() {
-    Ren::ApiContext *api_ctx = ren_ctx_.api_ctx();
+    const Ren::ApiContext &api = ren_ctx_.api();
 
-    scene_data_.persistent_data.rt_tlas_buf[int(eTLASIndex::Main)] = scene_data_.buffers.Insert(
-        "TLAS", api_ctx, Ren::eBufType::Storage, uint32_t(MAX_RT_TLAS_NODES * sizeof(gpu_bvh2_node_t)));
-    scene_data_.persistent_data.rt_tlas_buf[int(eTLASIndex::Main)]->AddView(Ren::eFormat::RGBA32F);
-    scene_data_.persistent_data.rt_tlas_buf[int(eTLASIndex::Shadow)] = scene_data_.buffers.Insert(
-        "TLAS Shadow", api_ctx, Ren::eBufType::Storage, uint32_t(MAX_RT_TLAS_NODES * sizeof(gpu_bvh2_node_t)));
-    scene_data_.persistent_data.rt_tlas_buf[int(eTLASIndex::Shadow)]->AddView(Ren::eFormat::RGBA32F);
-    scene_data_.persistent_data.rt_tlas_buf[int(eTLASIndex::Volume)] = scene_data_.buffers.Insert(
-        "TLAS Volume", api_ctx, Ren::eBufType::Storage, uint32_t(MAX_RT_TLAS_NODES * sizeof(gpu_bvh2_node_t)));
-    scene_data_.persistent_data.rt_tlas_buf[int(eTLASIndex::Volume)]->AddView(Ren::eFormat::RGBA32F);
-
-    if (!scene_data_.persistent_data.swrt.rt_prim_indices_buf) {
-        scene_data_.persistent_data.swrt.rt_prim_indices_buf =
-            scene_data_.buffers.Insert("SWRT Prim Indices", api_ctx, Ren::eBufType::Texture,
-                                       uint32_t(1024 * sizeof(uint32_t)), uint32_t(sizeof(uint32_t)));
-        scene_data_.persistent_data.swrt.rt_prim_indices_buf->AddView(Ren::eFormat::R32UI);
+    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Main)] = ren_ctx_.FindOrCreateBuffer(
+        "TLAS", Ren::eBufType::Storage, uint32_t(MAX_RT_TLAS_NODES * sizeof(gpu_bvh2_node_t)));
+    { // Add View
+        const auto &[buf_main, buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Main)]);
+        Ren::Buffer_AddView(api, buf_main, buf_cold, Ren::eFormat::RGBA32F);
     }
-    if (!scene_data_.persistent_data.swrt.rt_blas_buf) {
-        scene_data_.persistent_data.swrt.rt_blas_buf = scene_data_.buffers.Insert(
-            "SWRT BLAS", api_ctx, Ren::eBufType::Storage, uint32_t(1024 * sizeof(gpu_bvh2_node_t)), 16);
-        scene_data_.persistent_data.swrt.rt_blas_buf->AddView(Ren::eFormat::RGBA32F);
+    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Shadow)] = ren_ctx_.FindOrCreateBuffer(
+        "TLAS Shadow", Ren::eBufType::Storage, uint32_t(MAX_RT_TLAS_NODES * sizeof(gpu_bvh2_node_t)));
+    { // Add View
+        const auto &[buf_main, buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Shadow)]);
+        Ren::Buffer_AddView(api, buf_main, buf_cold, Ren::eFormat::RGBA32F);
+    }
+    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Volume)] = ren_ctx_.FindOrCreateBuffer(
+        "TLAS Volume", Ren::eBufType::Storage, uint32_t(MAX_RT_TLAS_NODES * sizeof(gpu_bvh2_node_t)));
+    { // Add View
+        const auto &[buf_main, buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Volume)]);
+        Ren::Buffer_AddView(api, buf_main, buf_cold, Ren::eFormat::RGBA32F);
+    }
+
+    if (!scene_data_.persistent_data->swrt.rt_prim_indices_buf) {
+        scene_data_.persistent_data->swrt.rt_prim_indices_buf = ren_ctx_.FindOrCreateBuffer(
+            "SWRT Prim Indices", Ren::eBufType::Texture, uint32_t(1024 * sizeof(uint32_t)), uint32_t(sizeof(uint32_t)));
+
+        const auto &[buf_main, buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->swrt.rt_prim_indices_buf);
+        Buffer_AddView(api, buf_main, buf_cold, Ren::eFormat::R32UI);
+    }
+    if (!scene_data_.persistent_data->swrt.rt_blas_buf) {
+        scene_data_.persistent_data->swrt.rt_blas_buf = ren_ctx_.FindOrCreateBuffer(
+            "SWRT BLAS", Ren::eBufType::Texture, uint32_t(1024 * sizeof(gpu_bvh2_node_t)), 16);
+
+        const auto &[buf_main, buf_cold] = ren_ctx_.buffers().Get(scene_data_.persistent_data->swrt.rt_blas_buf);
+        Buffer_AddView(api, buf_main, buf_cold, Ren::eFormat::RGBA32F);
     }
 }
 
@@ -1260,8 +1300,8 @@ uint32_t Eng::SceneManager::ConvertToBVH2(Ren::Span<const gpu_bvh_node_t> nodes,
 }
 
 void Eng::SceneManager::RebuildLightTree() {
-    scene_data_.persistent_data.stoch_lights_buf = {};
-    scene_data_.persistent_data.stoch_lights_nodes_buf = {};
+    scene_data_.persistent_data->stoch_lights_buf = {};
+    scene_data_.persistent_data->stoch_lights_nodes_buf = {};
 
     const auto *transforms = (Transform *)scene_data_.comp_store[CompTransform]->SequentialData();
     const auto *acc_structs = (AccStructure *)scene_data_.comp_store[CompAccStructure]->SequentialData();
@@ -1545,53 +1585,88 @@ void Eng::SceneManager::RebuildLightTree() {
         light_wnodes.resize(compacted_count);
     }
 
-    { // Init GPU data
-        scene_data_.persistent_data.stoch_lights_buf =
-            scene_data_.buffers.Insert("Stochastic Lights", ren_ctx_.api_ctx(), Ren::eBufType::Texture,
-                                       uint32_t(stochastic_lights.size() * sizeof(light_item_t)));
-        scene_data_.persistent_data.stoch_lights_buf->AddView(Ren::eFormat::RGBA32UI);
-        scene_data_.persistent_data.stoch_lights_nodes_buf =
-            scene_data_.buffers.Insert("Stochastic Light Nodes", ren_ctx_.api_ctx(), Ren::eBufType::Texture,
-                                       uint32_t(light_wnodes.size() * sizeof(gpu_light_cwbvh_node_t)));
-        scene_data_.persistent_data.stoch_lights_nodes_buf->AddView(Ren::eFormat::RGBA32F);
+    const Ren::ApiContext &api = ren_ctx_.api();
 
-        Ren::Buffer lights_buf_stage("Stochastic Lights Stage", ren_ctx_.api_ctx(), Ren::eBufType::Upload,
-                                     scene_data_.persistent_data.stoch_lights_buf->size());
-        { // init stage buf
-            uint8_t *mapped_ptr = lights_buf_stage.Map();
-            memcpy(mapped_ptr, stochastic_lights.data(), stochastic_lights.size() * sizeof(light_item_t));
-            lights_buf_stage.Unmap();
+    { // Init GPU data
+        const uint32_t lights_buf_size = uint32_t(stochastic_lights.size() * sizeof(light_item_t));
+        scene_data_.persistent_data->stoch_lights_buf =
+            ren_ctx_.FindOrCreateBuffer("Stochastic Lights", Ren::eBufType::Texture, lights_buf_size);
+        { // Add view
+            const auto &[buf_main, buf_cold] = ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_buf);
+            Buffer_AddView(api, buf_main, buf_cold, Ren::eFormat::RGBA32UI);
+        }
+        const uint32_t nodes_buf_size = uint32_t(light_wnodes.size() * sizeof(gpu_light_cwbvh_node_t));
+        scene_data_.persistent_data->stoch_lights_nodes_buf =
+            ren_ctx_.FindOrCreateBuffer("Stochastic Light Nodes", Ren::eBufType::Texture, nodes_buf_size);
+        { // Add view
+            const auto &[buf_main, buf_cold] =
+                ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_nodes_buf);
+            Buffer_AddView(api, buf_main, buf_cold, Ren::eFormat::RGBA32F);
         }
 
-        Ren::Buffer nodes_buf_stage("Stochastic Light Nodes Stage", ren_ctx_.api_ctx(), Ren::eBufType::Upload,
-                                    scene_data_.persistent_data.stoch_lights_nodes_buf->size());
+        Ren::BufferMain lights_stage_buf_main = {};
+        Ren::BufferCold lights_stage_buf_cold = {};
+        if (!Ren::Buffer_Init(api, lights_stage_buf_main, lights_stage_buf_cold, Ren::String{"Stochastic Lights Stage"},
+                              Ren::eBufType::Upload, lights_buf_size, ren_ctx_.log())) {
+            // TODO: Properly handle failure
+            assert(false);
+        }
+
         { // init stage buf
-            uint8_t *mapped_ptr = nodes_buf_stage.Map();
+            uint8_t *mapped_ptr = Buffer_Map(api, lights_stage_buf_main, lights_stage_buf_cold);
+            memcpy(mapped_ptr, stochastic_lights.data(), stochastic_lights.size() * sizeof(light_item_t));
+            Buffer_Unmap(api, lights_stage_buf_main, lights_stage_buf_cold);
+        }
+
+        Ren::BufferMain nodes_stage_buf_main = {};
+        Ren::BufferCold nodes_stage_buf_cold = {};
+        if (!Ren::Buffer_Init(api, nodes_stage_buf_main, nodes_stage_buf_cold,
+                              Ren::String{"Stochastic Light Nodes Stage"}, Ren::eBufType::Upload, nodes_buf_size,
+                              ren_ctx_.log())) {
+            // TODO: Properly handle failure
+            assert(false);
+        }
+
+        { // init stage buf
+            uint8_t *mapped_ptr = Buffer_Map(api, nodes_stage_buf_main, nodes_stage_buf_cold);
             memcpy(mapped_ptr, light_wnodes.data(), light_wnodes.size() * sizeof(gpu_light_cwbvh_node_t));
-            nodes_buf_stage.Unmap();
+            Buffer_Unmap(api, nodes_stage_buf_main, nodes_stage_buf_cold);
         }
 
         Ren::CommandBuffer cmd_buf = ren_ctx_.BegTempSingleTimeCommands();
-        CopyBufferToBuffer(lights_buf_stage, 0, *scene_data_.persistent_data.stoch_lights_buf, 0,
-                           uint32_t(stochastic_lights.size() * sizeof(light_item_t)), cmd_buf);
-        CopyBufferToBuffer(nodes_buf_stage, 0, *scene_data_.persistent_data.stoch_lights_nodes_buf, 0,
-                           uint32_t(light_wnodes.size() * sizeof(gpu_light_cwbvh_node_t)), cmd_buf);
+
+        const auto &[lights_buf_main, lights_buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_buf);
+        CopyBufferToBuffer(api, lights_stage_buf_main, 0, lights_buf_main, 0, lights_buf_size, cmd_buf);
+
+        const auto &[nodes_buf_main, nodes_buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_nodes_buf);
+        CopyBufferToBuffer(api, nodes_stage_buf_main, 0, nodes_buf_main, 0, nodes_buf_size, cmd_buf);
+
         ren_ctx_.EndTempSingleTimeCommands(cmd_buf);
 
-        lights_buf_stage.FreeImmediate();
-        nodes_buf_stage.FreeImmediate();
+        Buffer_DestroyImmediately(api, lights_stage_buf_main, lights_stage_buf_cold);
+        Buffer_DestroyImmediately(api, nodes_stage_buf_main, nodes_stage_buf_cold);
     }
 }
 
 void Eng::SceneManager::ReleaseLightTree(const bool immediate) {
-    if (immediate) {
-        if (scene_data_.persistent_data.stoch_lights_buf) {
-            scene_data_.persistent_data.stoch_lights_buf->FreeImmediate();
-        }
-        if (scene_data_.persistent_data.stoch_lights_nodes_buf) {
-            scene_data_.persistent_data.stoch_lights_nodes_buf->FreeImmediate();
+    if (scene_data_.persistent_data->stoch_lights_buf) {
+        const auto &[lights_buf_main, lights_buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_buf);
+        if (immediate) {
+            Buffer_DestroyImmediately(ren_ctx_.api(), lights_buf_main, lights_buf_cold);
+        } else {
+            Buffer_Destroy(ren_ctx_.api(), lights_buf_main, lights_buf_cold);
         }
     }
-    scene_data_.persistent_data.stoch_lights_buf = {};
-    scene_data_.persistent_data.stoch_lights_nodes_buf = {};
+    if (scene_data_.persistent_data->stoch_lights_nodes_buf) {
+        const auto &[nodes_buf_main, nodes_buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->stoch_lights_nodes_buf);
+        if (immediate) {
+            Buffer_DestroyImmediately(ren_ctx_.api(), nodes_buf_main, nodes_buf_cold);
+        } else {
+            Buffer_Destroy(ren_ctx_.api(), nodes_buf_main, nodes_buf_cold);
+        }
+    }
 }

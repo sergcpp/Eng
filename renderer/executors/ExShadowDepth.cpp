@@ -5,10 +5,10 @@
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
 
-void Eng::ExShadowDepth::Execute(FgContext &fg) {
-    Ren::WeakBufRef vtx_buf1 = fg.AccessROBufferRef(vtx_buf1_);
-    Ren::WeakBufRef vtx_buf2 = fg.AccessROBufferRef(vtx_buf2_);
-    Ren::WeakBufRef ndx_buf = fg.AccessROBufferRef(ndx_buf_);
+void Eng::ExShadowDepth::Execute(const FgContext &fg) {
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     Ren::WeakImgRef shadow_depth_tex = fg.AccessRWImageRef(shadow_depth_tex_);
 
@@ -16,8 +16,8 @@ void Eng::ExShadowDepth::Execute(FgContext &fg) {
     DrawShadowMaps(fg);
 }
 
-void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                                  const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf,
+void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
+                                  const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
                                   const Ren::WeakImgRef &shadow_depth_tex) {
     if (!initialized) {
 #if defined(REN_GL_BACKEND)
@@ -28,28 +28,24 @@ void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
 
         const int buf1_stride = 16, buf2_stride = 16;
 
-        Ren::VertexInputRef vi_depth_pass_solid, vi_depth_pass_vege_solid, vi_depth_pass_alpha,
+        Ren::VertexInputHandle vi_depth_pass_solid, vi_depth_pass_vege_solid, vi_depth_pass_alpha,
             vi_depth_pass_vege_alpha;
-
         { // VertexInput for solid shadow pass (uses position attribute only)
             const Ren::VtxAttribDesc attribs[] = {{vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0}};
             vi_depth_pass_solid = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for for solid shadow pass of vegetation (uses position and secondary uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
                 {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
                 {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
             vi_depth_pass_vege_solid = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for for alpha-tested shadow pass (uses position and uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
                 {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
                 {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)}};
             vi_depth_pass_alpha = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for for alpha-tested shadow pass of vegetation (uses position, primary and
           // secondary uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
@@ -59,17 +55,17 @@ void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
             vi_depth_pass_vege_alpha = sh.LoadVertexInput(attribs, ndx_buf);
         }
 
-        Ren::ProgramRef shadow_solid_prog =
+        const Ren::ProgramHandle shadow_solid_prog =
             sh.LoadProgram("internal/shadow_depth.vert.glsl", "internal/shadow_depth.frag.glsl");
-        Ren::ProgramRef shadow_vege_solid_prog = sh.LoadProgram(
+        const Ren::ProgramHandle shadow_vege_solid_prog = sh.LoadProgram(
             bindless ? "internal/shadow_depth_vege.vert.glsl" : "internal/shadow_depth_vege@NO_BINDLESS.vert.glsl",
             "internal/shadow_depth.frag.glsl");
-        Ren::ProgramRef shadow_alpha_prog =
+        const Ren::ProgramHandle shadow_alpha_prog =
             sh.LoadProgram(bindless ? "internal/shadow_depth@ALPHATEST.vert.glsl"
                                     : "internal/shadow_depth@ALPHATEST;NO_BINDLESS.vert.glsl",
                            bindless ? "internal/shadow_depth@ALPHATEST.frag.glsl"
                                     : "internal/shadow_depth@ALPHATEST;NO_BINDLESS.frag.glsl");
-        Ren::ProgramRef shadow_vege_alpha_prog =
+        const Ren::ProgramHandle shadow_vege_alpha_prog =
             sh.LoadProgram(bindless ? "internal/shadow_depth_vege@ALPHATEST.vert.glsl"
                                     : "internal/shadow_depth_vege@ALPHATEST;NO_BINDLESS.vert.glsl",
                            bindless ? "internal/shadow_depth@ALPHATEST.frag.glsl"
@@ -77,7 +73,7 @@ void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
 
         const Ren::RenderTarget depth_target = {shadow_depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
 
-        Ren::RenderPassRef rp_depth_only = sh.LoadRenderPass(depth_target, {});
+        const Ren::RenderPassHandle rp_depth_only = sh.LoadRenderPass(depth_target, {});
 
         { // solid/alpha-tested
             Ren::RastState rast_state;
@@ -109,8 +105,11 @@ void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
         initialized = true;
     }
 
-    if (!shadow_fb_.Setup(ctx.api_ctx(), *pi_solid_[0]->render_pass(), w_, h_, shadow_depth_tex, {},
-                          Ren::Span<const Ren::WeakImgRef>{}, false, ctx.log())) {
+    const Ren::PipelineMain &pi_solid_main = ctx.pipelines().Get(pi_solid_[0]).first;
+    const Ren::RenderPassMain &rp_main = ctx.render_passes().Get(pi_solid_main.render_pass).first;
+
+    if (!shadow_fb_.Setup(&ctx.api(), rp_main, w_, h_, shadow_depth_tex, {}, Ren::Span<const Ren::WeakImgRef>{}, false,
+                          ctx.log())) {
         ctx.log()->Error("ExShadowMaps: shadow_fb_ init failed!");
     }
 }

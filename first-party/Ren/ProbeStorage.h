@@ -28,7 +28,7 @@ class ProbeStorage {
 
     ImgHandle handle() const { return handle_; }
 
-    bool Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, eFormat format, int res, int capacity, ILog *log);
+    bool Resize(ApiContext *api, MemAllocators *mem_allocs, eFormat format, int res, int capacity, ILog *log);
 
     bool SetPixelData(int level, int layer, int face, eFormat format, const uint8_t *data, int data_len, ILog *log);
     bool GetPixelData(int level, int layer, int face, int buf_size, uint8_t *out_pixels, ILog *log) const;
@@ -38,7 +38,7 @@ class ProbeStorage {
     mutable eResState resource_state = eResState::Undefined;
 
   private:
-    ApiContext *api_ctx_ = nullptr;
+    ApiContext *api_ = nullptr;
     eFormat format_ = eFormat::Undefined;
     int res_ = 0, size_ = 0, capacity_ = 0, max_level_ = 0;
     int reserved_temp_layer_ = -1;

@@ -5,7 +5,7 @@
 #include <Phy/BVHSplit.h>
 #include <Ren/Context.h>
 
-void Eng::ExBuildAccStructures::Execute(FgContext &fg) {
+void Eng::ExBuildAccStructures::Execute(const FgContext &fg) {
     if (fg.ren_ctx().capabilities.hwrt) {
 #if !defined(REN_GL_BACKEND)
         Execute_HWRT(fg);
@@ -15,13 +15,16 @@ void Eng::ExBuildAccStructures::Execute(FgContext &fg) {
     }
 }
 
-void Eng::ExBuildAccStructures::Execute_SWRT(FgContext &fg) {
-    Ren::Buffer &rt_obj_instances_buf = fg.AccessRWBuffer(rt_obj_instances_buf_);
-    Ren::Buffer &rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
+void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
+    const Ren::BufferHandle rt_obj_instances_buf = fg.AccessRWBuffer(rt_obj_instances_buf_);
+    const Ren::BufferHandle rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
 
     const auto &rt_obj_instances = p_list_->rt_obj_instances[rt_index_];
-    auto &rt_obj_instances_stage_buf = p_list_->rt_obj_instances_stage_buf[rt_index_];
-    auto &rt_tlas_stage_buf = p_list_->swrt.rt_tlas_nodes_stage_buf[rt_index_];
+    const Ren::BufferHandle rt_obj_instances_stage_buf = p_list_->rt_obj_instances_stage_buf[rt_index_];
+    const Ren::BufferHandle rt_tlas_stage_buf = p_list_->swrt.rt_tlas_nodes_stage_buf[rt_index_];
+
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
 
     if (rt_obj_instances.count) {
         std::vector<Phy::prim_t> temp_primitives;
@@ -83,37 +86,47 @@ void Eng::ExBuildAccStructures::Execute_SWRT(FgContext &fg) {
         }
 
         { // update instances buf
-            uint8_t *stage_mem = rt_obj_instances_stage_buf->MapRange(fg.backend_frame() * SWRTObjInstancesBufChunkSize,
-                                                                      SWRTObjInstancesBufChunkSize);
+            const auto &[rt_obj_instances_stage_buf_main, rt_obj_instances_stage_buf_cold] =
+                storages.buffers.Get(rt_obj_instances_stage_buf);
+
+            uint8_t *stage_mem =
+                Buffer_MapRange(api, rt_obj_instances_stage_buf_main, rt_obj_instances_stage_buf_cold,
+                                fg.backend_frame() * SWRTObjInstancesBufChunkSize, SWRTObjInstancesBufChunkSize);
             const uint32_t rt_obj_instances_mem_size = uint32_t(mesh_instances.size()) * sizeof(swrt_mesh_instance_t);
             if (stage_mem) {
                 memcpy(stage_mem, mesh_instances.data(), rt_obj_instances_mem_size);
-                rt_obj_instances_stage_buf->Unmap();
+                Buffer_Unmap(api, rt_obj_instances_stage_buf_main, rt_obj_instances_stage_buf_cold);
             } else {
                 fg.log()->Error("ExBuildAccStructures: Failed to map rt obj instance buffer!");
             }
 
-            CopyBufferToBuffer(*rt_obj_instances_stage_buf, fg.backend_frame() * SWRTObjInstancesBufChunkSize,
-                               rt_obj_instances_buf, 0, rt_obj_instances_mem_size, fg.cmd_buf());
+            const Ren::BufferMain &rt_obj_instances_buf_main = storages.buffers.Get(rt_obj_instances_buf).first;
+            CopyBufferToBuffer(api, rt_obj_instances_stage_buf_main, fg.backend_frame() * SWRTObjInstancesBufChunkSize,
+                               rt_obj_instances_buf_main, 0, rt_obj_instances_mem_size, fg.cmd_buf());
         }
-
         { // update nodes buf
+            const auto &[rt_tlas_stage_buf_main, rt_tlas_stage_buf_cold] = storages.buffers.Get(rt_tlas_stage_buf);
+
             uint8_t *stage_mem =
-                rt_tlas_stage_buf->MapRange(fg.backend_frame() * SWRTTLASNodesBufChunkSize, SWRTTLASNodesBufChunkSize);
+                Buffer_MapRange(api, rt_tlas_stage_buf_main, rt_tlas_stage_buf_cold,
+                                fg.backend_frame() * SWRTTLASNodesBufChunkSize, SWRTTLASNodesBufChunkSize);
             const uint32_t rt_nodes_mem_size = uint32_t(temp_bvh2_nodes.size()) * sizeof(gpu_bvh2_node_t);
             if (stage_mem) {
                 memcpy(stage_mem, temp_bvh2_nodes.data(), rt_nodes_mem_size);
-                rt_tlas_stage_buf->Unmap();
+                Buffer_Unmap(api, rt_tlas_stage_buf_main, rt_tlas_stage_buf_cold);
             } else {
                 fg.log()->Error("ExBuildAccStructures: Failed to map rt tlas stage buffer!");
             }
 
-            CopyBufferToBuffer(*rt_tlas_stage_buf, fg.backend_frame() * SWRTTLASNodesBufChunkSize, rt_tlas_buf, 0,
-                               rt_nodes_mem_size, fg.cmd_buf());
+            const Ren::BufferMain &rt_tlas_buf_main = storages.buffers.Get(rt_tlas_buf).first;
+            CopyBufferToBuffer(api, rt_tlas_stage_buf_main, fg.backend_frame() * SWRTTLASNodesBufChunkSize,
+                               rt_tlas_buf_main, 0, rt_nodes_mem_size, fg.cmd_buf());
         }
     } else {
-        const gpu_bvh2_node_t dummy_node = {};
-        rt_tlas_buf.UpdateImmediate(0, sizeof(dummy_node), &dummy_node, fg.cmd_buf());
+        static const gpu_bvh2_node_t dummy_node = {};
+
+        const Ren::BufferMain &rt_tlas_buf_main = storages.buffers.Get(rt_tlas_buf).first;
+        Buffer_UpdateInPlace(api, rt_tlas_buf_main, 0, sizeof(dummy_node), &dummy_node, fg.cmd_buf());
     }
 }
 

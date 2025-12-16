@@ -7,7 +7,7 @@
 #include "../Renderer_Structs.h"
 #include "../shaders/rt_gi_interface.h"
 
-void Eng::ExRTGI::Execute(FgContext &fg) {
+void Eng::ExRTGI::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
     if (fg.ren_ctx().capabilities.hwrt) {
         Execute_HWRT(fg);
@@ -44,24 +44,24 @@ void Eng::ExRTGI::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     }
 }
 
-void Eng::ExRTGI::Execute_SWRT(FgContext &fg) {
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::Buffer &rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExRTGI::Execute_SWRT(const FgContext &fg) {
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
     const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
     const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
-    const Ren::Buffer &ray_list_buf = fg.AccessROBuffer(args_->ray_list);
-    const Ren::Buffer &indir_args_buf = fg.AccessROBuffer(args_->indir_args);
-    const Ren::Buffer &rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::Buffer &prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::Buffer &mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferHandle ray_list_buf = fg.AccessROBuffer(args_->ray_list);
+    const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
+    const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
+    const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
 
-    Ren::Buffer &ray_counter_buf = fg.AccessRWBuffer(args_->ray_counter);
-    Ren::Buffer &out_ray_hits_buf = fg.AccessRWBuffer(args_->out_ray_hits_buf);
+    const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(args_->ray_counter);
+    const Ren::BufferHandle out_ray_hits_buf = fg.AccessRWBuffer(args_->out_ray_hits_buf);
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
@@ -87,10 +87,11 @@ void Eng::ExRTGI::Execute_SWRT(FgContext &fg) {
     uniform_params.frame_index = view_state_->frame_index;
     uniform_params.lights_count = view_state_->stochastic_lights_count;
 
-    DispatchComputeIndirect(fg.cmd_buf(), *pi_rt_gi_, indir_args_buf, sizeof(VkTraceRaysIndirectCommandKHR), bindings,
-                            &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
+    DispatchComputeIndirect(fg.cmd_buf(), pi_rt_gi_, fg.storages(), indir_args_buf,
+                            sizeof(VkTraceRaysIndirectCommandKHR), bindings, &uniform_params, sizeof(uniform_params),
+                            fg.descr_alloc(), fg.log());
 }
 
 #if defined(REN_GL_BACKEND)
-void Eng::ExRTGI::Execute_HWRT(FgContext &fg) { assert(false && "Not implemented!"); }
+void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) { assert(false && "Not implemented!"); }
 #endif

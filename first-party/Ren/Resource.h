@@ -62,11 +62,10 @@ uint32_t VKPipelineStagesForState(eResState state);
 bool IsRWState(eResState state);
 Bitmask<eStage> StagesForState(eResState state);
 
-class Buffer;
 class Image;
 
 struct TransitionInfo {
-    std::variant<const Image *, const Buffer *> p_res;
+    std::variant<const Image *, BufferHandle> p_res;
 
     eResState old_state = eResState::Undefined;
     eResState new_state = eResState::Undefined;
@@ -74,12 +73,13 @@ struct TransitionInfo {
     bool update_internal_state = false;
 
     TransitionInfo() = default;
-    TransitionInfo(const Buffer *_p_buf, const eResState _new_state)
-        : p_res(_p_buf), new_state(_new_state), update_internal_state(true) {}
+    TransitionInfo(const BufferHandle _buf, const eResState _new_state)
+        : p_res(_buf), new_state(_new_state), update_internal_state(true) {}
     TransitionInfo(const Image *_p_tex, const eResState _new_state)
         : p_res(_p_tex), new_state(_new_state), update_internal_state(true) {}
 };
 
-void TransitionResourceStates(ApiContext *api_ctx, CommandBuffer cmd_buf, Bitmask<eStage> src_stages_mask,
-                              Bitmask<eStage> dst_stages_mask, Span<const TransitionInfo> transitions);
+void TransitionResourceStates(const ApiContext &api, const StoragesRef &storages, CommandBuffer cmd_buf,
+                              Bitmask<eStage> src_stages_mask, Bitmask<eStage> dst_stages_mask,
+                              Span<const TransitionInfo> transitions);
 } // namespace Ren

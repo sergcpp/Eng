@@ -9,7 +9,7 @@ Ren::ProbeStorage::ProbeStorage()
 
 Ren::ProbeStorage::~ProbeStorage() { Destroy(); }
 
-bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, const eFormat format, const int res,
+bool Ren::ProbeStorage::Resize(ApiContext *api, MemAllocators *mem_allocs, const eFormat format, const int res,
                                const int capacity, ILog *log) {
     Destroy();
 

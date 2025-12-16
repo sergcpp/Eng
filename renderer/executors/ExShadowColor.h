@@ -11,8 +11,8 @@ class ExShadowColor final : public FgExecutor {
     int w_, h_;
 
     // lazily initialized data
-    Ren::PipelineRef pi_solid_[3], pi_alpha_[3];
-    Ren::PipelineRef pi_vege_solid_, pi_vege_alpha_;
+    Ren::PipelineHandle pi_solid_[3], pi_alpha_[3];
+    Ren::PipelineHandle pi_vege_solid_, pi_vege_alpha_;
 
     Ren::Framebuffer shadow_fb_;
 
@@ -21,28 +21,29 @@ class ExShadowColor final : public FgExecutor {
     const BindlessTextureData *bindless_tex_ = nullptr;
 
     // inputs
-    FgResRef vtx_buf1_;
-    FgResRef vtx_buf2_;
-    FgResRef ndx_buf_;
-    FgResRef instances_buf_;
-    FgResRef instance_indices_buf_;
-    FgResRef shared_data_buf_;
-    FgResRef materials_buf_;
+    FgBufHandle vtx_buf1_;
+    FgBufHandle vtx_buf2_;
+    FgBufHandle ndx_buf_;
+    FgBufHandle instances_buf_;
+    FgBufHandle instance_indices_buf_;
+    FgBufHandle shared_data_buf_;
+    FgBufHandle materials_buf_;
     FgResRef noise_tex_;
 
     // outputs
     FgResRef shadow_depth_tex_, shadow_color_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                  const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf,
-                  const Ren::WeakImgRef &shadow_depth_tex, const Ren::WeakImgRef &shadow_color_tex);
-    void DrawShadowMaps(FgContext &fg);
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
+                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &shadow_depth_tex,
+                  const Ren::WeakImgRef &shadow_color_tex);
+    void DrawShadowMaps(const FgContext &fg);
 
   public:
-    ExShadowColor(const int w, const int h, const DrawList **p_list, const FgResRef vtx_buf1, const FgResRef vtx_buf2,
-                  const FgResRef ndx_buf, const FgResRef materials_buf, const BindlessTextureData *bindless_tex,
-                  const FgResRef instances_buf, const FgResRef instance_indices_buf, const FgResRef shared_data_buf,
-                  const FgResRef noise_tex, const FgResRef shadow_depth_tex, const FgResRef shadow_color_tex)
+    ExShadowColor(const int w, const int h, const DrawList **p_list, const FgBufHandle vtx_buf1,
+                  const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf, const FgBufHandle materials_buf,
+                  const BindlessTextureData *bindless_tex, const FgBufHandle instances_buf,
+                  const FgBufHandle instance_indices_buf, const FgBufHandle shared_data_buf, const FgResRef noise_tex,
+                  const FgResRef shadow_depth_tex, const FgResRef shadow_color_tex)
         : w_(w), h_(h) {
         p_list_ = p_list;
         bindless_tex_ = bindless_tex;
@@ -61,6 +62,6 @@ class ExShadowColor final : public FgExecutor {
         shadow_color_tex_ = shadow_color_tex;
     }
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 };
 } // namespace Eng

@@ -13,25 +13,25 @@ class PrimDraw;
 class ExRTShadows final : public FgExecutor {
   public:
     struct Args {
-        FgResRef geo_data;
-        FgResRef materials;
-        FgResRef vtx_buf1;
-        FgResRef ndx_buf;
-        FgResRef shared_data;
+        FgBufHandle geo_data;
+        FgBufHandle materials;
+        FgBufHandle vtx_buf1;
+        FgBufHandle ndx_buf;
+        FgBufHandle shared_data;
         FgResRef noise_tex;
         FgResRef depth_tex;
         FgResRef normal_tex;
-        FgResRef tlas_buf;
-        FgResRef tile_list_buf;
-        FgResRef indir_args;
+        FgBufHandle tlas_buf;
+        FgBufHandle tile_list_buf;
+        FgBufHandle indir_args;
 
         const Ren::IAccStructure *tlas = nullptr;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgResRef blas_buf;
-            FgResRef prim_ndx_buf;
-            FgResRef mesh_instances_buf;
+            FgBufHandle blas_buf;
+            FgBufHandle prim_ndx_buf;
+            FgBufHandle mesh_instances_buf;
         } swrt;
 
         FgResRef out_shadow_tex;
@@ -40,13 +40,13 @@ class ExRTShadows final : public FgExecutor {
     ExRTShadows(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args)
         : view_state_(view_state), bindless_tex_(bindless_tex), args_(args) {}
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 
   private:
     bool initialized_ = false;
 
     // lazily initialized data
-    Ren::PipelineRef pi_rt_shadows_;
+    Ren::PipelineHandle pi_rt_shadows_;
 
     // temp data (valid only between Setup and Execute calls)
     const view_state_t *view_state_ = nullptr;
@@ -56,7 +56,7 @@ class ExRTShadows final : public FgExecutor {
 
     void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
 
-    void Execute_HWRT(FgContext &fg);
-    void Execute_SWRT(FgContext &fg);
+    void Execute_HWRT(const FgContext &fg);
+    void Execute_SWRT(const FgContext &fg);
 };
 } // namespace Eng

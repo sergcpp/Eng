@@ -14,7 +14,7 @@ class PrimDraw;
 class ExSkydomeCube final : public FgExecutor {
   public:
     struct Args {
-        FgResRef shared_data;
+        FgBufHandle shared_data;
         FgResRef transmittance_lut;
         FgResRef multiscatter_lut;
         FgResRef moon_tex;
@@ -29,7 +29,7 @@ class ExSkydomeCube final : public FgExecutor {
     ExSkydomeCube(PrimDraw &prim_draw, const view_state_t *view_state, const Args *args)
         : prim_draw_(prim_draw), view_state_(view_state), args_(args) {}
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 
   private:
     PrimDraw &prim_draw_;
@@ -42,8 +42,8 @@ class ExSkydomeCube final : public FgExecutor {
     const Args *args_ = nullptr;
 
     // lazily initialized data
-    Ren::ProgramRef prog_skydome_phys_;
-    Ren::PipelineRef pi_skydome_downsample_;
+    Ren::ProgramHandle prog_skydome_phys_;
+    Ren::PipelineHandle pi_skydome_downsample_;
 
     void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
 };
@@ -53,7 +53,7 @@ class ExSkydomeScreen final : public FgExecutor {
     struct Args {
         eSkyQuality sky_quality = eSkyQuality::Medium;
 
-        FgResRef shared_data;
+        FgBufHandle shared_data;
         FgResRef env_tex;
         struct {
             FgResRef transmittance_lut;
@@ -72,7 +72,7 @@ class ExSkydomeScreen final : public FgExecutor {
     ExSkydomeScreen(PrimDraw &prim_draw, const view_state_t *view_state, const Args *args)
         : prim_draw_(prim_draw), view_state_(view_state), args_(args) {}
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 
     static Ren::Vec2i sample_pos(int frame_index);
 
@@ -85,7 +85,7 @@ class ExSkydomeScreen final : public FgExecutor {
     const Args *args_ = nullptr;
 
     // lazily initialized data
-    Ren::ProgramRef prog_skydome_simple_, prog_skydome_phys_[2];
+    Ren::ProgramHandle prog_skydome_simple_, prog_skydome_phys_[2];
 
     void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
 };

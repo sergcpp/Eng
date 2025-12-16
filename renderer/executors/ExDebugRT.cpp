@@ -6,25 +6,25 @@
 #include "../../utils/ShaderLoader.h"
 #include "../shaders/rt_debug_interface.h"
 
-Eng::ExDebugRT::ExDebugRT(FgContext &fg, const view_state_t *view_state, const BindlessTextureData *bindless_tex,
+Eng::ExDebugRT::ExDebugRT(ShaderLoader &sh, const view_state_t *view_state, const BindlessTextureData *bindless_tex,
                           const Args *args) {
     view_state_ = view_state;
     bindless_tex_ = bindless_tex;
     args_ = args;
 #if defined(REN_VK_BACKEND)
-    if (fg.ren_ctx().capabilities.hwrt) {
-        Ren::ProgramRef debug_hwrt_prog =
-            fg.sh().LoadProgram2("internal/rt_debug.rgen.glsl", "internal/rt_debug@GI_CACHE.rchit.glsl",
-                                 "internal/rt_debug.rahit.glsl", "internal/rt_debug.rmiss.glsl", {});
-        pi_debug_ = fg.sh().LoadPipeline(debug_hwrt_prog);
+    if (sh.ren_ctx().capabilities.hwrt) {
+        Ren::ProgramHandle debug_hwrt_prog =
+            sh.LoadProgram2("internal/rt_debug.rgen.glsl", "internal/rt_debug@GI_CACHE.rchit.glsl",
+                            "internal/rt_debug.rahit.glsl", "internal/rt_debug.rmiss.glsl", {});
+        pi_debug_ = sh.LoadPipeline(debug_hwrt_prog);
     } else
 #endif
     {
-        pi_debug_ = fg.sh().LoadPipeline("internal/rt_debug_swrt@GI_CACHE.comp.glsl");
+        pi_debug_ = sh.LoadPipeline("internal/rt_debug_swrt@GI_CACHE.comp.glsl");
     }
 }
 
-void Eng::ExDebugRT::Execute(FgContext &fg) {
+void Eng::ExDebugRT::Execute(const FgContext &fg) {
     if (fg.ren_ctx().capabilities.hwrt) {
         Execute_HWRT(fg);
     } else {
@@ -32,24 +32,24 @@ void Eng::ExDebugRT::Execute(FgContext &fg) {
     }
 }
 
-void Eng::ExDebugRT::Execute_SWRT(FgContext &fg) {
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data_buf);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials_buf);
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::Buffer &vtx_buf2 = fg.AccessROBuffer(args_->vtx_buf2);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::Buffer &lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::Buffer &rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::Buffer &rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
-    const Ren::Buffer &prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::Buffer &mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExDebugRT::Execute_SWRT(const FgContext &fg) {
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data_buf);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials_buf);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(args_->vtx_buf2);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
+    const Ren::BufferHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
+    const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &env_tex = fg.AccessROImage(args_->env_tex);
     const Ren::Image &shadow_depth_tex = fg.AccessROImage(args_->shadow_depth_tex);
     const Ren::Image &shadow_color_tex = fg.AccessROImage(args_->shadow_color_tex);
     const Ren::Image &ltc_luts_tex = fg.AccessROImage(args_->ltc_luts_tex);
-    const Ren::Buffer &cells_buf = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::Buffer &items_buf = fg.AccessROBuffer(args_->items_buf);
+    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
+    const Ren::BufferHandle items_buf = fg.AccessROBuffer(args_->items_buf);
 
     const Ren::Image *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
     if (args_->irradiance_tex) {
@@ -58,9 +58,7 @@ void Eng::ExDebugRT::Execute_SWRT(FgContext &fg) {
         off_tex = &fg.AccessROImage(args_->offset_tex);
     }
 
-    Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
-
-    Ren::ApiContext *api_ctx = fg.ren_ctx().api_ctx();
+    const Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
@@ -97,10 +95,10 @@ void Eng::ExDebugRT::Execute_SWRT(FgContext &fg) {
     uniform_params.root_node = args_->swrt.root_node;
     uniform_params.cull_mask = args_->cull_mask;
 
-    DispatchCompute(fg.cmd_buf(), *pi_debug_, grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                    fg.descr_alloc(), fg.log());
+    DispatchCompute(fg.cmd_buf(), pi_debug_, fg.storages(), grp_count, bindings, &uniform_params,
+                    sizeof(uniform_params), fg.descr_alloc(), fg.log());
 }
 
 #if defined(REN_GL_BACKEND)
-void Eng::ExDebugRT::Execute_HWRT(FgContext &fg) { assert(false && "Not implemented!"); }
+void Eng::ExDebugRT::Execute_HWRT(const FgContext &fg) { assert(false && "Not implemented!"); }
 #endif

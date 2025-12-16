@@ -92,7 +92,7 @@ void test_mesh() {
 
         auto on_pipelines_needed = [](const uint32_t flags, std::string_view arg1, std::string_view arg2,
                                       std::string_view arg3, std::string_view arg4,
-                                      SmallVectorImpl<PipelineRef> &out_pipelines) {};
+                                      SmallVectorImpl<PipelineHandle> &out_pipelines) {};
 
         auto on_texture_needed = [&test](std::string_view name, const uint8_t color[4],
                                          const Bitmask<eImgFlags> flags) {
@@ -101,9 +101,8 @@ void test_mesh() {
             return test.LoadImage(name, {}, p, nullptr, &status);
         };
 
-        auto on_sampler_needed = [&test](SamplingParams params) {
-            eSamplerLoadStatus status;
-            return test.LoadSampler(params, &status);
+        auto on_sampler_needed = [&test](const SamplingParams params) -> SamplerHandle {
+            return test.FindOrCreateSampler(params);
         };
 
         auto on_material_needed = [&](std::string_view name) {

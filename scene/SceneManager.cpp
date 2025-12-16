@@ -12,6 +12,7 @@
 #include <Sys/AssetFileIO.h>
 #include <Sys/Json.h>
 #include <Sys/MemBuf.h>
+#include <Sys/ScopeExit.h>
 #include <Sys/Time_.h>
 
 #include "TexUpdateFileBuf.h"
@@ -133,8 +134,8 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
         const Ren::eFormat formats[] = {Ren::DefaultCompressedRGBA, Ren::eFormat::Undefined};
         const Ren::Bitmask<Ren::eImgFlags> flags[] = {{}};
         scene_data_.decals_atlas =
-            Ren::ImageAtlas{ren_ctx.api_ctx(),       DECALS_ATLAS_RESX, DECALS_ATLAS_RESY, 64, 1, formats, flags,
-                            Ren::eFilter::Trilinear, ren_ctx_.log()};
+            Ren::ImageAtlas{&ren_ctx.api(), DECALS_ATLAS_RESX,       DECALS_ATLAS_RESY, 64, 1, formats,
+                            flags,          Ren::eFilter::Trilinear, ren_ctx_.log()};
     }
 
     { // Create splitter for lightmap atlas
@@ -144,7 +145,7 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
 
     /*{ // Allocate cubemap array
         const bool res =
-            scene_data_.probe_storage.Resize(ren_ctx.api_ctx(), ren_ctx.default_mem_allocs(),
+            scene_data_.probe_storage.Resize(ren_ctx.api(), ren_ctx.default_mem_allocs(),
                                              Ren::DefaultCompressedRGBA, PROBE_RES, PROBE_COUNT, ren_ctx_.log());
         assert(res);
     }*/
@@ -260,29 +261,38 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
     }
 
     // AllocMeshBuffers();
-    Ren::ApiContext *api_ctx = ren_ctx_.api_ctx();
 
-    scene_data_.persistent_data.vertex_buf1 =
-        scene_data_.buffers.Insert("VtxBuf1", api_ctx, Ren::eBufType::VertexAttribs, 128, 16);
-    scene_data_.persistent_data.vertex_buf1->AddView(Ren::eFormat::RGBA32F);
-    scene_data_.persistent_data.vertex_buf2 =
-        scene_data_.buffers.Insert("VtxBuf2", api_ctx, Ren::eBufType::VertexAttribs, 128, 16);
-    scene_data_.persistent_data.vertex_buf2->AddView(Ren::eFormat::RGBA32UI);
-    scene_data_.persistent_data.skin_vertex_buf =
-        scene_data_.buffers.Insert("SkinVtxBuf", api_ctx, Ren::eBufType::VertexAttribs, 128, 16);
-    scene_data_.persistent_data.delta_buf =
-        scene_data_.buffers.Insert("DeltaBuf", api_ctx, Ren::eBufType::VertexAttribs, 128, 16);
-    scene_data_.persistent_data.indices_buf =
-        scene_data_.buffers.Insert("NdxBuf", api_ctx, Ren::eBufType::VertexIndices, 128, 4);
-    scene_data_.persistent_data.indices_buf->AddView(Ren::eFormat::R32UI);
+    scene_data_.persistent_data = std::make_unique<PersistentGpuData>(ren_ctx_);
 
-    Ren::SamplingParams sampling_params;
-    sampling_params.filter = Ren::eFilter::Trilinear;
-    sampling_params.wrap = Ren::eWrap::Repeat;
-    sampling_params.lod_bias.from_float(-1.0f);
+    scene_data_.persistent_data->vertex_buf1 =
+        ren_ctx_.FindOrCreateBuffer("VtxBuf1", Ren::eBufType::VertexAttribs, 128, 16);
+    int view_index = ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->vertex_buf1, Ren::eFormat::RGBA32F);
+    assert(view_index == 0);
 
-    Ren::eSamplerLoadStatus load_status;
-    scene_data_.persistent_data.trilinear_sampler = ren_ctx_.LoadSampler(sampling_params, &load_status);
+    scene_data_.persistent_data->vertex_buf2 =
+        ren_ctx_.FindOrCreateBuffer("VtxBuf2", Ren::eBufType::VertexAttribs, 128, 16);
+    view_index = ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->vertex_buf2, Ren::eFormat::RGBA32UI);
+    assert(view_index == 0);
+
+    scene_data_.persistent_data->skin_vertex_buf = ren_ctx_.FindOrCreateBuffer(
+        "SkinVtxBuf", Ren::eBufType::VertexAttribs, 128, 16, scene_data_.persistent_data->mem_allocs.get());
+    scene_data_.persistent_data->delta_buf = ren_ctx_.FindOrCreateBuffer(
+        "DeltaBuf", Ren::eBufType::VertexAttribs, 128, 16, scene_data_.persistent_data->mem_allocs.get());
+
+    scene_data_.persistent_data->indices_buf =
+        ren_ctx_.FindOrCreateBuffer("NdxBuf", Ren::eBufType::VertexIndices, 128, 4);
+    view_index = ren_ctx_.FindOrCreateBufferView(scene_data_.persistent_data->indices_buf, Ren::eFormat::R32UI);
+    assert(view_index == 0);
+
+    { // Create default texture sampler
+        Ren::SamplingParams sampling_params;
+        sampling_params.filter = Ren::eFilter::Trilinear;
+        sampling_params.wrap = Ren::eWrap::Repeat;
+        // TODO: Account for upscaling here
+        sampling_params.lod_bias.from_float(-1.0f);
+
+        scene_data_.persistent_data->trilinear_sampler = ren_ctx_.FindOrCreateSampler(sampling_params);
+    }
 
     StartTextureLoaderThread();
 }
@@ -303,15 +313,15 @@ void Eng::SceneManager::LoadScene(const Sys::JsObjectP &js_scene, const Ren::Bit
 
     __itt_task_begin(__g_itt_domain, __itt_null, __itt_null, itt_load_scene_str);
 
+    const Ren::ApiContext &api = ren_ctx_.api();
     Ren::ILog *log = ren_ctx_.log();
-    Ren::ApiContext *api_ctx = ren_ctx_.api_ctx();
 
     log->Info("SceneManager: Loading scene!");
     {
         StopTextureLoaderThread();
         ClearScene();
-        scene_data_.persistent_data.mem_allocs =
-            std::make_unique<Ren::MemAllocators>("Scene Mem Allocs", api_ctx, 16 * 1024 * 1024 /* initial_block_size */,
+        scene_data_.persistent_data->mem_allocs =
+            std::make_unique<Ren::MemAllocators>("Scene Mem Allocs", &api, 16 * 1024 * 1024 /* initial_block_size */,
                                                  1.5f /* growth_factor */, 128 * 1024 * 1024 /* max_pool_size */);
         // Temp. solution (prevent reallocation)
         scene_data_.textures.reserve(16384);
@@ -708,12 +718,12 @@ void Eng::SceneManager::ClearScene() {
     }
 
     scene_data_.env = {};
-    scene_data_.persistent_data.Release();
+    scene_data_.persistent_data->Release();
 
     assert(scene_data_.meshes.empty());
     assert(scene_data_.materials.empty());
     assert(scene_data_.textures.empty());
-    assert(scene_data_.buffers.size() == 5);
+    // assert(scene_data_.buffers.size() == 3);
 
     scene_data_.objects.clear();
     scene_data_.name_to_object.clear();
@@ -748,8 +758,8 @@ void Eng::SceneManager::LoadEnvMap() {
         p.sampling.wrap = Ren::eWrap::ClampToEdge;
 
         Ren::eImgLoadStatus status;
-        scene_data_.env.env_map =
-            ren_ctx_.LoadImageCube("Sky Envmap", _black_cube, p, scene_data_.persistent_data.mem_allocs.get(), &status);
+        scene_data_.env.env_map = ren_ctx_.LoadImageCube("Sky Envmap", _black_cube, p,
+                                                         scene_data_.persistent_data->mem_allocs.get(), &status);
 
         for (int j = 0; j < scene_data_.env.env_map->params.mip_count; ++j) {
             for (int i = 0; i < 6; ++i) {
@@ -792,7 +802,7 @@ void Eng::SceneManager::LoadEnvMap() {
 
         Ren::eImgLoadStatus load_status;
         scene_data_.env.env_map =
-            ren_ctx_.LoadImageCube("EnvCubemap", data, p, scene_data_.persistent_data.mem_allocs.get(), &load_status);
+            ren_ctx_.LoadImageCube("EnvCubemap", data, p, scene_data_.persistent_data->mem_allocs.get(), &load_status);
     } else {
         static const uint8_t white_cube[6][4] = {{255, 255, 255, 128}, {255, 255, 255, 128}, {255, 255, 255, 128},
                                                  {255, 255, 255, 128}, {255, 255, 255, 128}, {255, 255, 255, 128}};
@@ -810,7 +820,7 @@ void Eng::SceneManager::LoadEnvMap() {
 
         Ren::eImgLoadStatus status;
         scene_data_.env.env_map = ren_ctx_.LoadImageCube("dummy_white_cube", _white_cube, p,
-                                                         scene_data_.persistent_data.mem_allocs.get(), &status);
+                                                         scene_data_.persistent_data->mem_allocs.get(), &status);
     }
 }
 
@@ -824,7 +834,7 @@ void Eng::SceneManager::ReleaseEnvMap(const bool immediate) {
 void Eng::SceneManager::AllocGICache() {
     float probe_volume_spacing = 0.5f;
     for (int i = 0; i < PROBE_VOLUMES_COUNT; ++i) {
-        probe_volume_t &volume = scene_data_.persistent_data.probe_volumes.emplace_back();
+        probe_volume_t &volume = scene_data_.persistent_data->probe_volumes.emplace_back();
         volume.origin = Ren::Vec3f{0.0f};
         volume.spacing = Ren::Vec3f{probe_volume_spacing};
         probe_volume_spacing *= 3.0f;
@@ -841,8 +851,8 @@ void Eng::SceneManager::AllocGICache() {
         p.sampling.filter = Ren::eFilter::Bilinear;
 
         Ren::eImgLoadStatus status;
-        scene_data_.persistent_data.probe_irradiance =
-            ren_ctx_.LoadImage("Probe Volume Irradiance", p, scene_data_.persistent_data.mem_allocs.get(), &status);
+        scene_data_.persistent_data->probe_irradiance =
+            ren_ctx_.LoadImage("Probe Volume Irradiance", p, scene_data_.persistent_data->mem_allocs.get(), &status);
         assert(status != Ren::eImgLoadStatus::Error);
     }
     { // ~84.9mb
@@ -856,8 +866,8 @@ void Eng::SceneManager::AllocGICache() {
         p.sampling.filter = Ren::eFilter::Bilinear;
 
         Ren::eImgLoadStatus status;
-        scene_data_.persistent_data.probe_distance =
-            ren_ctx_.LoadImage("Probe Volume Distance", p, scene_data_.persistent_data.mem_allocs.get(), &status);
+        scene_data_.persistent_data->probe_distance =
+            ren_ctx_.LoadImage("Probe Volume Distance", p, scene_data_.persistent_data->mem_allocs.get(), &status);
         assert(status != Ren::eImgLoadStatus::Error);
     }
     { // ~0.7mb
@@ -871,8 +881,8 @@ void Eng::SceneManager::AllocGICache() {
         p.sampling.filter = Ren::eFilter::Bilinear;
 
         Ren::eImgLoadStatus status;
-        scene_data_.persistent_data.probe_offset =
-            ren_ctx_.LoadImage("Probe Volume Offset", p, scene_data_.persistent_data.mem_allocs.get(), &status);
+        scene_data_.persistent_data->probe_offset =
+            ren_ctx_.LoadImage("Probe Volume Offset", p, scene_data_.persistent_data->mem_allocs.get(), &status);
         assert(status != Ren::eImgLoadStatus::Error);
     }
 
@@ -881,14 +891,14 @@ void Eng::SceneManager::AllocGICache() {
 
 void Eng::SceneManager::ReleaseGICache(const bool immediate) {
     if (immediate) {
-        scene_data_.persistent_data.probe_irradiance->FreeImmediate();
-        scene_data_.persistent_data.probe_distance->FreeImmediate();
-        scene_data_.persistent_data.probe_offset->FreeImmediate();
+        scene_data_.persistent_data->probe_irradiance->FreeImmediate();
+        scene_data_.persistent_data->probe_distance->FreeImmediate();
+        scene_data_.persistent_data->probe_offset->FreeImmediate();
     }
-    scene_data_.persistent_data.probe_irradiance = {};
-    scene_data_.persistent_data.probe_distance = {};
-    scene_data_.persistent_data.probe_offset = {};
-    scene_data_.persistent_data.probe_volumes.clear();
+    scene_data_.persistent_data->probe_irradiance = {};
+    scene_data_.persistent_data->probe_distance = {};
+    scene_data_.persistent_data->probe_offset = {};
+    scene_data_.persistent_data->probe_volumes.clear();
 }
 
 void Eng::SceneManager::Alloc_TLAS() {
@@ -901,34 +911,54 @@ void Eng::SceneManager::Alloc_TLAS() {
 
 void Eng::SceneManager::Release_TLAS(const bool immediate) {
     if (immediate) {
-        for (auto &buf : scene_data_.persistent_data.rt_tlas_buf) {
+        for (const Ren::BufferHandle buf : scene_data_.persistent_data->rt_tlas_buf) {
             if (buf) {
-                buf->FreeImmediate();
+                ren_ctx_.ReleaseBuffer(buf, true /* immediately */);
             }
         }
-        for (auto &tlas : scene_data_.persistent_data.rt_tlas) {
+        for (auto &tlas : scene_data_.persistent_data->rt_tlas) {
             if (tlas) {
                 tlas->FreeImmediate();
             }
         }
     }
-    std::fill(std::begin(scene_data_.persistent_data.rt_tlas_buf), std::end(scene_data_.persistent_data.rt_tlas_buf),
-              Ren::BufRef{});
-    std::fill(std::begin(scene_data_.persistent_data.rt_tlas), std::end(scene_data_.persistent_data.rt_tlas), nullptr);
+    std::fill(std::begin(scene_data_.persistent_data->rt_tlas_buf), std::end(scene_data_.persistent_data->rt_tlas_buf),
+              Ren::BufferHandle{});
+    std::fill(std::begin(scene_data_.persistent_data->rt_tlas), std::end(scene_data_.persistent_data->rt_tlas),
+              nullptr);
 }
 
-void Eng::SceneManager::AllocMeshBuffers() {
-    bool recreate_views = !*scene_data_.persistent_data.vertex_buf1;
-    scene_data_.persistent_data.vertex_buf1->Resize(16 * 1024 * 1024);
-    scene_data_.persistent_data.vertex_buf2->Resize(16 * 1024 * 1024);
-    scene_data_.persistent_data.skin_vertex_buf->Resize(16 * 1024 * 1024);
-    scene_data_.persistent_data.delta_buf->Resize(16 * 1024 * 1024);
-    scene_data_.persistent_data.indices_buf->Resize(16 * 1024 * 1024);
-    if (recreate_views) {
-        scene_data_.persistent_data.vertex_buf1->AddView(Ren::eFormat::RGBA32F);
-        scene_data_.persistent_data.vertex_buf2->AddView(Ren::eFormat::RGBA32UI);
-        scene_data_.persistent_data.indices_buf->AddView(Ren::eFormat::R32UI);
+bool Eng::SceneManager::AllocMeshBuffers() {
+    // bool recreate_views = !*scene_data_.persistent_data->vertex_buf1;
+
+    bool success = true;
+
+    success &= ren_ctx_.ResizeBuffer(scene_data_.persistent_data->vertex_buf1, 16 * 1024 * 1024);
+    success &= ren_ctx_.ResizeBuffer(scene_data_.persistent_data->vertex_buf2, 16 * 1024 * 1024);
+    success &= ren_ctx_.ResizeBuffer(scene_data_.persistent_data->indices_buf, 16 * 1024 * 1024);
+
+    success &= ren_ctx_.ResizeBuffer(scene_data_.persistent_data->skin_vertex_buf, 16 * 1024 * 1024);
+    success &= ren_ctx_.ResizeBuffer(scene_data_.persistent_data->delta_buf, 16 * 1024 * 1024);
+
+    /*{ // Skinning buffer
+        const auto &[skin_vertex_buf_main, skin_vertex_buf_cold] =
+            ren_ctx_.buffers().Get(scene_data_.persistent_data->skin_vertex_buf);
+        success &= Buffer_Resize(ren_ctx_.api2(), skin_vertex_buf_main, skin_vertex_buf_cold, 16 * 1024 * 1024,
+                                 ren_ctx_.log());
     }
+    { // Delta buffer
+        const auto &[delta_buf_main, delta_buf_cold] = ren_ctx_.buffers().Get(scene_data_.persistent_data->delta_buf);
+        success &= Buffer_Resize(ren_ctx_.api2(), delta_buf_main, delta_buf_cold, 16 * 1024 * 1024, ren_ctx_.log());
+    }*/
+
+    /*scene_data_.persistent_data->indices_buf->Resize(16 * 1024 * 1024);
+    if (recreate_views) {
+        scene_data_.persistent_data->vertex_buf1->AddView(Ren::eFormat::RGBA32F);
+        scene_data_.persistent_data->vertex_buf2->AddView(Ren::eFormat::RGBA32UI);
+        scene_data_.persistent_data->indices_buf->AddView(Ren::eFormat::R32UI);
+    }*/
+
+    return success;
 }
 
 void Eng::SceneManager::LoadMeshBuffers() {
@@ -942,15 +972,17 @@ void Eng::SceneManager::LoadMeshBuffers() {
             Eng::Drawable &dr = drawables[obj.components[Eng::CompDrawable]];
             Ren::Mesh *mesh = dr.mesh.get();
             assert(mesh->type() == Ren::eMeshType::Simple);
-            mesh->InitBufferData(ren_ctx_.api_ctx(), scene_data_.persistent_data.vertex_buf1,
-                                 scene_data_.persistent_data.vertex_buf2, scene_data_.persistent_data.indices_buf);
+            mesh->InitBufferData(ren_ctx_.api(), ren_ctx_.buffers(), scene_data_.persistent_data->vertex_buf1,
+                                 scene_data_.persistent_data->vertex_buf2, scene_data_.persistent_data->indices_buf,
+                                 ren_ctx_.log());
         }
         if (bool(obj.comp_mask & Eng::CompAccStructureBit)) {
             Eng::AccStructure &acc = acc_structs[obj.components[Eng::CompAccStructure]];
             Ren::Mesh *mesh = acc.mesh.get();
             assert(mesh->type() == Ren::eMeshType::Simple);
-            mesh->InitBufferData(ren_ctx_.api_ctx(), scene_data_.persistent_data.vertex_buf1,
-                                 scene_data_.persistent_data.vertex_buf2, scene_data_.persistent_data.indices_buf);
+            mesh->InitBufferData(ren_ctx_.api(), ren_ctx_.buffers(), scene_data_.persistent_data->vertex_buf1,
+                                 scene_data_.persistent_data->vertex_buf2, scene_data_.persistent_data->indices_buf,
+                                 ren_ctx_.log());
             if (ren_ctx_.capabilities.hwrt) {
                 mesh->blas = Build_HWRT_BLAS(acc);
             } else {
@@ -960,7 +992,7 @@ void Eng::SceneManager::LoadMeshBuffers() {
     }
 }
 
-void Eng::SceneManager::ReleaseMeshBuffers(const bool immediate) {
+void Eng::SceneManager::ReleaseMeshBuffers(const bool immediately) {
     auto *drawables = (Eng::Drawable *)scene_data_.comp_store[Eng::CompDrawable]->SequentialData();
     auto *acc_structs = (Eng::AccStructure *)scene_data_.comp_store[Eng::CompAccStructure]->SequentialData();
 
@@ -976,72 +1008,75 @@ void Eng::SceneManager::ReleaseMeshBuffers(const bool immediate) {
             Ren::Mesh *mesh = acc.mesh.get();
             assert(mesh->type() == Ren::eMeshType::Simple);
             mesh->ReleaseBufferData();
-            if (immediate && mesh->blas) {
+            if (immediately && mesh->blas) {
                 mesh->blas->FreeImmediate();
             }
             mesh->blas = {};
         }
     }
 
-    if (immediate) {
-        for (Ren::BufRef &b : scene_data_.persistent_data.hwrt.rt_blas_buffers) {
-            b->FreeImmediate();
+    if (immediately) {
+        for (const Ren::BufferHandle b : scene_data_.persistent_data->hwrt.rt_blas_buffers) {
+            ren_ctx_.ReleaseBuffer(b, true /* immediately */);
         }
-        if (scene_data_.persistent_data.swrt.rt_prim_indices_buf) {
-            scene_data_.persistent_data.swrt.rt_prim_indices_buf->FreeImmediate();
+        if (scene_data_.persistent_data->swrt.rt_prim_indices_buf) {
+            ren_ctx_.ReleaseBuffer(scene_data_.persistent_data->swrt.rt_prim_indices_buf, true /* immediately */);
         }
-        if (scene_data_.persistent_data.swrt.rt_blas_buf) {
-            scene_data_.persistent_data.swrt.rt_blas_buf->FreeImmediate();
+        if (scene_data_.persistent_data->swrt.rt_blas_buf) {
+            ren_ctx_.ReleaseBuffer(scene_data_.persistent_data->swrt.rt_blas_buf, true /* immediately */);
         }
-        scene_data_.persistent_data.vertex_buf1->FreeImmediate();
-        scene_data_.persistent_data.vertex_buf2->FreeImmediate();
-        scene_data_.persistent_data.indices_buf->FreeImmediate();
-        scene_data_.persistent_data.skin_vertex_buf->FreeImmediate();
-        scene_data_.persistent_data.delta_buf->FreeImmediate();
     }
-    scene_data_.persistent_data.hwrt = {};
-    scene_data_.persistent_data.swrt = {};
-
-    assert(scene_data_.persistent_data.vertex_buf1.strong_refs() == 1);
-    assert(scene_data_.persistent_data.vertex_buf2.strong_refs() == 1);
-    assert(scene_data_.persistent_data.indices_buf.strong_refs() == 1);
+    if (scene_data_.persistent_data->vertex_buf1) {
+        ren_ctx_.ResizeBuffer(scene_data_.persistent_data->vertex_buf1, 128, false, immediately);
+    }
+    if (scene_data_.persistent_data->vertex_buf2) {
+        ren_ctx_.ResizeBuffer(scene_data_.persistent_data->vertex_buf2, 128, false, immediately);
+    }
+    if (scene_data_.persistent_data->indices_buf) {
+        ren_ctx_.ResizeBuffer(scene_data_.persistent_data->indices_buf, 128, false, immediately);
+    }
+    if (scene_data_.persistent_data->skin_vertex_buf) {
+        ren_ctx_.ResizeBuffer(scene_data_.persistent_data->skin_vertex_buf, 128, false, immediately);
+    }
+    if (scene_data_.persistent_data->delta_buf) {
+        ren_ctx_.ResizeBuffer(scene_data_.persistent_data->delta_buf, 128, false, immediately);
+    }
+    scene_data_.persistent_data->hwrt = {};
+    scene_data_.persistent_data->swrt = {};
 
     // scene_data_.persistent_data.vertex_buf1 = scene_data_.persistent_data.vertex_buf2 =
-    //     scene_data_.persistent_data.skin_vertex_buf = scene_data_.persistent_data.delta_buf =
     //         scene_data_.persistent_data.indices_buf = {};
 }
 
 void Eng::SceneManager::AllocInstanceBuffer() {
-    Ren::ApiContext *api_ctx = ren_ctx_.api_ctx();
-    scene_data_.persistent_data.instance_buf = scene_data_.buffers.Insert(
-        "Instance Buf", api_ctx, Ren::eBufType::Texture, uint32_t(sizeof(instance_data_t) * MAX_INSTANCES_TOTAL));
-    scene_data_.persistent_data.instance_buf->AddView(Ren::eFormat::RGBA32F);
+    // TODO: Handle failure properly
+    scene_data_.persistent_data->instance_buf = ren_ctx_.FindOrCreateBuffer(
+        "Instance Buf", Ren::eBufType::Texture, uint32_t(sizeof(instance_data_t) * MAX_INSTANCES_TOTAL));
+
+    const auto &[buf_main, buf_cold] = ren_ctx_.buffers().Get(scene_data_.persistent_data->instance_buf);
+    Buffer_AddView(ren_ctx_.api(), buf_main, buf_cold, Ren::eFormat::RGBA32F);
+
     for (uint32_t i = 0; i < scene_data_.objects.size(); ++i) {
         instance_data_to_update_.push_back(i);
     }
 }
 
-void Eng::SceneManager::ReleaseInstanceBuffer(const bool immediate) {
-    if (immediate) {
-        scene_data_.persistent_data.instance_buf->FreeImmediate();
-    }
-    scene_data_.persistent_data.instance_buf = {};
+void Eng::SceneManager::ReleaseInstanceBuffer(const bool immediately) {
+    ren_ctx_.ReleaseBuffer(scene_data_.persistent_data->instance_buf, immediately);
+    scene_data_.persistent_data->instance_buf = {};
 }
 
 void Eng::SceneManager::AllocMaterialsBuffer() {
-    Ren::ApiContext *api_ctx = ren_ctx_.api_ctx();
-    scene_data_.persistent_data.materials_buf = scene_data_.buffers.Insert(
-        "Materials Buffer", api_ctx, Ren::eBufType::Storage, uint32_t(8 * sizeof(material_data_t)));
+    scene_data_.persistent_data->materials_buf =
+        ren_ctx_.FindOrCreateBuffer("Materials Buffer", Ren::eBufType::Storage, uint32_t(8 * sizeof(material_data_t)));
     for (auto it = scene_data_.materials.begin(); it != scene_data_.materials.end(); ++it) {
         scene_data_.material_changes.push_back(it.index());
     }
 }
 
-void Eng::SceneManager::ReleaseMaterialsBuffer(const bool immediate) {
-    if (immediate) {
-        scene_data_.persistent_data.materials_buf->FreeImmediate();
-    }
-    scene_data_.persistent_data.materials_buf = {};
+void Eng::SceneManager::ReleaseMaterialsBuffer(const bool immediately) {
+    ren_ctx_.ReleaseBuffer(scene_data_.persistent_data->materials_buf, immediately);
+    scene_data_.persistent_data->materials_buf = {};
 }
 
 void Eng::SceneManager::LoadProbeCache() {
@@ -1050,7 +1085,7 @@ void Eng::SceneManager::LoadProbeCache() {
 
     if (scene_data_.probe_storage.format() != Ren::DefaultCompressedRGBA) {
         // init in compressed texture format
-        scene_data_.probe_storage.Resize(ren_ctx_.api_ctx(), ren_ctx_.default_mem_allocs(), Ren::DefaultCompressedRGBA,
+        scene_data_.probe_storage.Resize(ren_ctx_.api(), ren_ctx_.default_mem_allocs(), Ren::DefaultCompressedRGBA,
                                          res, capacity, ren_ctx_.log());
     }
 
@@ -1632,11 +1667,11 @@ std::array<Ren::MaterialRef, 3> Eng::SceneManager::OnLoadMaterial(std::string_vi
 void Eng::SceneManager::OnLoadPipelines(Ren::Bitmask<Ren::eMatFlags> flags, std::string_view v_shader,
                                         std::string_view f_shader, std::string_view tc_shader,
                                         std::string_view te_shader,
-                                        Ren::SmallVectorImpl<Ren::PipelineRef> &out_pipelines) {
+                                        Ren::SmallVectorImpl<Ren::PipelineHandle> &out_pipelines) {
     using namespace SceneManagerConstants;
 
-    const Ren::ProgramRef ret = sh_.LoadProgram(v_shader, f_shader, tc_shader, te_shader);
-    init_pipelines_(ret, flags, scene_data_.persistent_data.pipelines, out_pipelines);
+    // const Ren::ProgramRef ret = sh_.LoadProgram(v_shader, f_shader, tc_shader, te_shader);
+    //  init_pipelines_(ret, flags, scene_data_.persistent_data->pipelines, out_pipelines);
 }
 
 Ren::ImgRef Eng::SceneManager::OnLoadTexture(const std::string_view name, const uint8_t color[4],
@@ -1672,9 +1707,8 @@ Ren::ImgRef Eng::SceneManager::OnLoadTexture(const std::string_view name, const 
     return ret;
 }
 
-Ren::SamplerRef Eng::SceneManager::OnLoadSampler(Ren::SamplingParams params) {
-    Ren::eSamplerLoadStatus status;
-    return ren_ctx_.LoadSampler(params, &status);
+Ren::SamplerHandle Eng::SceneManager::OnLoadSampler(const Ren::SamplingParams params) {
+    return ren_ctx_.FindOrCreateSampler(params);
 }
 
 Ren::MeshRef Eng::SceneManager::LoadMesh(std::string_view name, std::istream *data,
@@ -1683,9 +1717,9 @@ Ren::MeshRef Eng::SceneManager::LoadMesh(std::string_view name, std::istream *da
     Ren::MeshRef ref = scene_data_.meshes.FindByName(name);
     if (!ref) {
         ref = scene_data_.meshes.Insert(
-            name, data, on_mat_load, ren_ctx_.api_ctx(), scene_data_.persistent_data.vertex_buf1,
-            scene_data_.persistent_data.vertex_buf2, scene_data_.persistent_data.indices_buf,
-            scene_data_.persistent_data.skin_vertex_buf, scene_data_.persistent_data.delta_buf, load_status,
+            name, data, on_mat_load, ren_ctx_.api(), ren_ctx_.buffers(), scene_data_.persistent_data->vertex_buf1,
+            scene_data_.persistent_data->vertex_buf2, scene_data_.persistent_data->indices_buf,
+            scene_data_.persistent_data->skin_vertex_buf, scene_data_.persistent_data->delta_buf, load_status,
             ren_ctx_.log());
     } else {
         if (ref->ready()) {
@@ -1693,9 +1727,9 @@ Ren::MeshRef Eng::SceneManager::LoadMesh(std::string_view name, std::istream *da
                 (*load_status) = Ren::eMeshLoadStatus::Found;
             }
         } else if (data) {
-            ref->Init(data, on_mat_load, ren_ctx_.api_ctx(), scene_data_.persistent_data.vertex_buf1,
-                      scene_data_.persistent_data.vertex_buf2, scene_data_.persistent_data.indices_buf,
-                      scene_data_.persistent_data.skin_vertex_buf, scene_data_.persistent_data.delta_buf, load_status,
+            ref->Init(data, on_mat_load, ren_ctx_.api(), ren_ctx_.buffers(), scene_data_.persistent_data->vertex_buf1,
+                      scene_data_.persistent_data->vertex_buf2, scene_data_.persistent_data->indices_buf,
+                      scene_data_.persistent_data->skin_vertex_buf, scene_data_.persistent_data->delta_buf, load_status,
                       ren_ctx_.log());
         }
     }
@@ -1728,15 +1762,15 @@ Ren::ImgRef Eng::SceneManager::LoadImage(std::string_view name, Ren::Span<const 
                                          Ren::eImgLoadStatus *load_status) {
     Ren::ImgRef ref = scene_data_.textures.FindByName(name);
     if (!ref) {
-        ref = scene_data_.textures.Insert(name, ren_ctx_.api_ctx(), data, p,
-                                          scene_data_.persistent_data.mem_allocs.get(), load_status, ren_ctx_.log());
+        ref = scene_data_.textures.Insert(name, &ren_ctx_.api(), data, p, scene_data_.persistent_data->mem_allocs.get(),
+                                          load_status, ren_ctx_.log());
     } else {
         if (load_status) {
             (*load_status) = Ren::eImgLoadStatus::Found;
         }
         if ((Ren::Bitmask<Ren::eImgFlags>{ref->params.flags} & Ren::eImgFlags::Stub) &&
             !(p.flags & Ren::eImgFlags::Stub) && !data.empty()) {
-            ref->Init(data, p, scene_data_.persistent_data.mem_allocs.get(), load_status, ren_ctx_.log());
+            ref->Init(data, p, scene_data_.persistent_data->mem_allocs.get(), load_status, ren_ctx_.log());
         }
     }
 
@@ -1768,15 +1802,22 @@ Ren::Vec4f Eng::SceneManager::LoadDecalTexture(std::string_view name) {
     const uint8_t *p_data = in_file_data.get() + sizeof(Ren::DDSHeader);
     int data_len = int(in_file_size) - int(sizeof(Ren::DDSHeader));
 
-    auto stage_buf = Ren::Buffer{"Temp Stage Buf", ren_ctx_.api_ctx(), Ren::eBufType::Upload, uint32_t(data_len)};
+    Ren::BufferMain stage_buf_main = {};
+    Ren::BufferCold stage_buf_cold = {};
+    if (!Buffer_Init(ren_ctx_.api(), stage_buf_main, stage_buf_cold, Ren::String{"Temp upload buf"},
+                     Ren::eBufType::Upload, uint32_t(data_len), ren_ctx_.log())) {
+        ren_ctx_.log()->Error("Failed to initialize temp upload buffer");
+        return Ren::Vec4f{};
+    }
+
     { // Initialize stage buffer
-        uint8_t *stage_data = stage_buf.Map();
+        uint8_t *stage_data = Buffer_Map(ren_ctx_.api(), stage_buf_main, stage_buf_cold);
         if (!stage_data) {
             ren_ctx_.log()->Error("Failed to map buffer!");
             return Ren::Vec4f{};
         }
         memcpy(stage_data, p_data, data_len);
-        stage_buf.Unmap();
+        Buffer_Unmap(ren_ctx_.api(), stage_buf_main, stage_buf_cold);
     }
 
     int pos[2];
@@ -1801,8 +1842,8 @@ Ren::Vec4f Eng::SceneManager::LoadDecalTexture(std::string_view name) {
             break;
         }
 
-        scene_data_.decals_atlas.InitRegion(stage_buf, data_off, len, cmd_buf, Ren::DefaultCompressedRGBA, {}, 0, level,
-                                            _pos, _res, ren_ctx_.log());
+        scene_data_.decals_atlas.InitRegion(stage_buf_main, data_off, len, cmd_buf, Ren::DefaultCompressedRGBA, {}, 0,
+                                            level, _pos, _res, ren_ctx_.log());
 
         data_off += len;
         data_len -= len;
@@ -1815,7 +1856,8 @@ Ren::Vec4f Eng::SceneManager::LoadDecalTexture(std::string_view name) {
     }
 
     ren_ctx_.EndTempSingleTimeCommands(cmd_buf);
-    stage_buf.FreeImmediate();
+
+    Buffer_DestroyImmediately(ren_ctx_.api(), stage_buf_main, stage_buf_cold);
 #else
     Ren::KTXHeader header;
     memcpy(&header, in_file_data.get(), sizeof(Ren::KTXHeader));
@@ -1885,10 +1927,10 @@ bool Eng::SceneManager::Serve(const int texture_budget) {
     if (scene_data_.load_flags & eSceneLoadFlags::Textures) {
         finished &= ProcessPendingTextures(texture_budget);
     }
-    if (scene_data_.persistent_data.materials_buf) {
+    if (scene_data_.persistent_data->materials_buf) {
         finished &= UpdateMaterialsBuffer();
     }
-    if (scene_data_.persistent_data.instance_buf) {
+    if (scene_data_.persistent_data->instance_buf) {
         finished &= UpdateInstanceBuffer();
     }
 
@@ -1933,9 +1975,18 @@ void Eng::SceneManager::UpdateInstanceBufferRange(const uint32_t obj_beg, const 
     const auto *vegs = (VegState *)scene_data_.comp_store[CompVegState]->SequentialData();
 
     const uint32_t total_data_to_update = sizeof(instance_data_t) * (obj_end - obj_beg + 1);
-    Ren::BufRef temp_stage_buf =
-        ren_ctx_.LoadBuffer("Instance Update Stage Buf", Ren::eBufType::Upload, total_data_to_update);
-    auto *instance_stage = (instance_data_t *)temp_stage_buf->Map();
+
+    Ren::BufferMain temp_stage_buf_main = {};
+    Ren::BufferCold temp_stage_buf_cold = {};
+    if (!Buffer_Init(ren_ctx_.api(), temp_stage_buf_main, temp_stage_buf_cold, Ren::String{"Instance Update Stage Buf"},
+                     Ren::eBufType::Upload, total_data_to_update, ren_ctx_.log())) {
+        // TODO: Handle failure properly
+        assert(false);
+        return;
+    }
+    SCOPE_EXIT({ Buffer_Destroy(ren_ctx_.api(), temp_stage_buf_main, temp_stage_buf_cold); })
+
+    auto *instance_stage = (instance_data_t *)Buffer_Map(ren_ctx_.api(), temp_stage_buf_main, temp_stage_buf_cold);
 
     for (uint32_t i = obj_beg; i <= obj_end; ++i) {
         SceneObject &obj = scene_data_.objects[i];
@@ -1963,15 +2014,17 @@ void Eng::SceneManager::UpdateInstanceBufferRange(const uint32_t obj_beg, const 
         }
     }
 
-    temp_stage_buf->Unmap();
+    Buffer_Unmap(ren_ctx_.api(), temp_stage_buf_main, temp_stage_buf_cold);
 
-    scene_data_.persistent_data.instance_buf->UpdateSubRegion(obj_beg * sizeof(instance_data_t), total_data_to_update,
-                                                              *temp_stage_buf, 0, ren_ctx_.current_cmd_buf());
+    const auto &[instance_buf_main, instance_buf_cold] =
+        ren_ctx_.buffers().Get(scene_data_.persistent_data->instance_buf);
+    Buffer_UpdateSubRegion(ren_ctx_.api(), instance_buf_main, instance_buf_cold, obj_beg * sizeof(instance_data_t),
+                           total_data_to_update, temp_stage_buf_main, 0, ren_ctx_.current_cmd_buf());
 }
 
 void Eng::SceneManager::ClearGICache(Ren::CommandBuffer _cmd_buf) {
-    if (!scene_data_.persistent_data.probe_irradiance || !scene_data_.persistent_data.probe_distance ||
-        !scene_data_.persistent_data.probe_offset) {
+    if (!scene_data_.persistent_data->probe_irradiance || !scene_data_.persistent_data->probe_distance ||
+        !scene_data_.persistent_data->probe_offset) {
         return;
     }
 
@@ -1981,20 +2034,20 @@ void Eng::SceneManager::ClearGICache(Ren::CommandBuffer _cmd_buf) {
     }
 
     const Ren::TransitionInfo transitions[] = {
-        {scene_data_.persistent_data.probe_irradiance.get(), Ren::eResState::CopyDst},
-        {scene_data_.persistent_data.probe_distance.get(), Ren::eResState::CopyDst},
-        {scene_data_.persistent_data.probe_offset.get(), Ren::eResState::CopyDst}};
-    TransitionResourceStates(ren_ctx_.api_ctx(), cmd_buf, Ren::AllStages, Ren::AllStages, transitions);
+        {scene_data_.persistent_data->probe_irradiance.get(), Ren::eResState::CopyDst},
+        {scene_data_.persistent_data->probe_distance.get(), Ren::eResState::CopyDst},
+        {scene_data_.persistent_data->probe_offset.get(), Ren::eResState::CopyDst}};
+    TransitionResourceStates(ren_ctx_.api(), ren_ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages, transitions);
 
-    Ren::ClearImage(*scene_data_.persistent_data.probe_irradiance, {}, cmd_buf);
-    Ren::ClearImage(*scene_data_.persistent_data.probe_distance, {}, cmd_buf);
-    Ren::ClearImage(*scene_data_.persistent_data.probe_offset, {}, cmd_buf);
+    Ren::ClearImage(*scene_data_.persistent_data->probe_irradiance, {}, cmd_buf);
+    Ren::ClearImage(*scene_data_.persistent_data->probe_distance, {}, cmd_buf);
+    Ren::ClearImage(*scene_data_.persistent_data->probe_offset, {}, cmd_buf);
 
     if (!_cmd_buf) {
         ren_ctx_.EndTempSingleTimeCommands(cmd_buf);
     }
 
-    for (probe_volume_t &volume : scene_data_.persistent_data.probe_volumes) {
+    for (probe_volume_t &volume : scene_data_.persistent_data->probe_volumes) {
         volume.updates_count = 0;
         volume.reset_relocation = true;
         volume.reset_classification = true;

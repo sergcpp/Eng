@@ -7,38 +7,37 @@
 #include "../../utils/ShaderLoader.h"
 #include "../shaders/rt_gi_cache_interface.h"
 
-void Eng::ExRTGICache::Execute_HWRT(FgContext &fg) {
-    Ren::ApiContext *api_ctx = fg.ren_ctx().api_ctx();
-
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExRTGICache::Execute_HWRT(const FgContext &fg) {
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &env_tex = fg.AccessROImage(args_->env_tex);
-    [[maybe_unused]] const Ren::Buffer &tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::Buffer &lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    [[maybe_unused]] const Ren::BufferHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
     const Ren::Image &shadow_depth_tex = fg.AccessROImage(args_->shadow_depth_tex);
     const Ren::Image &shadow_color_tex = fg.AccessROImage(args_->shadow_color_tex);
     const Ren::Image &ltc_luts_tex = fg.AccessROImage(args_->ltc_luts_tex);
-    const Ren::Buffer &cells_buf = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::Buffer &items_buf = fg.AccessROBuffer(args_->items_buf);
+    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
+    const Ren::BufferHandle items_buf = fg.AccessROBuffer(args_->items_buf);
     const Ren::Image &irr_tex = fg.AccessROImage(args_->irradiance_tex);
     const Ren::Image &dist_tex = fg.AccessROImage(args_->distance_tex);
     const Ren::Image &off_tex = fg.AccessROImage(args_->offset_tex);
 
-    const Ren::Buffer *random_seq_buf = nullptr, *stoch_lights_buf = nullptr, *light_nodes_buf = nullptr;
+    Ren::BufferHandle random_seq_buf = {}, stoch_lights_buf = {}, light_nodes_buf = {};
     if (args_->stoch_lights_buf) {
-        random_seq_buf = &fg.AccessROBuffer(args_->random_seq);
-        stoch_lights_buf = &fg.AccessROBuffer(args_->stoch_lights_buf);
-        light_nodes_buf = &fg.AccessROBuffer(args_->light_nodes_buf);
+        random_seq_buf = fg.AccessROBuffer(args_->random_seq);
+        stoch_lights_buf = fg.AccessROBuffer(args_->stoch_lights_buf);
+        light_nodes_buf = fg.AccessROBuffer(args_->light_nodes_buf);
     }
 
-    Ren::Image &out_ray_data_tex = fg.AccessRWImage(args_->out_ray_data_tex);
+    const Ren::Image &out_ray_data_tex = fg.AccessRWImage(args_->out_ray_data_tex);
 
     auto *acc_struct = static_cast<Ren::AccStructureVK *>(args_->tlas);
 
-    VkCommandBuffer cmd_buf = api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
     Ren::SmallVector<Ren::Binding, 16> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
@@ -59,21 +58,22 @@ void Eng::ExRTGICache::Execute_HWRT(FgContext &fg) {
         {Ren::eBindTarget::TexSampled, RTGICache::OFFSET_TEX_SLOT, off_tex},
         {Ren::eBindTarget::ImageRW, RTGICache::OUT_RAY_DATA_IMG_SLOT, out_ray_data_tex}};
     if (stoch_lights_buf) {
-        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::RANDOM_SEQ_BUF_SLOT, *random_seq_buf);
-        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::STOCH_LIGHTS_BUF_SLOT, *stoch_lights_buf);
-        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::LIGHT_NODES_BUF_SLOT, *light_nodes_buf);
+        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::RANDOM_SEQ_BUF_SLOT, random_seq_buf);
+        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::STOCH_LIGHTS_BUF_SLOT, stoch_lights_buf);
+        bindings.emplace_back(Ren::eBindTarget::UTBuf, RTGICache::LIGHT_NODES_BUF_SLOT, light_nodes_buf);
     }
 
-    const Ren::Pipeline &pi = *pi_rt_gi_cache_[stoch_lights_buf != nullptr][args_->partial_update];
+    const Ren::PipelineMain &pi =
+        fg.pipelines().Get(pi_rt_gi_cache_[bool(stoch_lights_buf)][args_->partial_update]).first;
+    const Ren::ProgramMain &pr = fg.programs().Get(pi.prog).first;
 
     VkDescriptorSet descr_sets[2];
     descr_sets[0] =
-        PrepareDescriptorSet(api_ctx, pi.prog()->descr_set_layouts()[0], bindings, fg.descr_alloc(), fg.log());
+        PrepareDescriptorSet(api, &fg.storages(), pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->rt_inline_textures.descr_set;
 
-    api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle());
-    api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout(), 0, 2, descr_sets, 0,
-                                     nullptr);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+    api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 2, descr_sets, 0, nullptr);
 
     RTGICache::Params uniform_params = {};
     uniform_params.volume_index = view_state_->volume_to_update;
@@ -94,9 +94,8 @@ void Eng::ExRTGICache::Execute_HWRT(FgContext &fg) {
                                              args_->probe_volumes[view_state_->volume_to_update].spacing[2], 0.0f);
     uniform_params.quat_rot = view_state_->probe_ray_rotator;
 
-    api_ctx->vkCmdPushConstants(cmd_buf, pi.layout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uniform_params),
-                                &uniform_params);
+    api.vkCmdPushConstants(cmd_buf, pi.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uniform_params), &uniform_params);
 
-    api_ctx->vkCmdDispatch(cmd_buf, (PROBE_TOTAL_RAYS_COUNT / RTGICache::GRP_SIZE_X),
-                           PROBE_VOLUME_RES_X * PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y);
+    api.vkCmdDispatch(cmd_buf, (PROBE_TOTAL_RAYS_COUNT / RTGICache::GRP_SIZE_X),
+                      PROBE_VOLUME_RES_X * PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y);
 }

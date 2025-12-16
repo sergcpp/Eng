@@ -11,8 +11,8 @@ class ExTransparent final : public FgExecutor {
     bool initialized = false;
 
     // lazily initialized data
-    Ren::VertexInputRef draw_pass_vi_;
-    Ren::RenderPassRef rp_transparent_;
+    Ren::VertexInputHandle draw_pass_vi_;
+    Ren::RenderPassHandle rp_transparent_;
     Ren::Framebuffer transparent_draw_fb_[Ren::MaxFramesInFlight][2], color_only_fb_[2], resolved_fb_, moments_fb_;
     int fb_to_use_ = 0;
 #if defined(REN_VK_BACKEND)
@@ -20,24 +20,23 @@ class ExTransparent final : public FgExecutor {
 #endif
 
     // temp data (valid only between Setup and Execute calls)
-    Ren::ApiContext *api_ctx_ = nullptr;
+    const Ren::ApiContext &api_;
     const view_state_t *view_state_ = nullptr;
-    const Ren::Pipeline *pipelines_ = nullptr;
     const BindlessTextureData *bindless_tex_ = nullptr;
 
     const DrawList **p_list_ = nullptr;
 
-    FgResRef vtx_buf1_;
-    FgResRef vtx_buf2_;
-    FgResRef ndx_buf_;
-    FgResRef instances_buf_;
-    FgResRef instance_indices_buf_;
-    FgResRef shared_data_buf_;
-    FgResRef cells_buf_;
-    FgResRef items_buf_;
-    FgResRef lights_buf_;
-    FgResRef decals_buf_;
-    FgResRef materials_buf_;
+    FgBufHandle vtx_buf1_;
+    FgBufHandle vtx_buf2_;
+    FgBufHandle ndx_buf_;
+    FgBufHandle instances_buf_;
+    FgBufHandle instance_indices_buf_;
+    FgBufHandle shared_data_buf_;
+    FgBufHandle cells_buf_;
+    FgBufHandle items_buf_;
+    FgBufHandle lights_buf_;
+    FgBufHandle decals_buf_;
+    FgBufHandle materials_buf_;
     FgResRef lm_tex_[4];
     FgResRef brdf_lut_;
     FgResRef noise_tex_;
@@ -52,36 +51,36 @@ class ExTransparent final : public FgExecutor {
     FgResRef spec_tex_;
     FgResRef depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                  const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf, const Ren::WeakImgRef &color_tex,
-                  const Ren::WeakImgRef &normal_tex, const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex);
-    void DrawTransparent(FgContext &fg, const Ren::WeakImgRef &color_tex);
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
+                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
+                  const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex);
+    void DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &color_tex);
 
-    void DrawTransparent_Simple(FgContext &fg, const Ren::Buffer &instances_buf,
-                                const Ren::Buffer &instance_indices_buf, const Ren::Buffer &unif_shared_data_buf,
-                                const Ren::Buffer &materials_buf, const Ren::Buffer &cells_buf,
-                                const Ren::Buffer &items_buf, const Ren::Buffer &lights_buf,
-                                const Ren::Buffer &decals_buf, const Ren::Image &shad_tex,
-                                const Ren::WeakImgRef &color_tex, const Ren::Image &ssao_tex);
-    void DrawTransparent_OIT_MomentBased(FgContext &fg);
-    void DrawTransparent_OIT_WeightedBlended(FgContext &fg);
+    void DrawTransparent_Simple(const FgContext &fg, Ren::BufferHandle instances_buf,
+                                Ren::BufferHandle instance_indices_buf, Ren::BufferHandle unif_shared_data_buf,
+                                Ren::BufferHandle materials_buf, Ren::BufferHandle cells_buf,
+                                Ren::BufferHandle items_buf, Ren::BufferHandle lights_buf, Ren::BufferHandle decals_buf,
+                                const Ren::Image &shad_tex, const Ren::WeakImgRef &color_tex,
+                                const Ren::Image &ssao_tex);
+    void DrawTransparent_OIT_MomentBased(const FgContext &fg);
+    void DrawTransparent_OIT_WeightedBlended(const FgContext &fg);
 
 #if defined(REN_VK_BACKEND)
     void InitDescrSetLayout();
 #endif
 
   public:
-    ExTransparent(const DrawList **p_list, const view_state_t *view_state, const FgResRef vtx_buf1,
-                  const FgResRef vtx_buf2, const FgResRef ndx_buf, const FgResRef materials_buf,
-                  const Ren::Pipeline pipelines[], const BindlessTextureData *bindless_tex, const FgResRef brdf_lut,
+    ExTransparent(const Ren::ApiContext &api, const DrawList **p_list, const view_state_t *view_state,
+                  const FgBufHandle vtx_buf1, const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf,
+                  const FgBufHandle materials_buf, const BindlessTextureData *bindless_tex, const FgResRef brdf_lut,
                   const FgResRef noise_tex, const FgResRef cone_rt_lut, const FgResRef dummy_black,
-                  const FgResRef instances_buf, const FgResRef instance_indices_buf, const FgResRef shared_data_buf,
-                  const FgResRef cells_buf, const FgResRef items_buf, const FgResRef lights_buf,
-                  const FgResRef decals_buf, const FgResRef shad_tex, const FgResRef ssao_tex, const FgResRef lm_tex[4],
-                  const FgResRef color_tex, const FgResRef normal_tex, const FgResRef spec_tex,
-                  const FgResRef depth_tex) {
+                  const FgBufHandle instances_buf, const FgBufHandle instance_indices_buf,
+                  const FgBufHandle shared_data_buf, const FgBufHandle cells_buf, const FgBufHandle items_buf,
+                  const FgBufHandle lights_buf, const FgBufHandle decals_buf, const FgResRef shad_tex,
+                  const FgResRef ssao_tex, const FgResRef lm_tex[4], const FgResRef color_tex,
+                  const FgResRef normal_tex, const FgResRef spec_tex, const FgResRef depth_tex)
+        : api_(api) {
         view_state_ = view_state;
-        pipelines_ = pipelines;
         bindless_tex_ = bindless_tex;
 
         p_list_ = p_list;
@@ -117,6 +116,6 @@ class ExTransparent final : public FgExecutor {
     }
     ~ExTransparent() final;
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 };
 } // namespace Eng

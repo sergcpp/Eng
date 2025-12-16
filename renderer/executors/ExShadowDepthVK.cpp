@@ -11,16 +11,16 @@
 #include "../shaders/shadow_interface.h"
 
 namespace ExSharedInternal {
-uint32_t _draw_range(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf, Ren::Span<const uint32_t> batch_indices,
+uint32_t _draw_range(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, Ren::Span<const uint32_t> batch_indices,
                      Ren::Span<const Eng::basic_draw_batch_t> batches, uint32_t i, uint64_t mask, int *draws_count);
-uint32_t _draw_range_ext(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf, const Ren::Pipeline &pipeline,
+uint32_t _draw_range_ext(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, const Ren::PipelineMain &pipeline,
                          Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
                          uint32_t i, uint64_t mask, uint32_t materials_per_descriptor,
                          Ren::Span<const VkDescriptorSet> descr_sets, int *draws_count);
 } // namespace ExSharedInternal
 
 namespace ExShadowDepthInternal {
-void _adjust_bias_and_viewport(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf, const Eng::shadow_list_t &sh_list) {
+void _adjust_bias_and_viewport(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, const Eng::shadow_list_t &sh_list) {
     const VkViewport viewport = {
         float(sh_list.shadow_map_pos[0]),
         float((Eng::SHADOWMAP_RES / 2) - sh_list.shadow_map_pos[1] - sh_list.shadow_map_size[1]),
@@ -28,17 +28,17 @@ void _adjust_bias_and_viewport(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf
         float(sh_list.shadow_map_size[1]),
         0.0f,
         1.0f};
-    api_ctx->vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+    api.vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
 
     const VkRect2D scissor = {{sh_list.scissor_test_pos[0],
                                (Eng::SHADOWMAP_RES / 2) - sh_list.scissor_test_pos[1] - sh_list.scissor_test_size[1]},
                               {uint32_t(sh_list.scissor_test_size[0]), uint32_t(sh_list.scissor_test_size[1])}};
-    api_ctx->vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+    api.vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
-    api_ctx->vkCmdSetDepthBias(cmd_buf, sh_list.bias[1], 0.0f, sh_list.bias[0]);
+    api.vkCmdSetDepthBias(cmd_buf, sh_list.bias[1], 0.0f, sh_list.bias[0]);
 }
 
-void _clear_region(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf, const Eng::shadow_list_t &sh_list) {
+void _clear_region(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, const Eng::shadow_list_t &sh_list) {
     VkClearAttachment clear_att = {};
     clear_att.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     clear_att.clearValue.depthStencil.depth = 0.0f;
@@ -50,38 +50,47 @@ void _clear_region(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf, const Eng:
     clear_rect.baseArrayLayer = 0;
     clear_rect.layerCount = 1;
 
-    api_ctx->vkCmdClearAttachments(cmd_buf, 1, &clear_att, 1, &clear_rect);
+    api.vkCmdClearAttachments(cmd_buf, 1, &clear_att, 1, &clear_rect);
 }
 } // namespace ExShadowDepthInternal
 
-void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
+void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
     using namespace ExSharedInternal;
     using namespace ExShadowDepthInternal;
 
     using BDB = basic_draw_batch_t;
 
-    const Ren::Buffer &unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::Buffer &instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::Buffer &instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
     const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
 
-    Ren::ApiContext *api_ctx = fg.ren_ctx().api_ctx();
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
 
-    VkCommandBuffer cmd_buf = api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+    VkCommandBuffer cmd_buf = fg.cmd_buf();
 
-    VkDescriptorSetLayout simple_descr_set_layout = pi_solid_[0]->prog()->descr_set_layouts()[0];
+    const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines.Get(pi_solid_[0]).first,
+                                                 &storages.pipelines.Get(pi_solid_[1]).first,
+                                                 &storages.pipelines.Get(pi_solid_[2]).first};
+    const Ren::ProgramMain &pr_solid0_main = storages.programs.Get(pi_solid_main[0]->prog).first;
+
+    VkDescriptorSetLayout simple_descr_set_layout = pr_solid0_main.descr_set_layouts[0];
     VkDescriptorSet simple_descr_sets[2];
     { // allocate descriptor sets
         const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, BIND_INST_BUF, instances_buf},
                                          {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
                                          {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf}};
         simple_descr_sets[0] =
-            PrepareDescriptorSet(api_ctx, simple_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
+            PrepareDescriptorSet(api, &fg.storages(), simple_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         simple_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
     }
 
-    VkDescriptorSetLayout vege_descr_set_layout = pi_vege_solid_->prog()->descr_set_layouts()[0];
+    const Ren::PipelineMain &pi_vege_main = storages.pipelines.Get(pi_vege_solid_).first;
+    const Ren::ProgramMain &pr_vege_main = storages.programs.Get(pi_vege_main.prog).first;
+
+    VkDescriptorSetLayout vege_descr_set_layout = pr_vege_main.descr_set_layouts[0];
     VkDescriptorSet vege_descr_sets[2];
     { // allocate descriptor sets
         const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
@@ -90,56 +99,59 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
                                          {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
                                          {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex}};
         vege_descr_sets[0] =
-            PrepareDescriptorSet(api_ctx, vege_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
+            PrepareDescriptorSet(api, &fg.storages(), vege_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         vege_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
     }
 
     bool region_cleared[MAX_SHADOWMAPS_TOTAL] = {};
     [[maybe_unused]] int draw_calls_count = 0;
 
-    const uint32_t materials_per_descriptor = api_ctx->max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
+    const uint32_t materials_per_descriptor = api.max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
+
+    const Ren::RenderPassMain &rp_main = storages.render_passes.Get(pi_solid_main[0]->render_pass).first;
 
     VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    rp_begin_info.renderPass = pi_solid_[0]->render_pass()->vk_handle();
+    rp_begin_info.renderPass = rp_main.handle;
     rp_begin_info.framebuffer = shadow_fb_.vk_handle();
     rp_begin_info.renderArea = {{0, 0}, {uint32_t(w_), uint32_t(h_)}};
-    api_ctx->vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
     Ren::SmallVector<uint32_t, 32> batch_points((*p_list_)->shadow_lists.count, 0);
 
     { // opaque objects
-        Ren::DebugMarker _(api_ctx, fg.cmd_buf(), "STATIC-SOLID");
+        Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-SOLID");
 
-        api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_[0]->layout(), 0, 1,
-                                         simple_descr_sets, 0, nullptr);
+        api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_main[0]->layout, 0, 1,
+                                    simple_descr_sets, 0, nullptr);
 
-        pi_solid_[0]->vtx_input()->BindBuffers(api_ctx, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input).first;
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         static const uint64_t BitFlags[] = {0, BDB::BitBackSided, BDB::BitTwoSided};
         for (int pi = 0; pi < 3; ++pi) {
-            api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_[pi]->handle());
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_main[pi]->handle);
             for (int i = 0; i < int((*p_list_)->shadow_lists.count); ++i) {
                 const shadow_list_t &sh_list = (*p_list_)->shadow_lists.data[i];
                 if (!sh_list.dirty && !sh_list.shadow_batch_count) {
                     continue;
                 }
 
-                _adjust_bias_and_viewport(api_ctx, cmd_buf, sh_list);
+                _adjust_bias_and_viewport(api, cmd_buf, sh_list);
 
                 if (!std::exchange(region_cleared[i], true)) {
-                    _clear_region(api_ctx, cmd_buf, sh_list);
+                    _clear_region(api, cmd_buf, sh_list);
                 }
 
                 Shadow::Params uniform_params = {};
                 uniform_params.g_shadow_view_proj_mat = (*p_list_)->shadow_regions.data[i].clip_from_world;
-                api_ctx->vkCmdPushConstants(cmd_buf, pi_solid_[pi]->layout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
-                                            sizeof(Shadow::Params), &uniform_params);
+                api.vkCmdPushConstants(cmd_buf, pi_solid_main[pi]->layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                       sizeof(Shadow::Params), &uniform_params);
 
                 Ren::Span<const uint32_t> batch_indices = {
                     (*p_list_)->shadow_batch_indices.data() + sh_list.shadow_batch_start, sh_list.shadow_batch_count};
 
                 uint32_t j = batch_points[i];
-                j = _draw_range(api_ctx, cmd_buf, batch_indices, (*p_list_)->shadow_batches, j, BitFlags[pi],
+                j = _draw_range(api, cmd_buf, batch_indices, (*p_list_)->shadow_batches, j, BitFlags[pi],
                                 &draw_calls_count);
                 batch_points[i] = j;
             }
@@ -147,14 +159,14 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
     }
 
     /*{ // draw opaque vegetation
-        Ren::DebugMarker _mm(api_ctx, fg.cmd_buf(), "VEGE-SOLID");
+        Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-SOLID");
 
-        api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_solid_.handle());
-        api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_solid_.layout(), 0, 2,
+        api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_solid_.handle());
+        api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_solid_.layout(), 0, 2,
                                          vege_descr_sets, 0, nullptr);
         uint32_t bound_descr_id = 0;
 
-        vi_depth_pass_vege_solid_->BindBuffers(api_ctx, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        vi_depth_pass_vege_solid_->BindBuffers(api, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         for (int i = 0; i < int((*p_list_)->shadow_lists.count); ++i) {
             const shadow_list_t &sh_list = (*p_list_)->shadow_lists.data[i];
@@ -162,15 +174,15 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
                 continue;
             }
 
-            _adjust_bias_and_viewport(api_ctx, cmd_buf, sh_list);
+            _adjust_bias_and_viewport(api, cmd_buf, sh_list);
 
             if (!std::exchange(region_cleared[i], true)) {
-                _clear_region(api_ctx, cmd_buf, sh_list);
+                _clear_region(api, cmd_buf, sh_list);
             }
 
             Shadow::Params uniform_params = {};
             uniform_params.g_shadow_view_proj_mat = (*p_list_)->shadow_regions.data[i].clip_from_world;
-            api_ctx->vkCmdPushConstants(cmd_buf, pi_solid_[0].layout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
+            api.vkCmdPushConstants(cmd_buf, pi_solid_[0].layout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
                                         sizeof(Shadow::Params), &uniform_params);
 
             uint32_t j = batch_points[i];
@@ -182,12 +194,12 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
 
                 const uint32_t descr_id = batch.material_index / materials_per_descriptor;
                 if (descr_id != bound_descr_id) {
-                    api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_solid_.layout(),
+                    api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_solid_.layout(),
                                                      1, 1, &bindless_tex_->textures_descr_sets[descr_id], 0, nullptr);
                     bound_descr_id = descr_id;
                 }
 
-                api_ctx->vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
+                api.vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
                                           batch.instance_count,         // instance count
                                           batch.indices_offset,         // first index
                                           batch.base_vertex,            // vertex offset
@@ -198,40 +210,45 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
         }
     }*/
 
+    const Ren::PipelineMain *pi_alpha_main[3] = {&storages.pipelines.Get(pi_alpha_[0]).first,
+                                                 &storages.pipelines.Get(pi_alpha_[1]).first,
+                                                 &storages.pipelines.Get(pi_alpha_[2]).first};
+
     { // alpha-tested objects
-        Ren::DebugMarker _(api_ctx, fg.cmd_buf(), "STATIC-ALPHA");
+        Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-ALPHA");
 
-        api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_[0]->layout(), 0, 2,
-                                         simple_descr_sets, 0, nullptr);
+        api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_main[0]->layout, 0, 2,
+                                    simple_descr_sets, 0, nullptr);
 
-        pi_alpha_[0]->vtx_input()->BindBuffers(api_ctx, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input).first;
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         static const uint64_t BitFlags[] = {BDB::BitAlphaTest, BDB::BitAlphaTest | BDB::BitBackSided,
                                             BDB::BitAlphaTest | BDB::BitTwoSided};
         for (int pi = 0; pi < 3; ++pi) {
-            api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_[pi]->handle());
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_main[pi]->handle);
             for (int i = 0; i < int((*p_list_)->shadow_lists.count); ++i) {
                 const shadow_list_t &sh_list = (*p_list_)->shadow_lists.data[i];
                 if (!sh_list.dirty && !sh_list.shadow_batch_count) {
                     continue;
                 }
 
-                _adjust_bias_and_viewport(api_ctx, cmd_buf, sh_list);
+                _adjust_bias_and_viewport(api, cmd_buf, sh_list);
 
                 if (!std::exchange(region_cleared[i], true)) {
-                    _clear_region(api_ctx, cmd_buf, sh_list);
+                    _clear_region(api, cmd_buf, sh_list);
                 }
 
                 Shadow::Params uniform_params = {};
                 uniform_params.g_shadow_view_proj_mat = (*p_list_)->shadow_regions.data[i].clip_from_world;
-                api_ctx->vkCmdPushConstants(cmd_buf, pi_alpha_[pi]->layout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
-                                            sizeof(Shadow::Params), &uniform_params);
+                api.vkCmdPushConstants(cmd_buf, pi_alpha_main[pi]->layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                       sizeof(Shadow::Params), &uniform_params);
 
                 Ren::Span<const uint32_t> batch_indices = {
                     (*p_list_)->shadow_batch_indices.data() + sh_list.shadow_batch_start, sh_list.shadow_batch_count};
 
                 uint32_t j = batch_points[i];
-                j = _draw_range_ext(api_ctx, cmd_buf, *pi_alpha_[pi], batch_indices, (*p_list_)->shadow_batches, j,
+                j = _draw_range_ext(api, cmd_buf, *pi_alpha_main[pi], batch_indices, (*p_list_)->shadow_batches, j,
                                     BitFlags[pi], materials_per_descriptor, bindless_tex_->textures_descr_sets,
                                     &draw_calls_count);
                 batch_points[i] = j;
@@ -240,14 +257,14 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
     }
 
     /*{ // alpha-tested vegetation
-        Ren::DebugMarker _mm(api_ctx, fg.cmd_buf(), "VEGE-ALPHA");
+        Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-ALPHA");
 
-        api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_alpha_.handle());
-        api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_alpha_.layout(), 0, 2,
+        api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_alpha_.handle());
+        api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_alpha_.layout(), 0, 2,
                                          vege_descr_sets, 0, nullptr);
         uint32_t bound_descr_id = 0;
 
-        vi_depth_pass_alpha_->BindBuffers(api_ctx, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        vi_depth_pass_alpha_->BindBuffers(api, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         for (int i = 0; i < int((*p_list_)->shadow_lists.count); ++i) {
             const shadow_list_t &sh_list = (*p_list_)->shadow_lists.data[i];
@@ -255,15 +272,15 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
                 continue;
             }
 
-            _adjust_bias_and_viewport(api_ctx, cmd_buf, sh_list);
+            _adjust_bias_and_viewport(api, cmd_buf, sh_list);
 
             if (!std::exchange(region_cleared[i], true)) {
-                _clear_region(api_ctx, cmd_buf, sh_list);
+                _clear_region(api, cmd_buf, sh_list);
             }
 
             Shadow::Params uniform_params = {};
             uniform_params.g_shadow_view_proj_mat = (*p_list_)->shadow_regions.data[i].clip_from_world;
-            api_ctx->vkCmdPushConstants(cmd_buf, pi_solid_[0].layout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
+            api.vkCmdPushConstants(cmd_buf, pi_solid_[0].layout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
                                         sizeof(Shadow::Params), &uniform_params);
 
             for (uint32_t j = sh_list.shadow_batch_start; j < sh_list.shadow_batch_start + sh_list.shadow_batch_count;
@@ -275,12 +292,12 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
 
                 const uint32_t descr_id = batch.material_index / materials_per_descriptor;
                 if (descr_id != bound_descr_id) {
-                    api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_alpha_.layout(),
+                    api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_alpha_.layout(),
                                                      1, 1, &bindless_tex_->textures_descr_sets[descr_id], 0, nullptr);
                     bound_descr_id = descr_id;
                 }
 
-                api_ctx->vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
+                api.vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
                                           batch.instance_count,         // instance count
                                           batch.indices_offset,         // first index
                                           batch.base_vertex,            // vertex offset
@@ -290,5 +307,5 @@ void Eng::ExShadowDepth::DrawShadowMaps(FgContext &fg) {
         }
     }*/
 
-    api_ctx->vkCmdEndRenderPass(cmd_buf);
+    api.vkCmdEndRenderPass(cmd_buf);
 }

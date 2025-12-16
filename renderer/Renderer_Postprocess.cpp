@@ -22,8 +22,8 @@ Eng::FgResRef Eng::Renderer::AddAutoexposurePasses(FgResRef hdr_texture, const R
 
         histogram = histogram_clear.AddClearImageOutput("Exposure Histogram", desc);
 
-        histogram_clear.set_execute_cb([histogram](FgContext &fg) {
-            Ren::Image &histogram_tex = fg.AccessRWImage(histogram);
+        histogram_clear.set_execute_cb([histogram](const FgContext &fg) {
+            const Ren::Image &histogram_tex = fg.AccessRWImage(histogram);
 
             Ren::ClearImage(histogram_tex, {}, fg.cmd_buf());
         });
@@ -34,19 +34,20 @@ Eng::FgResRef Eng::Renderer::AddAutoexposurePasses(FgResRef hdr_texture, const R
         FgResRef input = histogram_sample.AddTextureInput(hdr_texture, Ren::eStage::ComputeShader);
         histogram = histogram_sample.AddStorageImageOutput(histogram, Ren::eStage::ComputeShader);
 
-        histogram_sample.set_execute_cb([this, input, histogram](FgContext &fg) {
+        histogram_sample.set_execute_cb([this, input, histogram](const FgContext &fg) {
             const Ren::Image &input_tex = fg.AccessROImage(input);
-            Ren::Image &output_tex = fg.AccessRWImage(histogram);
+            
+            const Ren::Image &output_tex = fg.AccessRWImage(histogram);
 
             const Ren::Binding bindings[] = {
-                {Ren::eBindTarget::TexSampled, HistogramSample::HDR_TEX_SLOT, {input_tex, *linear_sampler_}},
+                {Ren::eBindTarget::TexSampled, HistogramSample::HDR_TEX_SLOT, {input_tex, linear_sampler_}},
                 {Ren::eBindTarget::ImageRW, HistogramSample::OUT_IMG_SLOT, output_tex}};
 
             HistogramSample::Params uniform_params = {};
             uniform_params.pre_exposure = view_state_.pre_exposure;
 
-            DispatchCompute(*pi_histogram_sample_, Ren::Vec3u{16, 8, 1}, bindings, &uniform_params,
-                            sizeof(uniform_params), fg.descr_alloc(), fg.log());
+            DispatchCompute(fg.cmd_buf(), pi_histogram_sample_, fg.storages(), Ren::Vec3u{16, 8, 1}, bindings,
+                            &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
         });
     }
     FgResRef exposure;
@@ -71,10 +72,11 @@ Eng::FgResRef Eng::Renderer::AddAutoexposurePasses(FgResRef hdr_texture, const R
             histogram_exposure.AddStorageImageOutput(EXPOSURE_TEX, params, Ren::eStage::ComputeShader);
         data->exposure_prev = histogram_exposure.AddHistoryTextureInput(exposure, Ren::eStage::ComputeShader);
 
-        histogram_exposure.set_execute_cb([this, data, adaptation_speed](FgContext &fg) {
+        histogram_exposure.set_execute_cb([this, data, adaptation_speed](const FgContext &fg) {
             const Ren::Image &histogram_tex = fg.AccessROImage(data->histogram);
             const Ren::Image &exposure_prev_tex = fg.AccessROImage(data->exposure_prev);
-            Ren::Image &exposure_tex = fg.AccessRWImage(data->exposure);
+            
+            const Ren::Image &exposure_tex = fg.AccessRWImage(data->exposure);
 
             const Ren::Binding bindings[] = {
                 {Ren::eBindTarget::TexSampled, HistogramExposure::HISTOGRAM_TEX_SLOT, histogram_tex},
@@ -88,8 +90,8 @@ Eng::FgResRef Eng::Renderer::AddAutoexposurePasses(FgResRef hdr_texture, const R
             uniform_params.adaptation_speed_max = adaptation_speed[0];
             uniform_params.adaptation_speed_min = adaptation_speed[1];
 
-            DispatchCompute(*pi_histogram_exposure_, Ren::Vec3u{1}, bindings, &uniform_params, sizeof(uniform_params),
-                            fg.descr_alloc(), fg.log());
+            DispatchCompute(fg.cmd_buf(), pi_histogram_exposure_, fg.storages(), Ren::Vec3u{1}, bindings,
+                            &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
         });
     }
     return exposure;
@@ -130,10 +132,11 @@ Eng::FgResRef Eng::Renderer::AddBloomPasses(FgResRef hdr_texture, FgResRef expos
                 bloom_downsample.AddStorageImageOutput(output_name, desc, Ren::eStage::ComputeShader);
         }
 
-        bloom_downsample.set_execute_cb([this, data, mip, compressed](FgContext &fg) {
+        bloom_downsample.set_execute_cb([this, data, mip, compressed](const FgContext &fg) {
             const Ren::Image &input_tex = fg.AccessROImage(data->input_tex);
             const Ren::Image &exposure_tex = fg.AccessROImage(data->exposure_tex);
-            Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
+            
+            const Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
 
             Bloom::Params uniform_params;
             uniform_params.img_size[0] = output_tex.params.w;
@@ -141,7 +144,7 @@ Eng::FgResRef Eng::Renderer::AddBloomPasses(FgResRef hdr_texture, FgResRef expos
             uniform_params.pre_exposure = view_state_.pre_exposure;
 
             const Ren::Binding bindings[] = {
-                {Ren::eBindTarget::TexSampled, Bloom::INPUT_TEX_SLOT, {input_tex, *linear_sampler_}},
+                {Ren::eBindTarget::TexSampled, Bloom::INPUT_TEX_SLOT, {input_tex, linear_sampler_}},
                 {Ren::eBindTarget::TexSampled, Bloom::EXPOSURE_TEX_SLOT, exposure_tex},
                 {Ren::eBindTarget::ImageRW, Bloom::OUT_IMG_SLOT, output_tex}};
 
@@ -149,8 +152,8 @@ Eng::FgResRef Eng::Renderer::AddBloomPasses(FgResRef hdr_texture, FgResRef expos
                 Ren::Vec3u{(uniform_params.img_size[0] + Bloom::GRP_SIZE_X - 1u) / Bloom::GRP_SIZE_X,
                            (uniform_params.img_size[1] + Bloom::GRP_SIZE_Y - 1u) / Bloom::GRP_SIZE_Y, 1u};
 
-            DispatchCompute(*pi_bloom_downsample_[compressed][mip == 0], grp_count, bindings, &uniform_params,
-                            sizeof(uniform_params), fg.descr_alloc(), fg.log());
+            DispatchCompute(fg.cmd_buf(), pi_bloom_downsample_[compressed][mip == 0], fg.storages(), grp_count,
+                            bindings, &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
         });
     }
     Eng::FgResRef upsampled[BloomMipCount - 1];
@@ -185,10 +188,11 @@ Eng::FgResRef Eng::Renderer::AddBloomPasses(FgResRef hdr_texture, FgResRef expos
                 bloom_upsample.AddStorageImageOutput(output_name, desc, Ren::eStage::ComputeShader);
         }
 
-        bloom_upsample.set_execute_cb([this, data, mip, compressed](FgContext &fg) {
+        bloom_upsample.set_execute_cb([this, data, mip, compressed](const FgContext &fg) {
             const Ren::Image &input_tex = fg.AccessROImage(data->input_tex);
             const Ren::Image &blend_tex = fg.AccessROImage(data->blend_tex);
-            Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
+            
+            const Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
 
             Bloom::Params uniform_params;
             uniform_params.img_size[0] = output_tex.params.w;
@@ -203,8 +207,8 @@ Eng::FgResRef Eng::Renderer::AddBloomPasses(FgResRef hdr_texture, FgResRef expos
                 Ren::Vec3u{(uniform_params.img_size[0] + Bloom::GRP_SIZE_X - 1u) / Bloom::GRP_SIZE_X,
                            (uniform_params.img_size[1] + Bloom::GRP_SIZE_Y - 1u) / Bloom::GRP_SIZE_Y, 1u};
 
-            DispatchCompute(*pi_bloom_upsample_[compressed], grp_count, bindings, &uniform_params,
-                            sizeof(uniform_params), fg.descr_alloc(), fg.log());
+            DispatchCompute(fg.cmd_buf(), pi_bloom_upsample_[compressed], fg.storages(), grp_count, bindings,
+                            &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
         });
     }
 
@@ -237,10 +241,11 @@ Eng::FgResRef Eng::Renderer::AddSharpenPass(FgResRef input_tex, FgResRef exposur
             sharpen.AddStorageImageOutput("Sharpen Output", desc, Ren::eStage::ComputeShader);
     }
 
-    sharpen.set_execute_cb([this, data, compressed](FgContext &fg) {
+    sharpen.set_execute_cb([this, data, compressed](const FgContext &fg) {
         const Ren::Image &input_tex = fg.AccessROImage(data->input_tex);
         const Ren::Image &exposure_tex = fg.AccessROImage(data->exposure_tex);
-        Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
+        
+        const Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
 
         Sharpen::Params uniform_params;
         uniform_params.img_size[0] = output_tex.params.w;
@@ -249,7 +254,7 @@ Eng::FgResRef Eng::Renderer::AddSharpenPass(FgResRef input_tex, FgResRef exposur
         uniform_params.pre_exposure = view_state_.pre_exposure;
 
         const Ren::Binding bindings[] = {
-            {Ren::eBindTarget::TexSampled, Sharpen::INPUT_TEX_SLOT, {input_tex, *linear_sampler_}},
+            {Ren::eBindTarget::TexSampled, Sharpen::INPUT_TEX_SLOT, {input_tex, linear_sampler_}},
             {Ren::eBindTarget::TexSampled, Sharpen::EXPOSURE_TEX_SLOT, exposure_tex},
             {Ren::eBindTarget::ImageRW, Sharpen::OUT_IMG_SLOT, output_tex}};
 
@@ -257,8 +262,8 @@ Eng::FgResRef Eng::Renderer::AddSharpenPass(FgResRef input_tex, FgResRef exposur
             Ren::Vec3u{(uniform_params.img_size[0] + Sharpen::GRP_SIZE_X - 1u) / Sharpen::GRP_SIZE_X,
                        (uniform_params.img_size[1] + Sharpen::GRP_SIZE_Y - 1u) / Sharpen::GRP_SIZE_Y, 1u};
 
-        DispatchCompute(*pi_sharpen_[compressed], grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                        fg.descr_alloc(), fg.log());
+        DispatchCompute(fg.cmd_buf(), pi_sharpen_[compressed], fg.storages(), grp_count, bindings, &uniform_params,
+                        sizeof(uniform_params), fg.descr_alloc(), fg.log());
     });
 
     return output_tex;

@@ -49,6 +49,8 @@ bool Gui::BitmapFont::Load(std::string_view name, std::istream &data, Ren::Conte
         return false;
     }
 
+    const Ren::ApiContext &api = ctx.api();
+
     for (uint32_t i = 0; i < chunks_size; i += 3 * sizeof(uint32_t)) {
         uint32_t chunk_id, chunk_off, chunk_size;
         if (!data.read((char *)&chunk_id, sizeof(uint32_t)) || !data.read((char *)&chunk_off, sizeof(uint32_t)) ||
@@ -82,15 +84,22 @@ bool Gui::BitmapFont::Load(std::string_view name, std::istream &data, Ren::Conte
             blend_mode_ = eBlendMode(blend_mode);
 
             const uint32_t img_data_size = 4u * img_data_w * img_data_h;
-            auto stage_buf = Ren::Buffer{"Temp Stage Buf", ctx.api_ctx(), Ren::eBufType::Upload, img_data_size};
+
+            Ren::BufferMain stage_buf_main = {};
+            Ren::BufferCold stage_buf_cold = {};
+            if (!Buffer_Init(api, stage_buf_main, stage_buf_cold, Ren::String{}, Ren::eBufType::Upload, img_data_size,
+                             ctx.log())) {
+                return false;
+            }
+
             { // Update staging buffer
-                uint8_t *stage_data = stage_buf.Map();
+                uint8_t *stage_data = Buffer_Map(api, stage_buf_main, stage_buf_cold);
                 if (!data.read((char *)stage_data, img_data_size)) {
-                    stage_buf.Unmap();
-                    stage_buf.FreeImmediate();
+                    Buffer_Unmap(api, stage_buf_main, stage_buf_cold);
+                    Buffer_DestroyImmediately(api, stage_buf_main, stage_buf_cold);
                     return false;
                 }
-                stage_buf.Unmap();
+                Buffer_Unmap(api, stage_buf_main, stage_buf_cold);
             }
 
             Ren::CommandBuffer cmd_buf = ctx.BegTempSingleTimeCommands();
@@ -99,15 +108,15 @@ bool Gui::BitmapFont::Load(std::string_view name, std::istream &data, Ren::Conte
             p.w = img_data_w;
             p.h = img_data_h;
             p.format = Ren::eFormat::RGBA8;
-            p.sampling.filter =
-                draw_mode_ == eDrawMode::Passthrough ? Ren::eFilter::Nearest : Ren::eFilter::Bilinear;
+            p.sampling.filter = draw_mode_ == eDrawMode::Passthrough ? Ren::eFilter::Nearest : Ren::eFilter::Bilinear;
             p.sampling.wrap = Ren::eWrap::ClampToBorder;
 
             Ren::eImgLoadStatus status;
-            tex_ = ctx.LoadImageRegion(name, stage_buf, 0, img_data_size, p, cmd_buf, &status);
+            tex_ = ctx.LoadImageRegion(name, stage_buf_main, 0, img_data_size, p, cmd_buf, &status);
 
             ctx.EndTempSingleTimeCommands(cmd_buf);
-            stage_buf.FreeImmediate();
+
+            Buffer_DestroyImmediately(api, stage_buf_main, stage_buf_cold);
         } else if (chunk_id == uint32_t(eFontFileChunk::FontChGlyphData)) {
             if (!data.read((char *)&glyph_range_count_, sizeof(uint32_t))) {
                 return false;

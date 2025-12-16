@@ -8,34 +8,45 @@
 #include "../Renderer_Structs.h"
 #include "../shaders/skinning_interface.h"
 
-void Eng::ExSkinning::Execute(FgContext &fg) {
+void Eng::ExSkinning::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
 
-    const Ren::Buffer &skin_vtx_buf = fg.AccessROBuffer(skin_vtx_buf_);
-    const Ren::Buffer &skin_transforms_buf = fg.AccessROBuffer(skin_transforms_buf_);
-    const Ren::Buffer &shape_keys_buf = fg.AccessROBuffer(shape_keys_buf_);
-    const Ren::Buffer &delta_buf = fg.AccessROBuffer(delta_buf_);
+    const Ren::BufferHandle skin_vtx_buf = fg.AccessROBuffer(skin_vtx_buf_);
+    const Ren::BufferHandle skin_transforms_buf = fg.AccessROBuffer(skin_transforms_buf_);
+    const Ren::BufferHandle shape_keys_buf = fg.AccessROBuffer(shape_keys_buf_);
+    const Ren::BufferHandle delta_buf = fg.AccessROBuffer(delta_buf_);
 
-    Ren::Buffer &vtx_buf1 = fg.AccessRWBuffer(vtx_buf1_);
-    Ren::Buffer &vtx_buf2 = fg.AccessRWBuffer(vtx_buf2_);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessRWBuffer(vtx_buf1_);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessRWBuffer(vtx_buf2_);
+
+    const Ren::PipelineMain &pi = fg.pipelines().Get(pi_skinning_).first;
+    const Ren::ProgramMain &pr = fg.programs().Get(pi.prog).first;
 
     if (!p_list_->skin_regions.empty()) {
-        Ren::ApiContext *api_ctx = fg.ren_ctx().api_ctx();
-        VkCommandBuffer cmd_buf = api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+        const Ren::ApiContext &api = fg.ren_ctx().api();
+        VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
-        VkDescriptorSetLayout descr_set_layout = pi_skinning_->prog()->descr_set_layouts()[0];
+        VkDescriptorSetLayout descr_set_layout = pr.descr_set_layouts[0];
         Ren::DescrSizes descr_sizes;
         descr_sizes.sbuf_count = 6;
         VkDescriptorSet descr_set = fg.descr_alloc().Alloc(descr_sizes, descr_set_layout);
 
+        const Ren::BufferMain &skin_vtx_buf_main = fg.storages().buffers.Get(skin_vtx_buf).first;
+        const Ren::BufferMain &skin_transforms_buf_main = fg.storages().buffers.Get(skin_transforms_buf).first;
+        const Ren::BufferMain &shape_keys_buf_main = fg.storages().buffers.Get(shape_keys_buf).first;
+        const Ren::BufferMain &delta_buf_main = fg.storages().buffers.Get(delta_buf).first;
+
+        const Ren::BufferMain &vtx_buf1_main = fg.storages().buffers.Get(vtx_buf1).first;
+        const Ren::BufferMain &vtx_buf2_main = fg.storages().buffers.Get(vtx_buf2).first;
+
         { // update descriptor set
             const VkDescriptorBufferInfo buf_infos[6] = {
-                {skin_vtx_buf.vk_handle(), 0, VK_WHOLE_SIZE},        // input vertices binding
-                {skin_transforms_buf.vk_handle(), 0, VK_WHOLE_SIZE}, // input matrices binding
-                {shape_keys_buf.vk_handle(), 0, VK_WHOLE_SIZE},      // input shape keys binding
-                {delta_buf.vk_handle(), 0, VK_WHOLE_SIZE},           // input vertex deltas binding
-                {vtx_buf1.vk_handle(), 0, VK_WHOLE_SIZE},            // output vertices0 binding
-                {vtx_buf2.vk_handle(), 0, VK_WHOLE_SIZE}             // output vertices1 binding
+                {skin_vtx_buf_main.buf, 0, VK_WHOLE_SIZE},        // input vertices binding
+                {skin_transforms_buf_main.buf, 0, VK_WHOLE_SIZE}, // input matrices binding
+                {shape_keys_buf_main.buf, 0, VK_WHOLE_SIZE},      // input shape keys binding
+                {delta_buf_main.buf, 0, VK_WHOLE_SIZE},           // input vertex deltas binding
+                {vtx_buf1_main.buf, 0, VK_WHOLE_SIZE},            // output vertices0 binding
+                {vtx_buf2_main.buf, 0, VK_WHOLE_SIZE}             // output vertices1 binding
             };
 
             VkWriteDescriptorSet descr_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -46,12 +57,11 @@ void Eng::ExSkinning::Execute(FgContext &fg) {
             descr_write.descriptorCount = 6;
             descr_write.pBufferInfo = buf_infos;
 
-            api_ctx->vkUpdateDescriptorSets(api_ctx->device, 1, &descr_write, 0, nullptr);
+            api.vkUpdateDescriptorSets(api.device, 1, &descr_write, 0, nullptr);
         }
 
-        api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_skinning_->handle());
-        api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_skinning_->layout(), 0, 1,
-                                         &descr_set, 0, nullptr);
+        api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+        api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 1, &descr_set, 0, nullptr);
 
         for (uint32_t i = 0; i < uint32_t(p_list_->skin_regions.size()); i++) {
             const skin_region_t &sr = p_list_->skin_regions[i];
@@ -65,10 +75,10 @@ void Eng::ExSkinning::Execute(FgContext &fg) {
                 uniform_params.uShapeParamsCurr = Ren::Vec4u{0, 0, 0, 0};
                 uniform_params.uShapeParamsPrev = Ren::Vec4u{0, 0, 0, 0};
 
-                api_ctx->vkCmdPushConstants(cmd_buf, pi_skinning_->layout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                                            sizeof(Skinning::Params), &uniform_params);
+                api.vkCmdPushConstants(cmd_buf, pi.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(Skinning::Params),
+                                       &uniform_params);
 
-                api_ctx->vkCmdDispatch(cmd_buf, (sr.vertex_count + Skinning::GRP_SIZE - 1) / Skinning::GRP_SIZE, 1, 1);
+                api.vkCmdDispatch(cmd_buf, (sr.vertex_count + Skinning::GRP_SIZE - 1) / Skinning::GRP_SIZE, 1, 1);
             }
 
             if (sr.shape_keyed_vertex_count) {
@@ -81,11 +91,11 @@ void Eng::ExSkinning::Execute(FgContext &fg) {
                 uniform_params.uShapeParamsPrev =
                     Ren::Vec4u{sr.shape_key_offset_prev, sr.shape_key_count_prev, sr.delta_offset, 0};
 
-                api_ctx->vkCmdPushConstants(cmd_buf, pi_skinning_->layout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                                            sizeof(Skinning::Params), &uniform_params);
+                api.vkCmdPushConstants(cmd_buf, pi.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(Skinning::Params),
+                                       &uniform_params);
 
-                api_ctx->vkCmdDispatch(
-                    cmd_buf, (sr.shape_keyed_vertex_count + Skinning::GRP_SIZE - 1) / Skinning::GRP_SIZE, 1, 1);
+                api.vkCmdDispatch(cmd_buf, (sr.shape_keyed_vertex_count + Skinning::GRP_SIZE - 1) / Skinning::GRP_SIZE,
+                                  1, 1);
             }
         }
     }

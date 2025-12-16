@@ -109,3 +109,132 @@ void test_storage() {
 
     printf("OK\n");
 }
+
+void test_storage_new() {
+    using namespace Ren;
+
+    printf("Test storage_new        | ");
+
+    { // Simple storage
+        struct DataMain {
+            int light;
+        };
+
+        struct DataCold {
+            int heavy[8];
+        };
+
+        DualStorage<DataMain, DataCold> new_storage;
+
+        const Handle<DataMain> handle0 = new_storage.Emplace();
+        const Handle<DataMain> handle1 = new_storage.Emplace();
+        const Handle<DataMain> handle2 = new_storage.Emplace();
+        const Handle<DataMain> handle3 = new_storage.Emplace();
+
+        require(handle0.index == 0 && handle0.generation == 0);
+        require(handle1.index == 1 && handle1.generation == 0);
+        require(handle2.index == 2 && handle2.generation == 0);
+        require(handle3.index == 3 && handle3.generation == 0);
+
+        const std::pair<DataMain &, DataCold &> data0 = new_storage.Get(handle0);
+        const std::pair<DataMain &, DataCold &> data1 = new_storage.Get(handle1);
+        const std::pair<DataMain &, DataCold &> data2 = new_storage.Get(handle2);
+        const std::pair<DataMain &, DataCold &> data3 = new_storage.Get(handle3);
+
+        data0.first.light = 0;
+        data1.first.light = 1;
+        data2.first.light = 2;
+        data3.first.light = 3;
+
+        new_storage.Free(handle0);
+        new_storage.Free(handle1);
+        new_storage.Free(handle2);
+        new_storage.Free(handle3);
+
+        const Handle<DataMain> handle4 = new_storage.Emplace();
+        const Handle<DataMain> handle5 = new_storage.Emplace();
+        const Handle<DataMain> handle6 = new_storage.Emplace();
+        const Handle<DataMain> handle7 = new_storage.Emplace();
+
+        require(handle4.index == 3 && handle4.generation == 1);
+        require(handle5.index == 2 && handle5.generation == 1);
+        require(handle6.index == 1 && handle6.generation == 1);
+        require(handle7.index == 0 && handle7.generation == 1);
+
+        new_storage.Free(handle4);
+        new_storage.Free(handle5);
+        new_storage.Free(handle6);
+        new_storage.Free(handle7);
+    }
+
+    { // Named storage
+        struct DataMain {
+            int light;
+        };
+
+        struct DataCold {
+            int heavy[8];
+        };
+
+        NamedDualStorage<DataMain, DataCold> new_storage;
+
+        const auto name0 = String{"data0"};
+        const auto name1 = String{"data1"};
+        const auto name2 = String{"data2"};
+        const auto name3 = String{"data3"};
+
+        const Handle<DataMain> handle0 = new_storage.Emplace(name0);
+        const Handle<DataMain> handle1 = new_storage.Emplace(name1);
+        const Handle<DataMain> handle2 = new_storage.Emplace(name2);
+        const Handle<DataMain> handle3 = new_storage.Emplace(name3);
+
+        require(handle0.index == 0 && handle0.generation == 0);
+        require(handle1.index == 1 && handle1.generation == 0);
+        require(handle2.index == 2 && handle2.generation == 0);
+        require(handle3.index == 3 && handle3.generation == 0);
+
+        const Handle<DataMain> handle0_ = new_storage.Find(name0);
+        const Handle<DataMain> handle1_ = new_storage.Find(name1);
+        const Handle<DataMain> handle2_ = new_storage.Find(name2);
+        const Handle<DataMain> handle3_ = new_storage.Find(name3);
+
+        require(handle0 == handle0_);
+        require(handle1 == handle1_);
+        require(handle2 == handle2_);
+        require(handle3 == handle3_);
+
+        const std::pair<DataMain &, DataCold &> data0 = new_storage.Get(handle0);
+        const std::pair<DataMain &, DataCold &> data1 = new_storage.Get(handle1);
+        const std::pair<DataMain &, DataCold &> data2 = new_storage.Get(handle2);
+        const std::pair<DataMain &, DataCold &> data3 = new_storage.Get(handle3);
+
+        data0.first.light = 0;
+        data1.first.light = 1;
+        data2.first.light = 2;
+        data3.first.light = 3;
+
+        new_storage.Free(handle0);
+        new_storage.Free(handle1);
+        new_storage.Free(handle2);
+        new_storage.Free(handle3);
+
+        const Handle<DataMain> handle4 = new_storage.Emplace(name0);
+        const Handle<DataMain> handle5 = new_storage.Emplace(name1);
+        const Handle<DataMain> handle6 = new_storage.Emplace(name2);
+        const Handle<DataMain> handle7 = new_storage.Emplace(name3);
+
+        require(handle4.index == 3 && handle4.generation == 1);
+        require(handle5.index == 2 && handle5.generation == 1);
+        require(handle6.index == 1 && handle6.generation == 1);
+        require(handle7.index == 0 && handle7.generation == 1);
+
+        new_storage.Free(handle4);
+        new_storage.Free(handle5);
+        new_storage.Free(handle6);
+        new_storage.Free(handle7);
+
+        require(new_storage.ReleaseUnusedStrings() == 4);
+    }
+
+    printf("OK\n");
+}

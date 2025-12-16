@@ -28,35 +28,9 @@ struct vtx_delta_t {
 };
 
 struct BufferRange {
-    WeakBufRef buf;
+    BufferHandle buf;
     SubAllocation sub;
     uint32_t size = 0;
-
-    BufferRange() = default;
-    BufferRange(BufRef &_buf, const SubAllocation _sub, const uint32_t _size) : buf(_buf), sub(_sub), size(_size) {}
-    ~BufferRange() { Release(); }
-
-    BufferRange(const BufferRange &rhs) = delete;
-    BufferRange(BufferRange &&rhs) noexcept = default;
-
-    BufferRange &operator=(const BufferRange &rhs) = delete;
-    BufferRange &operator=(BufferRange &&rhs) noexcept {
-        Release();
-
-        buf = std::move(rhs.buf);
-        sub = std::exchange(rhs.sub, {});
-        size = std::exchange(rhs.size, 0);
-
-        return *this;
-    }
-
-    void Release() {
-        if (buf) {
-            const bool res = buf->FreeSubRegion(sub);
-            assert(res);
-        }
-        buf = WeakBufRef{};
-    }
 };
 
 enum class eMeshLoadStatus { Error, Found, CreatedFromData };
@@ -84,7 +58,8 @@ class Mesh : public RefCounter {
     eMeshType type_ = eMeshType::Undefined;
     Bitmask<eMeshFlags> flags_;
     bool ready_ = false;
-    BufferRange attribs_buf1_, attribs_buf2_, sk_attribs_buf_, sk_deltas_buf_, indices_buf_;
+    BufferRange attribs_buf1_, attribs_buf2_, indices_buf_;
+    BufferRange sk_attribs_buf_, sk_deltas_buf_;
     std::vector<float> attribs_;
     std::vector<uint32_t> indices_;
     std::vector<vtx_delta_t> deltas_;
@@ -95,23 +70,27 @@ class Mesh : public RefCounter {
     Skeleton skel_;
 
     // simple static mesh with normals
-    void InitMeshSimple(std::istream &data, const material_load_callback &on_mat_load, ApiContext *api_ctx,
-                        BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, ILog *log);
+    void InitMeshSimple(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
+                        DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1,
+                        BufferHandle vertex_buf2, BufferHandle index_buf, ILog *log);
     // simple mesh with 4 per-vertex colors
-    void InitMeshColored(std::istream &data, const material_load_callback &on_mat_load, ApiContext *api_ctx,
-                         BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, ILog *log);
+    void InitMeshColored(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
+                         DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1,
+                         BufferHandle vertex_buf2, BufferHandle index_buf, ILog *log);
     // mesh with 4 bone weights per vertex
-    void InitMeshSkeletal(std::istream &data, const material_load_callback &on_mat_load, ApiContext *api_ctx,
-                          BufRef &skin_vertex_buf, BufRef &delta_buf, BufRef &index_buf, ILog *log);
+    void InitMeshSkeletal(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
+                          DualStorage<BufferMain, BufferCold> &buffers, BufferHandle skin_vertex_buf,
+                          BufferHandle delta_buf, BufferHandle index_buf, ILog *log);
 
   public:
     Mesh() = default;
     Mesh(std::string_view name, const float *positions, int vtx_count, const uint32_t *indices, int ndx_count,
-         ApiContext *api_ctx, BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, eMeshLoadStatus *load_status,
+         const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1,
+         BufferHandle vertex_buf2, BufferHandle index_buf, eMeshLoadStatus *load_status, ILog *log);
+    Mesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load, const ApiContext &api,
+         DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1, BufferHandle vertex_buf2,
+         BufferHandle index_buf, BufferHandle skin_vertex_buf, BufferHandle delta_buf, eMeshLoadStatus *load_status,
          ILog *log);
-    Mesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load, ApiContext *api_ctx,
-         BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, BufRef &skin_vertex_buf, BufRef &delta_buf,
-         eMeshLoadStatus *load_status, ILog *log);
 
     Mesh(const Mesh &rhs) = delete;
     Mesh(Mesh &&rhs) = default;
@@ -122,9 +101,9 @@ class Mesh : public RefCounter {
     eMeshType type() const { return type_; }
     Bitmask<eMeshFlags> flags() const { return flags_; }
     bool ready() const { return ready_; }
-    BufHandle attribs_buf1_handle() const { return attribs_buf1_.buf->handle(); }
-    BufHandle attribs_buf2_handle() const { return attribs_buf2_.buf->handle(); }
-    BufHandle indices_buf_handle() const { return indices_buf_.buf->handle(); }
+    BufferHandle attribs_buf1_handle() const { return attribs_buf1_.buf; }
+    BufferHandle attribs_buf2_handle() const { return attribs_buf2_.buf; }
+    BufferHandle indices_buf_handle() const { return indices_buf_.buf; }
     Span<const float> attribs() const { return attribs_; }
     const BufferRange &attribs_buf1() const { return attribs_buf1_; }
     const BufferRange &attribs_buf2() const { return attribs_buf2_; }
@@ -141,13 +120,16 @@ class Mesh : public RefCounter {
     const Skeleton *skel() const { return &skel_; }
     Skeleton *skel() { return &skel_; }
 
-    void Init(const float *positions, int vtx_count, const uint32_t *indices, int ndx_count, ApiContext *api_ctx,
-              BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, eMeshLoadStatus *load_status, ILog *log);
-    void Init(std::istream *data, const material_load_callback &on_mat_load, ApiContext *api_ctx, BufRef &vertex_buf1,
-              BufRef &vertex_buf2, BufRef &index_buf, BufRef &skin_vertex_buf, BufRef &delta_buf,
+    void Init(const float *positions, int vtx_count, const uint32_t *indices, int ndx_count, const ApiContext &api,
+              DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1, BufferHandle vertex_buf2,
+              BufferHandle index_buf, eMeshLoadStatus *load_status, ILog *log);
+    void Init(std::istream *data, const material_load_callback &on_mat_load, const ApiContext &api,
+              DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1, BufferHandle vertex_buf2,
+              BufferHandle index_buf, BufferHandle skin_vertex_buf, BufferHandle delta_buf,
               eMeshLoadStatus *load_status, ILog *log);
 
-    void InitBufferData(ApiContext *api_ctx, BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf);
+    void InitBufferData(const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1,
+                        BufferHandle vertex_buf2, BufferHandle index_buf, ILog *log);
     void ReleaseBufferData();
 
     std::unique_ptr<IAccStructure> blas;

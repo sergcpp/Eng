@@ -42,7 +42,8 @@ using CommandBuffer = VkCommandBuffer;
 using CommandBuffer = void *;
 #endif
 class AnimSequence;
-class Buffer;
+struct BufferMain;
+struct BufferCold;
 class Camera;
 class Context;
 class DescrPool;
@@ -51,32 +52,48 @@ class IAccStructure;
 class ILog;
 class Material;
 class Mesh;
-class Pipeline;
+struct PipelineMain;
+struct PipelineCold;
 class ProbeStorage;
-class Program;
+struct ProgramMain;
+struct ProgramCold;
 struct RastState;
-class RenderPass;
-class Sampler;
-class Shader;
+struct RenderPassMain;
+struct RenderPassCold;
+struct SamplerMain;
+struct SamplerCold;
+struct ShaderMain;
+struct ShaderCold;
 class Image;
 class ImageAtlas;
 class Texture2DAtlas;
 class ImageSplitter;
-class VertexInput;
+struct VertexInputMain;
+struct VertexInputCold;
 
 using AnimSeqRef = StrongRef<AnimSequence, NamedStorage<AnimSequence>>;
-using BufRef = StrongRef<Buffer, NamedStorage<Buffer>>;
-using WeakBufRef = WeakRef<Buffer, NamedStorage<Buffer>>;
 using MaterialRef = StrongRef<Material, NamedStorage<Material>>;
 using MeshRef = StrongRef<Mesh, NamedStorage<Mesh>>;
-using VertexInputRef = StrongRef<VertexInput, SortedStorage<VertexInput>>;
-using PipelineRef = StrongRef<Pipeline, SortedStorage<Pipeline>>;
-using ProgramRef = StrongRef<Program, SortedStorage<Program>>;
-using SamplerRef = StrongRef<Sampler, SparseArray<Sampler>>;
-using WeakSamplerRef = WeakRef<Sampler, SparseArray<Sampler>>;
-using ShaderRef = StrongRef<Shader, NamedStorage<Shader>>;
 using ImgRef = StrongRef<Image, NamedStorage<Image>>;
 using WeakImgRef = WeakRef<Image, NamedStorage<Image>>;
+
+using BufferHandle = Handle<BufferMain>;
+using ShaderHandle = Handle<ShaderMain>;
+using ProgramHandle = Handle<ProgramMain>;
+using VertexInputHandle = Handle<VertexInputMain>;
+using PipelineHandle = Handle<PipelineMain>;
+using RenderPassHandle = Handle<RenderPassMain>;
+using SamplerHandle = Handle<SamplerMain>;
+
+struct StoragesRef {
+    SortedDualStorage<VertexInputMain, VertexInputCold> &vtx_inputs;
+    NamedDualStorage<ShaderMain, ShaderCold> &shaders;
+    SortedDualStorage<ProgramMain, ProgramCold> &programs;
+    SortedDualStorage<PipelineMain, PipelineCold> &pipelines;
+    SortedDualStorage<RenderPassMain, RenderPassCold> &render_passes;
+    NamedDualStorage<BufferMain, BufferCold> &buffers;
+    SortedDualStorage<SamplerMain, SamplerCold> &samplers;
+};
 
 const char *Version();
 } // namespace Ren

@@ -25,12 +25,12 @@ class DescrMultiPoolAlloc;
 
 struct StageBufRef {
     Context &ctx;
-    BufRef buf;
+    BufferHandle buf;
     SyncFence &fence;
     CommandBuffer cmd_buf;
     bool &is_in_use;
 
-    StageBufRef(Context &_ctx, BufRef &_buf, SyncFence &_fence, CommandBuffer cmd_buf, bool &_is_in_use);
+    StageBufRef(Context &_ctx, BufferHandle _buf, SyncFence &_fence, CommandBuffer cmd_buf, bool &_is_in_use);
     ~StageBufRef();
 
     StageBufRef(const StageBufRef &rhs) = delete;
@@ -39,7 +39,7 @@ struct StageBufRef {
 
 struct StageBufs {
     Context *ctx = nullptr;
-    BufRef bufs[StageBufferCount];
+    BufferHandle bufs[StageBufferCount];
     SyncFence fences[StageBufferCount];
     CommandBuffer cmd_bufs[StageBufferCount] = {};
     bool is_in_use[StageBufferCount] = {};
@@ -66,29 +66,31 @@ class Context {
 
     MeshStorage meshes_;
     MaterialStorage materials_;
-    ProgramStorage programs_;
-    VertexInputStorage vtx_inputs_;
-    RenderPassStorage render_passes_;
-    PipelineStorage pipelines_;
-    ShaderStorage shaders_;
     ImageStorage images_;
     ImageRegionStorage image_regions_;
-    SamplerStorage samplers_;
     AnimSeqStorage anims_;
-    BufferStorage buffers_;
 
-    BufRef default_vertex_buf1_, default_vertex_buf2_, default_skin_vertex_buf_, default_delta_buf_,
+    SortedDualStorage<VertexInputMain, VertexInputCold> vtx_inputs_;
+    NamedDualStorage<ShaderMain, ShaderCold> shaders_;
+    SortedDualStorage<ProgramMain, ProgramCold> programs_;
+    SortedDualStorage<PipelineMain, PipelineCold> pipelines_;
+    SortedDualStorage<RenderPassMain, RenderPassCold> render_passes_;
+    NamedDualStorage<BufferMain, BufferCold> buffers_;
+    SortedDualStorage<SamplerMain, SamplerCold> samplers_;
+
+    StoragesRef storages_ =
+        StoragesRef{vtx_inputs_, shaders_, programs_, pipelines_, render_passes_, buffers_, samplers_};
+
+    BufferHandle default_vertex_buf1_, default_vertex_buf2_, default_skin_vertex_buf_, default_delta_vertex_buf_,
         default_indices_buf_;
     std::unique_ptr<MemAllocators> default_mem_allocs_;
 
-#if defined(REN_VK_BACKEND)
     std::unique_ptr<DescrMultiPoolAlloc> default_descr_alloc_[MaxFramesInFlight];
-#endif
 
     ImageAtlasArray image_atlas_;
 
 #if defined(REN_VK_BACKEND) || defined(REN_GL_BACKEND)
-    std::unique_ptr<ApiContext> api_ctx_;
+    std::unique_ptr<ApiContext> api_;
 #endif
 
     void CheckDeviceCapabilities();
@@ -107,7 +109,8 @@ class Context {
     int validation_level() const { return validation_level_; }
 
 #if defined(REN_VK_BACKEND) || defined(REN_GL_BACKEND)
-    ApiContext *api_ctx() { return api_ctx_.get(); }
+    const ApiContext &api() const { return *api_; }
+    ApiContext &api() { return *api_; }
     uint64_t device_id() const;
 #endif
 
@@ -115,13 +118,31 @@ class Context {
 
     ImageStorage &images() { return images_; }
     MaterialStorage &materials() { return materials_; }
-    ProgramStorage &programs() { return programs_; }
 
-    BufRef default_vertex_buf1() const { return default_vertex_buf1_; }
-    BufRef default_vertex_buf2() const { return default_vertex_buf2_; }
-    BufRef default_skin_vertex_buf() const { return default_skin_vertex_buf_; }
-    BufRef default_delta_buf() const { return default_delta_buf_; }
-    BufRef default_indices_buf() const { return default_indices_buf_; }
+    SortedDualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() { return vtx_inputs_; }
+    NamedDualStorage<ShaderMain, ShaderCold> &shaders() { return shaders_; }
+    SortedDualStorage<ProgramMain, ProgramCold> &programs() { return programs_; }
+    SortedDualStorage<PipelineMain, PipelineCold> &pipelines() { return pipelines_; }
+    SortedDualStorage<RenderPassMain, RenderPassCold> &render_passes() { return render_passes_; }
+    NamedDualStorage<BufferMain, BufferCold> &buffers() { return buffers_; }
+    SortedDualStorage<SamplerMain, SamplerCold> &samplers() { return samplers_; }
+
+    const SortedDualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() const { return vtx_inputs_; }
+    const NamedDualStorage<ShaderMain, ShaderCold> &shaders() const { return shaders_; }
+    const SortedDualStorage<ProgramMain, ProgramCold> &programs() const { return programs_; }
+    const SortedDualStorage<PipelineMain, PipelineCold> &pipelines() const { return pipelines_; }
+    const SortedDualStorage<RenderPassMain, RenderPassCold> &render_passes() const { return render_passes_; }
+    const NamedDualStorage<BufferMain, BufferCold> &buffers() const { return buffers_; }
+    const SortedDualStorage<SamplerMain, SamplerCold> &samplers() const { return samplers_; }
+
+    const StoragesRef &storages() const { return storages_; }
+
+    BufferHandle default_vertex_buf1() const { return default_vertex_buf1_; }
+    BufferHandle default_vertex_buf2() const { return default_vertex_buf2_; }
+    BufferHandle default_skin_vertex_buf() const { return default_skin_vertex_buf_; }
+    BufferHandle default_delta_vertex_buf() const { return default_delta_vertex_buf_; }
+    BufferHandle default_indices_buf() const { return default_indices_buf_; }
+
     MemAllocators *default_mem_allocs() { return default_mem_allocs_.get(); }
     DescrMultiPoolAlloc &default_descr_alloc() const;
 
@@ -142,13 +163,13 @@ class Context {
     MeshRef LoadMesh(std::string_view name, const float *positions, int vtx_count, const uint32_t *indices,
                      int ndx_count, eMeshLoadStatus *load_status);
     MeshRef LoadMesh(std::string_view name, const float *positions, int vtx_count, const uint32_t *indices,
-                     int ndx_count, BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf,
+                     int ndx_count, BufferHandle vertex_buf1, BufferHandle vertex_buf2, BufferHandle index_buf,
                      eMeshLoadStatus *load_status);
     MeshRef LoadMesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
                      eMeshLoadStatus *load_status);
     MeshRef LoadMesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
-                     BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, BufRef &skin_vertex_buf,
-                     BufRef &delta_buf, eMeshLoadStatus *load_status);
+                     BufferHandle vertex_buf1, BufferHandle vertex_buf2, BufferHandle index_buf,
+                     BufferHandle skin_vertex_buf, BufferHandle delta_buf, eMeshLoadStatus *load_status);
 
     /*** Material ***/
     MaterialRef LoadMaterial(std::string_view name, std::string_view mat_src, eMatLoadStatus *status,
@@ -157,44 +178,43 @@ class Context {
     int NumMaterialsNotReady();
     void ReleaseMaterials();
 
-    /*** Program ***/
+    // Program
 #if defined(REN_GL_BACKEND)
-    ShaderRef LoadShaderGLSL(std::string_view name, std::string_view shader_src, eShaderType type);
+    ShaderHandle LoadShader(std::string_view name, std::string_view shader_src, eShaderType type);
 #endif
-#if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
-    ShaderRef LoadShaderSPIRV(std::string_view name, Span<const uint8_t> shader_data, eShaderType type);
-#endif
+    ShaderHandle LoadShader(std::string_view name, Span<const uint8_t> spirv_data, eShaderType type);
 
-#if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
-    ProgramRef LoadProgram(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref, ShaderRef gs_ref);
-    ProgramRef LoadProgram(ShaderRef cs_source);
-#endif
+    ProgramHandle LoadProgram(ShaderHandle vs, ShaderHandle fs, ShaderHandle tcs, ShaderHandle tes, ShaderHandle gs);
+    ProgramHandle LoadProgram(ShaderHandle cs);
 
 #if defined(REN_VK_BACKEND)
-    ProgramRef LoadProgram2(ShaderRef raygen_ref, ShaderRef closesthit_ref, ShaderRef anyhit_ref, ShaderRef miss_ref,
-                            ShaderRef intersection_ref);
+    ProgramHandle LoadProgram2(ShaderHandle raygen, ShaderHandle closesthit, ShaderHandle anyhit, ShaderHandle miss,
+                               ShaderHandle intersection);
 #endif
 
-    ProgramRef GetProgram(uint32_t index);
     void ReleasePrograms();
 
-    /*** VertexInput ***/
-    VertexInputRef LoadVertexInput(Span<const VtxAttribDesc> attribs, const BufRef &elem_buf);
+    // VertexInput
+    VertexInputHandle FindOrCreateVertexInput(Span<const VtxAttribDesc> attribs, BufferHandle elem_buf);
+    void ReleaseVertexInput(const VertexInputHandle handle);
+    void ReleaseVertexInputs();
 
-    /*** RenderPass ***/
-    RenderPassRef LoadRenderPass(const RenderTarget &depth_rt, Span<const RenderTarget> color_rts) {
+    // RenderPass
+    RenderPassHandle FindOrCreateRenderPass(const RenderTargetInfo &depth_rt, Span<const RenderTargetInfo> color_rts);
+    RenderPassHandle FindOrCreateRenderPass(const RenderTarget &depth_rt, Span<const RenderTarget> color_rts) {
         SmallVector<RenderTargetInfo, 4> infos;
         for (int i = 0; i < color_rts.size(); ++i) {
             infos.emplace_back(color_rts[i]);
         }
-        return LoadRenderPass(RenderTargetInfo{depth_rt}, infos);
+        return FindOrCreateRenderPass(RenderTargetInfo{depth_rt}, infos);
     }
-    RenderPassRef LoadRenderPass(const RenderTargetInfo &depth_rt, Span<const RenderTargetInfo> color_rts);
+    void ReleaseRenderPass(const RenderPassHandle handle);
+    void ReleaseRenderPasses();
 
-    /*** Pipeline ***/
-    PipelineRef LoadPipeline(const ProgramRef &prog_ref, int subgroup_size = -1);
-    PipelineRef LoadPipeline(const RastState &rast_state, const ProgramRef &prog, const VertexInputRef &vtx_input,
-                             const RenderPassRef &render_pass, uint32_t subpass_index);
+    // Pipeline
+    PipelineHandle FindOrCreatePipeline(const ProgramHandle prog, int subgroup_size = -1);
+    PipelineHandle FindOrCreatePipeline(const RastState &rast_state, ProgramHandle prog, VertexInputHandle vtx_input,
+                                        RenderPassHandle render_pass, uint32_t subpass_index);
 
     /*** Image ***/
     ImgRef LoadImage(std::string_view name, const ImgParams &p, MemAllocators *mem_allocs, eImgLoadStatus *load_status);
@@ -211,14 +231,14 @@ class Context {
 
     /** Image regions (placed on default atlas) **/
     ImageRegionRef LoadImageRegion(std::string_view name, Span<const uint8_t> data, const ImgParams &p,
-                                     CommandBuffer cmd_buf, eImgLoadStatus *load_status);
-    ImageRegionRef LoadImageRegion(std::string_view name, const Buffer &sbuf, int data_off, int data_len,
-                                     const ImgParams &p, CommandBuffer cmd_buf, eImgLoadStatus *load_status);
+                                   CommandBuffer cmd_buf, eImgLoadStatus *load_status);
+    ImageRegionRef LoadImageRegion(std::string_view name, const BufferMain &sbuf, int data_off, int data_len,
+                                   const ImgParams &p, CommandBuffer cmd_buf, eImgLoadStatus *load_status);
 
     void ReleaseTextureRegions();
 
-    /** Samplers **/
-    SamplerRef LoadSampler(SamplingParams params, eSamplerLoadStatus *load_status);
+    // Samplers
+    SamplerHandle FindOrCreateSampler(SamplingParams params);
     void ReleaseSamplers();
 
     /*** Anims ***/
@@ -226,11 +246,18 @@ class Context {
     int NumAnimsNotReady();
     void ReleaseAnims();
 
-    /*** Buffers ***/
-    BufRef LoadBuffer(std::string_view name, eBufType type, uint32_t initial_size, uint32_t size_alignment = 1,
-                      MemAllocators *mem_allocs = nullptr);
-    BufRef LoadBuffer(std::string_view name, eBufType type, const BufHandle &handle, MemAllocation &&alloc,
-                      uint32_t initial_size, uint32_t size_alignment = 1);
+    // Buffers
+    BufferHandle FindOrCreateBuffer(std::string_view name, eBufType type, uint32_t initial_size,
+                                    uint32_t size_alignment = 1, MemAllocators *mem_allocs = nullptr);
+    BufferHandle CreateBuffer(std::string_view name, eBufType type, const BufferMain &buf_main, MemAllocation &&alloc,
+                              uint32_t initial_size, uint32_t size_alignment = 1);
+    int FindOrCreateBufferView(BufferHandle handle, eFormat format);
+    bool ResizeBuffer(BufferHandle handle, uint32_t new_size, bool keep_content = true,
+                      bool release_immediately = false);
+    uint8_t *MapBufferRange(BufferHandle handle, uint32_t offset, uint32_t size, bool persistent = false);
+    uint8_t *MapBuffer(BufferHandle handle, bool persistent = false);
+    void UnmapBuffer(BufferHandle handle);
+    void ReleaseBuffer(BufferHandle handle, bool immediately = false);
     void ReleaseBuffers();
 
     void InitDefaultBuffers();

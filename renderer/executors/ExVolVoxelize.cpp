@@ -7,7 +7,7 @@
 #include "../../utils/ShaderLoader.h"
 #include "../shaders/vol_interface.h"
 
-void Eng::ExVolVoxelize::Execute(FgContext &fg) {
+void Eng::ExVolVoxelize::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
     if (fg.ren_ctx().capabilities.hwrt) {
         Execute_HWRT(fg);
@@ -27,23 +27,23 @@ void Eng::ExVolVoxelize::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     }
 }
 
-void Eng::ExVolVoxelize::Execute_SWRT(FgContext &fg) {
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExVolVoxelize::Execute_SWRT(const FgContext &fg) {
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &stbn_tex = fg.AccessROImage(args_->stbn_tex);
 
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::Buffer &tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
-    const Ren::Buffer &blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
-    const Ren::Buffer &prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::Buffer &mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferHandle blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
+    const Ren::BufferHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
+    const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
 
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->swrt.vtx_buf1);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->swrt.ndx_buf);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->swrt.vtx_buf1);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->swrt.ndx_buf);
 
-    Ren::Image &out_emission_tex = fg.AccessRWImage(args_->out_emission_tex);
-    Ren::Image &out_scatter_tex = fg.AccessRWImage(args_->out_scatter_tex);
+    const Ren::Image &out_emission_tex = fg.AccessRWImage(args_->out_emission_tex);
+    const Ren::Image &out_scatter_tex = fg.AccessRWImage(args_->out_scatter_tex);
 
     if (view_state_->skip_volumetrics) {
         return;
@@ -80,10 +80,10 @@ void Eng::ExVolVoxelize::Execute_SWRT(FgContext &fg) {
     uniform_params.frame_index = view_state_->frame_index;
     uniform_params.hist_weight = (view_state_->pre_exposure / view_state_->prev_pre_exposure);
 
-    DispatchCompute(*pi_vol_voxelize_, grp_count, bindings, &uniform_params, sizeof(uniform_params), fg.descr_alloc(),
-                    fg.log());
+    DispatchCompute(fg.cmd_buf(), pi_vol_voxelize_, fg.storages(), grp_count, bindings, &uniform_params,
+                    sizeof(uniform_params), fg.descr_alloc(), fg.log());
 }
 
 #if defined(REN_GL_BACKEND)
-void Eng::ExVolVoxelize::Execute_HWRT(FgContext &fg) { assert(false && "Not implemented!"); }
+void Eng::ExVolVoxelize::Execute_HWRT(const FgContext &fg) { assert(false && "Not implemented!"); }
 #endif

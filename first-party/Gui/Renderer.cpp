@@ -22,7 +22,7 @@ static const uint16_t g_draw_mode_u16[] = {0, 32767, 65535};
 } // namespace Gui
 
 bool Gui::Renderer::Init() {
-    Ren::ProgramRef ui_program;
+    Ren::ProgramHandle ui_program;
 
 #if 0
     { // dump shaders into files
@@ -43,40 +43,40 @@ bool Gui::Renderer::Init() {
     { // Load main shader
         using namespace Ren;
 
-        ShaderRef ui_vs_ref, ui_fs_ref;
+        ShaderHandle ui_vs, ui_fs;
         if (ctx_.capabilities.spirv) {
-            ui_vs_ref = ctx_.LoadShaderSPIRV("__ui_vs__",
+            ui_vs = ctx_.LoadShader("__ui_vs__",
 #if defined(REN_VK_BACKEND)
-                                             ui_vert_spv,
+                                    ui_vert_spv,
 #else
-                                             ui_vert_spv_ogl,
+                                    ui_vert_spv_ogl,
 #endif
-                                             eShaderType::Vertex);
-            if (!ui_vs_ref->ready()) {
-                ctx_.log()->Error("[Gui::Renderer::Init]: Failed to compile vertex shader!");
+                                    eShaderType::Vertex);
+            if (!ui_vs) {
+                ctx_.log()->Error("[Gui::Renderer::Init]: Failed to initialize vertex shader!");
                 return false;
             }
-            ui_fs_ref = ctx_.LoadShaderSPIRV("__ui_fs__",
+            ui_fs = ctx_.LoadShader("__ui_fs__",
 #if defined(REN_VK_BACKEND)
-                                             ui_frag_spv,
+                                    ui_frag_spv,
 #else
-                                             ui_frag_spv_ogl,
+                                    ui_frag_spv_ogl,
 #endif
-                                             eShaderType::Fragment);
-            if (!ui_fs_ref->ready()) {
-                ctx_.log()->Error("[Gui::Renderer::Init]: Failed to compile fragment shader!");
+                                    eShaderType::Fragment);
+            if (!ui_fs) {
+                ctx_.log()->Error("[Gui::Renderer::Init]: Failed to initialize fragment shader!");
                 return false;
             }
         } else {
 #if defined(REN_GL_BACKEND)
-            ui_vs_ref = ctx_.LoadShaderGLSL("__ui_vs__", vs_source, eShaderType::Vertex);
-            if (!ui_vs_ref->ready()) {
-                ctx_.log()->Error("[Gui::Renderer::Init]: Failed to compile vertex shader!");
+            ui_vs = ctx_.LoadShader("__ui_vs__", vs_source, eShaderType::Vertex);
+            if (!ui_vs) {
+                ctx_.log()->Error("[Gui::Renderer::Init]: Failed to initialize vertex shader!");
                 return false;
             }
-            ui_fs_ref = ctx_.LoadShaderGLSL("__ui_fs__", fs_source, eShaderType::Fragment);
-            if (!ui_fs_ref->ready()) {
-                ctx_.log()->Error("[Gui::Renderer::Init]: Failed to compile fragment shader!");
+            ui_fs = ctx_.LoadShader("__ui_fs__", fs_source, eShaderType::Fragment);
+            if (!ui_fs) {
+                ctx_.log()->Error("[Gui::Renderer::Init]: Failed to initialize fragment shader!");
                 return false;
             }
 #else
@@ -84,9 +84,9 @@ bool Gui::Renderer::Init() {
 #endif
         }
 
-        ui_program = ctx_.LoadProgram(ui_vs_ref, ui_fs_ref, {}, {}, {});
+        ui_program = ctx_.LoadProgram(ui_vs, ui_fs, {}, {}, {});
         if (!ui_program) {
-            ctx_.log()->Error("[Gui::Renderer::Init]: Failed to link program!");
+            ctx_.log()->Error("[Gui::Renderer::Init]: Failed to initialize program!");
             return false;
         }
     }
@@ -95,23 +95,31 @@ bool Gui::Renderer::Init() {
 
     char name_buf[32];
     snprintf(name_buf, sizeof(name_buf), "Gui::VertexBuffer[%i]", instance_index_);
-    vertex_buf_ = ctx_.LoadBuffer(name_buf, Ren::eBufType::VertexAttribs, MaxVerticesPerRange * sizeof(vertex_t));
+    vertex_buf_ =
+        ctx_.FindOrCreateBuffer(name_buf, Ren::eBufType::VertexAttribs, MaxVerticesPerRange * sizeof(vertex_t));
 
     snprintf(name_buf, sizeof(name_buf), "Gui::VertexStageBuffer[%i]", instance_index_);
-    vertex_stage_buf_ = ctx_.LoadBuffer(name_buf, Ren::eBufType::Upload,
-                                        (Ren::MaxFramesInFlight + 1) * MaxVerticesPerRange * sizeof(vertex_t));
+    vertex_stage_buf_ = ctx_.FindOrCreateBuffer(name_buf, Ren::eBufType::Upload,
+                                                (Ren::MaxFramesInFlight + 1) * MaxVerticesPerRange * sizeof(vertex_t));
 
     snprintf(name_buf, sizeof(name_buf), "Gui::IndexBuffer[%i]", instance_index_);
-    index_buf_ = ctx_.LoadBuffer(name_buf, Ren::eBufType::VertexIndices, MaxIndicesPerRange * sizeof(uint16_t));
+    index_buf_ = ctx_.FindOrCreateBuffer(name_buf, Ren::eBufType::VertexIndices, MaxIndicesPerRange * sizeof(uint16_t));
 
     snprintf(name_buf, sizeof(name_buf), "Gui::IndexStageBuffer[%i]", instance_index_);
-    index_stage_buf_ = ctx_.LoadBuffer(name_buf, Ren::eBufType::Upload,
-                                       (Ren::MaxFramesInFlight + 1) * MaxIndicesPerRange * sizeof(uint16_t));
+    index_stage_buf_ = ctx_.FindOrCreateBuffer(name_buf, Ren::eBufType::Upload,
+                                               (Ren::MaxFramesInFlight + 1) * MaxIndicesPerRange * sizeof(uint16_t));
+
+    const Ren::ApiContext &api = ctx_.api();
 
     if (ctx_.capabilities.persistent_buf_mapping) {
+        const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.buffers().Get(vertex_stage_buf_);
+        const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.buffers().Get(index_stage_buf_);
+
         // map stage buffers directly
-        vtx_stage_data_ = reinterpret_cast<vertex_t *>(vertex_stage_buf_->Map(true /* persistent */));
-        ndx_stage_data_ = reinterpret_cast<uint16_t *>(index_stage_buf_->Map(true /* persistent */));
+        vtx_stage_data_ =
+            reinterpret_cast<vertex_t *>(Buffer_Map(api, vtx_stage_main, vtx_stage_cold, true /* persistent */));
+        ndx_stage_data_ =
+            reinterpret_cast<uint16_t *>(Buffer_Map(api, ndx_stage_main, ndx_stage_cold, true /* persistent */));
     } else {
         // use temporary storage
         stage_vtx_data_ = std::make_unique<vertex_t[]>(MaxVerticesPerRange);
@@ -124,15 +132,13 @@ bool Gui::Renderer::Init() {
         vtx_count_[i] = ndx_count_[i] = 0;
     }
 
-    Ren::ApiContext *api_ctx = ctx_.api_ctx();
-
     { // create renderpass
         const auto &p = ctx_.backbuffer_ref()->params;
         Ren::RenderTargetInfo rt_info = {p.format, p.samples, Ren::eImageLayout::ColorAttachmentOptimal,
                                          Ren::eLoadOp::Load, Ren::eStoreOp::Store};
         rt_info.flags = (Ren::Bitmask<Ren::eImgFlags>{p.flags} & ~Ren::Bitmask(Ren::eImgFlags::NoOwnership));
 
-        render_pass_ = ctx_.LoadRenderPass({}, {&rt_info, 1});
+        render_pass_ = ctx_.FindOrCreateRenderPass({}, {&rt_info, 1});
     }
 
     { // initialize vertex input
@@ -140,7 +146,7 @@ bool Gui::Renderer::Init() {
             {vertex_buf_, VTX_POS_LOC, 3, Ren::eType::Float32, sizeof(vertex_t), offsetof(vertex_t, pos)},
             {vertex_buf_, VTX_COL_LOC, 4, Ren::eType::Uint8_unorm, sizeof(vertex_t), offsetof(vertex_t, col)},
             {vertex_buf_, VTX_UVS_LOC, 4, Ren::eType::Uint16_unorm, sizeof(vertex_t), offsetof(vertex_t, uvs)}};
-        vtx_input_ = ctx_.LoadVertexInput(attribs, index_buf_);
+        vtx_input_ = ctx_.FindOrCreateVertexInput(attribs, index_buf_);
     }
 
     { // create graphics pipeline
@@ -151,7 +157,8 @@ bool Gui::Renderer::Init() {
         rast_state.blend.src_color = rast_state.blend.src_alpha = uint8_t(Ren::eBlendFactor::SrcAlpha);
         rast_state.blend.dst_color = rast_state.blend.dst_alpha = uint8_t(Ren::eBlendFactor::OneMinusSrcAlpha);
 
-        if (!pipeline_.Init(api_ctx, rast_state, std::move(ui_program), vtx_input_, render_pass_, 0, ctx_.log())) {
+        pipeline_ = ctx_.FindOrCreatePipeline(rast_state, ui_program, vtx_input_, render_pass_, 0);
+        if (!pipeline_) {
             ctx_.log()->Error("[Gui::Renderer::Init]: Failed to create graphics pipeline!");
             return false;
         }

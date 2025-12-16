@@ -5,9 +5,3 @@
 #elif defined(REN_VK_BACKEND)
 #include "SamplerVK.h"
 #endif
-
-namespace Ren {
-using SamplerRef = StrongRef<Sampler, SparseArray<Sampler>>;
-using WeakSamplerRef = WeakRef<Sampler, SparseArray<Sampler>>;
-using SamplerStorage = SparseArray<Sampler>;
-} // namespace Ren

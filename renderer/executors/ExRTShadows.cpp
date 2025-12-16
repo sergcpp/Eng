@@ -6,7 +6,7 @@
 #include "../../utils/ShaderLoader.h"
 #include "../shaders/rt_shadows_interface.h"
 
-void Eng::ExRTShadows::Execute(FgContext &fg) {
+void Eng::ExRTShadows::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
     if (fg.ren_ctx().capabilities.hwrt) {
         Execute_HWRT(fg);
@@ -26,23 +26,23 @@ void Eng::ExRTShadows::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     }
 }
 
-void Eng::ExRTShadows::Execute_SWRT(FgContext &fg) {
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExRTShadows::Execute_SWRT(const FgContext &fg) {
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
     const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
     const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
-    const Ren::Buffer &rt_blas_buf = fg.AccessROBuffer(args_->swrt.blas_buf);
-    const Ren::Buffer &rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::Buffer &prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::Buffer &mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
-    const Ren::Buffer &tile_list_buf = fg.AccessROBuffer(args_->tile_list_buf);
-    const Ren::Buffer &indir_args_buf = fg.AccessROBuffer(args_->indir_args);
+    const Ren::BufferHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.blas_buf);
+    const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
+    const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferHandle tile_list_buf = fg.AccessROBuffer(args_->tile_list_buf);
+    const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
 
-    Ren::Image &out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
+    const Ren::Image &out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
 
     const Ren::Binding bindings[] = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
@@ -65,10 +65,10 @@ void Eng::ExRTShadows::Execute_SWRT(FgContext &fg) {
     uniform_params.img_size = Ren::Vec2u{view_state_->ren_res};
     uniform_params.pixel_spread_angle = view_state_->pixel_spread_angle;
 
-    DispatchComputeIndirect(fg.cmd_buf(), *pi_rt_shadows_, indir_args_buf, 0, bindings, &uniform_params,
+    DispatchComputeIndirect(fg.cmd_buf(), pi_rt_shadows_, fg.storages(), indir_args_buf, 0, bindings, &uniform_params,
                             sizeof(uniform_params), fg.descr_alloc(), fg.log());
 }
 
 #if defined(REN_GL_BACKEND)
-void Eng::ExRTShadows::Execute_HWRT(FgContext &fg) { assert(false && "Not implemented!"); }
+void Eng::ExRTShadows::Execute_HWRT(const FgContext &fg) { assert(false && "Not implemented!"); }
 #endif

@@ -5,13 +5,14 @@
 #include "../../utils/ShaderLoader.h"
 
 Eng::ExOITScheduleRays::ExOITScheduleRays(const DrawList **p_list, const view_state_t *view_state,
-                                          const FgResRef vtx_buf1, const FgResRef vtx_buf2, const FgResRef ndx_buf,
-                                          const FgResRef materials_buf, const BindlessTextureData *bindless_tex,
-                                          const FgResRef noise_tex, const FgResRef dummy_white,
-                                          const FgResRef instances_buf, const FgResRef instance_indices_buf,
-                                          const FgResRef shared_data_buf, const FgResRef depth_tex,
-                                          const FgResRef oit_depth_buf, const FgResRef ray_counter,
-                                          const FgResRef ray_list, const FgResRef ray_bitmask) {
+                                          const FgBufHandle vtx_buf1, const FgBufHandle vtx_buf2,
+                                          const FgBufHandle ndx_buf, const FgBufHandle materials_buf,
+                                          const BindlessTextureData *bindless_tex, const FgResRef noise_tex,
+                                          const FgResRef dummy_white, const FgBufHandle instances_buf,
+                                          const FgBufHandle instance_indices_buf, const FgBufHandle shared_data_buf,
+                                          const FgResRef depth_tex, const FgBufHandle oit_depth_buf,
+                                          const FgBufHandle ray_counter, const FgBufHandle ray_list,
+                                          const FgBufHandle ray_bitmask) {
     view_state_ = view_state;
     bindless_tex_ = bindless_tex;
 
@@ -34,18 +35,18 @@ Eng::ExOITScheduleRays::ExOITScheduleRays(const DrawList **p_list, const view_st
     depth_tex_ = depth_tex;
 }
 
-void Eng::ExOITScheduleRays::Execute(FgContext &fg) {
-    Ren::WeakBufRef vtx_buf1 = fg.AccessROBufferRef(vtx_buf1_);
-    Ren::WeakBufRef vtx_buf2 = fg.AccessROBufferRef(vtx_buf2_);
-    Ren::WeakBufRef ndx_buf = fg.AccessROBufferRef(ndx_buf_);
+void Eng::ExOITScheduleRays::Execute(const FgContext &fg) {
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
     Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(depth_tex_);
 
     LazyInit(fg.ren_ctx(), fg.sh(), vtx_buf1, vtx_buf2, ndx_buf, depth_tex);
     DrawTransparent(fg, depth_tex);
 }
 
-void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                                      const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf,
+void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
+                                      const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
                                       const Ren::WeakImgRef &depth_tex) {
     const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
                                             Ren::eStoreOp::Store};
@@ -56,10 +57,9 @@ void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, 
         const bool bindless = true;
 #endif
 
-        const int buf1_stride = 16, buf2_stride = 16;
+        static const int buf1_stride = 16, buf2_stride = 16;
 
-        Ren::VertexInputRef vi_simple, vi_vegetation;
-
+        Ren::VertexInputHandle vi_simple, vi_vegetation;
         { // VertexInput for simple and skinned meshes
             const Ren::VtxAttribDesc attribs[] = {
                 // Attributes from buffer 1
@@ -82,15 +82,15 @@ void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, 
             vi_vegetation = sh.LoadVertexInput(attribs, ndx_buf);
         }
 
-        Ren::ProgramRef oit_blend_simple_prog = sh.LoadProgram(
+        const Ren::ProgramHandle oit_blend_simple_prog = sh.LoadProgram(
             bindless ? "internal/oit_schedule_rays.vert.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.vert.glsl",
             bindless ? "internal/oit_schedule_rays.frag.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.frag.glsl");
-        Ren::ProgramRef oit_blend_vegetation_prog = sh.LoadProgram(
+        const Ren::ProgramHandle oit_blend_vegetation_prog = sh.LoadProgram(
             bindless ? "internal/oit_schedule_rays@VEGETATION.vert.glsl"
                      : "internal/oit_schedule_rays@VEGETATION;NO_BINDLESS.vert.glsl",
             bindless ? "internal/oit_schedule_rays.frag.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.frag.glsl");
 
-        Ren::RenderPassRef rp_oit_schedule_rays = sh.LoadRenderPass(depth_target, {});
+        const Ren::RenderPassHandle rp_oit_schedule_rays = sh.LoadRenderPass(depth_target, {});
 
         { // simple and skinned
             Ren::RastState rast_state;
@@ -128,9 +128,11 @@ void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, 
 
     fb_to_use_ = (fb_to_use_ + 1) % 2;
 
-    if (!main_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(ctx.api_ctx(), *pi_simple_[0]->render_pass(),
-                                                              depth_tex->params.w, depth_tex->params.h, depth_target,
-                                                              depth_target, {}, ctx.log())) {
+    const Ren::PipelineMain &pi_simple_main = ctx.pipelines().Get(pi_simple_[0]).first;
+    const Ren::RenderPassMain &rp_main = ctx.render_passes().Get(pi_simple_main.render_pass).first;
+
+    if (!main_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(
+            &ctx.api(), rp_main, depth_tex->params.w, depth_tex->params.h, depth_target, depth_target, {}, ctx.log())) {
         ctx.log()->Error("[ExOITScheduleRays::LazyInit]: main_draw_fb_ init failed!");
     }
 }

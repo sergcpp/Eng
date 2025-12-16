@@ -14,17 +14,17 @@ class ExDebugOIT final : public FgExecutor {
     struct Args {
         int layer_index = 0;
 
-        FgResRef oit_depth_buf;
+        FgBufHandle oit_depth_buf;
         FgResRef output_tex;
     };
 
-    ExDebugOIT(FgContext &fg, const view_state_t *view_state, const Args *pass_data);
+    ExDebugOIT(ShaderLoader &sh, const view_state_t *view_state, const Args *pass_data);
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 
   private:
     // lazily initialized data
-    Ren::PipelineRef pi_debug_oit_;
+    Ren::PipelineHandle pi_debug_oit_;
 
     // temp data (valid only between Setup and Execute calls)
     const view_state_t *view_state_ = nullptr;

@@ -5,10 +5,10 @@
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
 
-void Eng::ExShadowColor::Execute(FgContext &fg) {
-    Ren::WeakBufRef vtx_buf1 = fg.AccessROBufferRef(vtx_buf1_);
-    Ren::WeakBufRef vtx_buf2 = fg.AccessROBufferRef(vtx_buf2_);
-    Ren::WeakBufRef ndx_buf = fg.AccessROBufferRef(ndx_buf_);
+void Eng::ExShadowColor::Execute(const FgContext &fg) {
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     Ren::WeakImgRef shadow_depth_tex = fg.AccessRWImageRef(shadow_depth_tex_);
     Ren::WeakImgRef shadow_color_tex = fg.AccessRWImageRef(shadow_color_tex_);
@@ -17,8 +17,8 @@ void Eng::ExShadowColor::Execute(FgContext &fg) {
     DrawShadowMaps(fg);
 }
 
-void Eng::ExShadowColor::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                                  const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf,
+void Eng::ExShadowColor::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
+                                  const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
                                   const Ren::WeakImgRef &shadow_depth_tex, const Ren::WeakImgRef &shadow_color_tex) {
     const Ren::RenderTarget depth_target = {shadow_depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
     const Ren::RenderTarget color_targets[] = {{shadow_color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
@@ -30,17 +30,15 @@ void Eng::ExShadowColor::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
         const bool bindless = true;
 #endif
 
-        const int buf1_stride = 16, buf2_stride = 16;
+        static const int buf1_stride = 16, buf2_stride = 16;
 
-        Ren::VertexInputRef vi_depth_pass, vi_depth_pass_vege;
-
+        Ren::VertexInputHandle vi_depth_pass, vi_depth_pass_vege;
         { // VertexInput for for alpha-tested shadow pass (uses position and uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
                 {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
                 {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)}};
             vi_depth_pass = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for for alpha-tested shadow pass of vegetation (uses position, primary and
           // secondary uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
@@ -50,15 +48,15 @@ void Eng::ExShadowColor::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
             vi_depth_pass_vege = sh.LoadVertexInput(attribs, ndx_buf);
         }
 
-        Ren::ProgramRef shadow_solid_prog =
+        const Ren::ProgramHandle shadow_solid_prog =
             sh.LoadProgram(bindless ? "internal/shadow_color.vert.glsl" : "internal/shadow_color@NO_BINDLESS.vert.glsl",
                            "internal/shadow_color.frag.glsl");
-        Ren::ProgramRef shadow_alpha_prog =
+        const Ren::ProgramHandle shadow_alpha_prog =
             sh.LoadProgram(bindless ? "internal/shadow_color.vert.glsl" : "internal/shadow_color@NO_BINDLESS.vert.glsl",
                            bindless ? "internal/shadow_color@ALPHATEST.frag.glsl"
                                     : "internal/shadow_color@ALPHATEST;NO_BINDLESS.frag.glsl");
 
-        Ren::RenderPassRef rp_depth_only = sh.LoadRenderPass(depth_target, color_targets);
+        const Ren::RenderPassHandle rp_depth_only = sh.LoadRenderPass(depth_target, color_targets);
 
         { // solid/alpha-tested
             Ren::RastState rast_state;
@@ -99,8 +97,10 @@ void Eng::ExShadowColor::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
         initialized = true;
     }
 
-    if (!shadow_fb_.Setup(ctx.api_ctx(), *pi_solid_[0]->render_pass(), w_, h_, depth_target, {}, color_targets,
-                          ctx.log())) {
+    const Ren::PipelineMain &pi_solid0_main = ctx.pipelines().Get(pi_solid_[0]).first;
+    const Ren::RenderPassMain &rp_main = ctx.render_passes().Get(pi_solid0_main.render_pass).first;
+
+    if (!shadow_fb_.Setup(&ctx.api(), rp_main, w_, h_, depth_target, {}, color_targets, ctx.log())) {
         ctx.log()->Error("ExShadowMaps: shadow_fb_ init failed!");
     }
 }

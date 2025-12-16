@@ -23,15 +23,15 @@ Ren::Material::Material(std::string_view name, std::string_view mat_src, eMatLoa
     Init(mat_src, status, on_pipes_load, on_tex_load, on_sampler_load, log);
 }
 
-Ren::Material::Material(std::string_view name, Bitmask<eMatFlags> flags, Span<const PipelineRef> _pipelines,
-                        Span<const ImgRef> _textures, Span<const SamplerRef> _samplers, Span<const Vec4f> _params,
+Ren::Material::Material(std::string_view name, Bitmask<eMatFlags> flags, Span<const PipelineHandle> _pipelines,
+                        Span<const ImgRef> _textures, Span<const SamplerHandle> _samplers, Span<const Vec4f> _params,
                         ILog *log) {
     name_ = String{name};
     Init(flags, _pipelines, _textures, _samplers, _params, log);
 }
 
-void Ren::Material::Init(const Bitmask<eMatFlags> _flags, Span<const PipelineRef> _pipelines,
-                         Span<const ImgRef> _textures, Span<const SamplerRef> _samplers, Span<const Vec4f> _params,
+void Ren::Material::Init(const Bitmask<eMatFlags> _flags, Span<const PipelineHandle> _pipelines,
+                         Span<const ImgRef> _textures, Span<const SamplerHandle> _samplers, Span<const Vec4f> _params,
                          ILog *log) {
     flags = _flags;
     ready_ = true;

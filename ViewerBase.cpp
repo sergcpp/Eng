@@ -58,8 +58,7 @@ Eng::ViewerBase::ViewerBase(const int w, const int h, const int validation_level
 
         path_config_t paths;
         scene_manager_ = std::make_unique<SceneManager>(*ren_ctx_, *shader_loader_, snd_ctx_.get(), *threads_, paths);
-        scene_manager_->SetPipelineInitializer(
-            std::bind(&Renderer::InitPipelinesForProgram, renderer(), _1, _2, _3, _4));
+        scene_manager_->SetPipelineInitializer(std::bind(&Renderer::InitPipelinesForProgram, renderer(), _1, _2, _3));
     }
 
     state_manager_ = std::make_unique<ViewerStateManager>();
@@ -135,31 +134,31 @@ void Eng::ViewerBase::Quit() { terminated = true; }
 #include <Ren/VKCtx.h>
 
 void Eng::ViewerBase::InitOptickGPUProfiler() {
-    Ren::ApiContext *api_ctx = ren_ctx_->api_ctx();
+    Ren::ApiContext &api = ren_ctx_->api();
 
     Optick::VulkanFunctions functions = {
-        api_ctx->vkGetPhysicalDeviceProperties,
-        (PFN_vkCreateQueryPool_)api_ctx->vkCreateQueryPool,
-        (PFN_vkCreateCommandPool_)api_ctx->vkCreateCommandPool,
-        (PFN_vkAllocateCommandBuffers_)api_ctx->vkAllocateCommandBuffers,
-        (PFN_vkCreateFence_)api_ctx->vkCreateFence,
-        api_ctx->vkCmdResetQueryPool,
-        (PFN_vkQueueSubmit_)api_ctx->vkQueueSubmit,
-        (PFN_vkWaitForFences_)api_ctx->vkWaitForFences,
-        (PFN_vkResetCommandBuffer_)api_ctx->vkResetCommandBuffer,
-        (PFN_vkCmdWriteTimestamp_)api_ctx->vkCmdWriteTimestamp,
-        (PFN_vkGetQueryPoolResults_)api_ctx->vkGetQueryPoolResults,
-        (PFN_vkBeginCommandBuffer_)api_ctx->vkBeginCommandBuffer,
-        (PFN_vkEndCommandBuffer_)api_ctx->vkEndCommandBuffer,
-        (PFN_vkResetFences_)api_ctx->vkResetFences,
-        api_ctx->vkDestroyCommandPool,
-        api_ctx->vkDestroyQueryPool,
-        api_ctx->vkDestroyFence,
-        api_ctx->vkFreeCommandBuffers,
+        api.vkGetPhysicalDeviceProperties,
+        (PFN_vkCreateQueryPool_)api.vkCreateQueryPool,
+        (PFN_vkCreateCommandPool_)api.vkCreateCommandPool,
+        (PFN_vkAllocateCommandBuffers_)api.vkAllocateCommandBuffers,
+        (PFN_vkCreateFence_)api.vkCreateFence,
+        api.vkCmdResetQueryPool,
+        (PFN_vkQueueSubmit_)api.vkQueueSubmit,
+        (PFN_vkWaitForFences_)api.vkWaitForFences,
+        (PFN_vkResetCommandBuffer_)api.vkResetCommandBuffer,
+        (PFN_vkCmdWriteTimestamp_)api.vkCmdWriteTimestamp,
+        (PFN_vkGetQueryPoolResults_)api.vkGetQueryPoolResults,
+        (PFN_vkBeginCommandBuffer_)api.vkBeginCommandBuffer,
+        (PFN_vkEndCommandBuffer_)api.vkEndCommandBuffer,
+        (PFN_vkResetFences_)api.vkResetFences,
+        api.vkDestroyCommandPool,
+        api.vkDestroyQueryPool,
+        api.vkDestroyFence,
+        api.vkFreeCommandBuffers,
     };
 
-    OPTICK_GPU_INIT_VULKAN(&api_ctx->device, &api_ctx->physical_device, &api_ctx->graphics_queue,
-                           &api_ctx->graphics_family_index, 1, &functions);
+    OPTICK_GPU_INIT_VULKAN(&api.device, &api.physical_device, &api.graphics_queue, &api.graphics_family_index, 1,
+                           &functions);
 }
 
 #else

@@ -7,11 +7,11 @@
 namespace Ren {
 struct ApiContext;
 struct DebugMarker {
-    explicit DebugMarker(ApiContext *api_ctx, CommandBuffer cmd_buf, std::string_view name);
+    DebugMarker(const ApiContext &api, CommandBuffer cmd_buf, std::string_view name);
     ~DebugMarker();
 
   private:
-    ApiContext *api_ctx_ = nullptr;
+    const ApiContext &api_;
     CommandBuffer cmd_buf_ = {};
 };
 } // namespace Ren

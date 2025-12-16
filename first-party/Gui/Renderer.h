@@ -80,17 +80,17 @@ class Renderer {
     int vtx_count_[Ren::MaxFramesInFlight + 1] = {};
     int ndx_count_[Ren::MaxFramesInFlight + 1] = {};
 
-    Ren::RenderPassRef render_pass_;
-    Ren::VertexInputRef vtx_input_;
-    Ren::Pipeline pipeline_;
+    Ren::RenderPassHandle render_pass_;
+    Ren::VertexInputHandle vtx_input_;
+    Ren::PipelineHandle pipeline_;
     SmallVector<Ren::Framebuffer, Ren::MaxFramesInFlight> framebuffers_;
 
     // buffers for the case if persistent mapping is not available
     std::unique_ptr<vertex_t[]> stage_vtx_data_;
     std::unique_ptr<uint16_t[]> stage_ndx_data_;
 
-    Ren::BufRef vertex_stage_buf_, index_stage_buf_;
-    Ren::BufRef vertex_buf_, index_buf_;
+    Ren::BufferHandle vertex_stage_buf_, index_stage_buf_;
+    Ren::BufferHandle vertex_buf_, index_buf_;
 
     vertex_t *vtx_stage_data_ = nullptr;
     uint16_t *ndx_stage_data_ = nullptr;

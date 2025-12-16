@@ -7,28 +7,28 @@
 
 Ren::SyncFence::~SyncFence() {
     if (fence_) {
-        api_ctx_->vkDestroyFence(api_ctx_->device, fence_, nullptr);
+        api_->vkDestroyFence(api_->device, fence_, nullptr);
     }
 }
 
 Ren::SyncFence::SyncFence(SyncFence &&rhs) noexcept {
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
+    api_ = std::exchange(rhs.api_, nullptr);
     fence_ = std::exchange(rhs.fence_, VkFence{VK_NULL_HANDLE});
 }
 
-bool Ren::SyncFence::signaled() const { return api_ctx_->vkGetFenceStatus(api_ctx_->device, fence_) == VK_SUCCESS; }
+bool Ren::SyncFence::signaled() const { return api_->vkGetFenceStatus(api_->device, fence_) == VK_SUCCESS; }
 
 Ren::SyncFence &Ren::SyncFence::operator=(SyncFence &&rhs) noexcept {
     if (fence_) {
-        api_ctx_->vkDestroyFence(api_ctx_->device, fence_, nullptr);
+        api_->vkDestroyFence(api_->device, fence_, nullptr);
     }
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
+    api_ = std::exchange(rhs.api_, nullptr);
     fence_ = std::exchange(rhs.fence_, VkFence{VK_NULL_HANDLE});
     return (*this);
 }
 
 bool Ren::SyncFence::Reset() {
-    const VkResult res = api_ctx_->vkResetFences(api_ctx_->device, 1, &fence_);
+    const VkResult res = api_->vkResetFences(api_->device, 1, &fence_);
     return res == VK_SUCCESS;
 }
 
@@ -39,7 +39,7 @@ void Ren::SyncFence::WaitSync() {
 
 Ren::eWaitResult Ren::SyncFence::ClientWaitSync(const uint64_t timeout_us) {
     assert(fence_ != VK_NULL_HANDLE);
-    const VkResult res = api_ctx_->vkWaitForFences(api_ctx_->device, 1, &fence_, VK_TRUE, timeout_us * 1000);
+    const VkResult res = api_->vkWaitForFences(api_->device, 1, &fence_, VK_TRUE, timeout_us * 1000);
 
     eWaitResult ret = eWaitResult::Fail;
     if (res == VK_TIMEOUT) {

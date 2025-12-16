@@ -12,21 +12,21 @@ namespace Eng {
 class ExVolVoxelize final : public FgExecutor {
   public:
     struct Args {
-        FgResRef shared_data;
+        FgBufHandle shared_data;
         FgResRef stbn_tex;
-        FgResRef geo_data;
-        FgResRef materials;
-        FgResRef tlas_buf;
+        FgBufHandle geo_data;
+        FgBufHandle materials;
+        FgBufHandle tlas_buf;
 
         Ren::IAccStructure *tlas = nullptr;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgResRef rt_blas_buf;
-            FgResRef prim_ndx_buf;
-            FgResRef mesh_instances_buf;
-            FgResRef vtx_buf1;
-            FgResRef ndx_buf;
+            FgBufHandle rt_blas_buf;
+            FgBufHandle prim_ndx_buf;
+            FgBufHandle mesh_instances_buf;
+            FgBufHandle vtx_buf1;
+            FgBufHandle ndx_buf;
         } swrt;
 
         FgResRef out_emission_tex;
@@ -36,13 +36,13 @@ class ExVolVoxelize final : public FgExecutor {
     ExVolVoxelize(const DrawList **p_list, const view_state_t *view_state, const Args *args)
         : p_list_(p_list), view_state_(view_state), args_(args) {}
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 
   private:
     bool initialized_ = false;
 
     // lazily initialized data
-    Ren::PipelineRef pi_vol_voxelize_;
+    Ren::PipelineHandle pi_vol_voxelize_;
 
     // temp data (valid only between Setup and Execute calls)
     const DrawList **p_list_ = nullptr;
@@ -51,7 +51,7 @@ class ExVolVoxelize final : public FgExecutor {
 
     void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
 
-    void Execute_HWRT(FgContext &fg);
-    void Execute_SWRT(FgContext &fg);
+    void Execute_HWRT(const FgContext &fg);
+    void Execute_SWRT(const FgContext &fg);
 };
 } // namespace Eng

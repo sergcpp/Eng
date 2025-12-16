@@ -3,7 +3,7 @@
 #include <algorithm>
 
 namespace Ren {
-#define X(_0, _1, _2, _3, _4, _5, _6, _7, _8) #_0, _1,
+#define X(_0, _1, _2, _3, _4, _5, _6, _7, _8) {#_0, _1},
 static const struct {
     std::string_view name;
     int channel_count;

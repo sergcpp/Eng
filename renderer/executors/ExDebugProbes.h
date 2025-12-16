@@ -9,7 +9,7 @@ class PrimDraw;
 class ExDebugProbes final : public FgExecutor {
   public:
     struct Args {
-        FgResRef shared_data;
+        FgBufHandle shared_data;
         FgResRef offset_tex;
         FgResRef irradiance_tex;
         FgResRef distance_tex;
@@ -20,10 +20,10 @@ class ExDebugProbes final : public FgExecutor {
         Ren::Span<const probe_volume_t> probe_volumes;
     };
 
-    ExDebugProbes(PrimDraw &prim_draw, FgContext &fg, const DrawList &list, const view_state_t *view_state,
+    ExDebugProbes(PrimDraw &prim_draw, ShaderLoader &sh, const DrawList &list, const view_state_t *view_state,
                   const Args *args);
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 
   private:
     PrimDraw &prim_draw_;
@@ -33,6 +33,6 @@ class ExDebugProbes final : public FgExecutor {
     const Args *args_ = nullptr;
 
     // lazily initialized data
-    Ren::ProgramRef prog_probe_debug_;
+    Ren::ProgramHandle prog_probe_debug_;
 };
 } // namespace Eng

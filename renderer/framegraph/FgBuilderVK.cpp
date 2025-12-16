@@ -10,7 +10,7 @@
 #include "FgNode.h"
 
 namespace Ren {
-VkBufferUsageFlags GetVkBufferUsageFlags(const ApiContext *api_ctx, eBufType type);
+VkBufferUsageFlags GetVkBufferUsageFlags(const ApiContext &api, eBufType type);
 VkMemoryPropertyFlags GetVkMemoryPropertyFlags(eBufType type);
 uint32_t FindMemoryType(uint32_t search_from, const VkPhysicalDeviceMemoryProperties *mem_properties,
                         uint32_t mem_type_bits, VkMemoryPropertyFlags desired_mem_flags, VkDeviceSize desired_size);
@@ -39,15 +39,16 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         uint32_t mem_offset = 0xffffffff;
         uint32_t mem_size = 0;
         uint32_t mem_alignment = 0;
+        bool is_new = false;
 
-        std::variant<std::monostate, Ren::BufHandle, Ren::ImgHandle> handle;
+        std::variant<std::monostate, Ren::BufHandle, Ren::BufferMain, Ren::ImgHandle> handle;
     };
 
-    Ren::ApiContext *api_ctx = ctx_.api_ctx();
+    const Ren::ApiContext &api = ctx_.api();
 
     std::vector<resource_t> all_resources;
     std::vector<int> resources_by_memory_type[32];
-    std::vector<int> buffer_to_resource(buffers_.capacity(), -1);
+    std::vector<int> buffer_to_resource(buffers_.Capacity(), -1);
     std::vector<int> image_to_resource(images_.capacity(), -1);
 
     SCOPE_EXIT({
@@ -56,9 +57,9 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                 continue;
             }
             if (res.type == eFgResType::Buffer) {
-                api_ctx->vkDestroyBuffer(api_ctx->device, std::get<Ren::BufHandle>(res.handle).buf, nullptr);
+                api.vkDestroyBuffer(api.device, std::get<Ren::BufferMain>(res.handle).buf, nullptr);
             } else if (res.type == eFgResType::Image) {
-                api_ctx->vkDestroyImage(api_ctx->device, std::get<Ren::ImgHandle>(res.handle).img, nullptr);
+                api.vkDestroyImage(api.device, std::get<Ren::ImgHandle>(res.handle).img, nullptr);
             }
         }
     });
@@ -66,12 +67,13 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
     //
     // Gather resources info
     //
-    for (auto it = std::begin(buffers_); it != std::end(buffers_); ++it) {
-        const FgAllocBuf &b = *it;
-        if (b.external || !b.lifetime.is_used()) {
+    const auto &all_buffers = buffers_.items_by_name();
+    for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+        if (fgbuf_cold.external || !fgbuf_cold.lifetime.is_used()) {
             continue;
         }
-        if (b.desc.type == Ren::eBufType::Upload || b.desc.type == Ren::eBufType::Readback) {
+        if (fgbuf_cold.desc.type == Ren::eBufType::Upload || fgbuf_cold.desc.type == Ren::eBufType::Readback) {
             // Upload/Readback buffers will use dedicated allocation
             continue;
         }
@@ -80,22 +82,23 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         new_res.type = eFgResType::Buffer;
         new_res.index = uint16_t(it.index());
         if (EnableResourceAliasing) {
-            new_res.lifetime[0][0] = new_res.lifetime[1][0] = b.lifetime.first_used_node();
-            new_res.lifetime[0][1] = new_res.lifetime[1][1] = b.lifetime.last_used_node() + 1;
+            new_res.lifetime[0][0] = new_res.lifetime[1][0] = fgbuf_cold.lifetime.first_used_node();
+            new_res.lifetime[0][1] = new_res.lifetime[1][1] = fgbuf_cold.lifetime.last_used_node() + 1;
         } else {
             new_res.lifetime[0][0] = new_res.lifetime[1][0] = 0;
             new_res.lifetime[0][1] = new_res.lifetime[1][1] = uint16_t(reordered_nodes_.size());
         }
+        new_res.is_new = true;
 
         VkBufferCreateInfo buf_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        buf_create_info.size = VkDeviceSize(b.desc.size);
-        buf_create_info.usage = GetVkBufferUsageFlags(api_ctx, b.desc.type);
+        buf_create_info.size = VkDeviceSize(fgbuf_cold.desc.size);
+        buf_create_info.usage = GetVkBufferUsageFlags(api, fgbuf_cold.desc.type);
         buf_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        Ren::BufHandle new_buf = {};
-        VkResult res = api_ctx->vkCreateBuffer(api_ctx->device, &buf_create_info, nullptr, &new_buf.buf);
+        Ren::BufferMain new_buf = {};
+        VkResult res = api.vkCreateBuffer(api.device, &buf_create_info, nullptr, &new_buf.buf);
         if (res != VK_SUCCESS) {
-            ctx_.log()->Error("Failed to create buffer %s!", b.name.c_str());
+            ctx_.log()->Error("Failed to create buffer %s!", fgbuf_cold.name.c_str());
             return false;
         }
 
@@ -103,29 +106,29 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         VkDebugUtilsObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
         name_info.objectType = VK_OBJECT_TYPE_BUFFER;
         name_info.objectHandle = uint64_t(new_buf.buf);
-        name_info.pObjectName = b.name.c_str();
-        api_ctx->vkSetDebugUtilsObjectNameEXT(api_ctx->device, &name_info);
+        name_info.pObjectName = fgbuf_cold.name.c_str();
+        api.vkSetDebugUtilsObjectNameEXT(api.device, &name_info);
 #endif
 
         VkMemoryRequirements memory_requirements = {};
-        api_ctx->vkGetBufferMemoryRequirements(api_ctx->device, new_buf.buf, &memory_requirements);
+        api.vkGetBufferMemoryRequirements(api.device, new_buf.buf, &memory_requirements);
 
-        const VkMemoryPropertyFlags memory_props = Ren::GetVkMemoryPropertyFlags(b.desc.type);
+        const VkMemoryPropertyFlags memory_props = Ren::GetVkMemoryPropertyFlags(fgbuf_cold.desc.type);
 
-        const uint32_t memory_type = Ren::FindMemoryType(
-            0, &api_ctx->mem_properties, memory_requirements.memoryTypeBits, memory_props, memory_requirements.size);
+        const uint32_t memory_type = Ren::FindMemoryType(0, &api.mem_properties, memory_requirements.memoryTypeBits,
+                                                         memory_props, memory_requirements.size);
         assert(memory_type < 32);
 
         new_res.mem_size = uint32_t(memory_requirements.size);
         new_res.mem_alignment = uint32_t(memory_requirements.alignment);
-        if (b.desc.type == Ren::eBufType::Storage && api_ctx->raytracing_supported) {
+        if (fgbuf_cold.desc.type == Ren::eBufType::Storage && api.raytracing_supported) {
             // Account for the usage as scratch buffer for acceleration structures
             new_res.mem_alignment =
-                std::max(new_res.mem_alignment, api_ctx->acc_props.minAccelerationStructureScratchOffsetAlignment);
+                std::max(new_res.mem_alignment, api.acc_props.minAccelerationStructureScratchOffsetAlignment);
         }
         new_res.handle = new_buf;
         resources_by_memory_type[memory_type].push_back(int(all_resources.size()) - 1);
-        buffer_to_resource[it.index()] = int(all_resources.size()) - 1;
+        buffer_to_resource[it->val.index] = int(all_resources.size()) - 1;
     }
 
     for (auto it = std::begin(images_); it != std::end(images_); ++it) {
@@ -184,7 +187,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             img_info.samples = VkSampleCountFlagBits(p.samples);
             img_info.flags = 0;
 
-            const VkResult res = api_ctx->vkCreateImage(api_ctx->device, &img_info, nullptr, &new_img.img);
+            const VkResult res = api.vkCreateImage(api.device, &img_info, nullptr, &new_img.img);
             if (res != VK_SUCCESS) {
                 ctx_.log()->Error("Failed to create image %s!", t.name.c_str());
                 return false;
@@ -195,16 +198,16 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             name_info.objectType = VK_OBJECT_TYPE_IMAGE;
             name_info.objectHandle = uint64_t(new_img.img);
             name_info.pObjectName = t.name.c_str();
-            api_ctx->vkSetDebugUtilsObjectNameEXT(api_ctx->device, &name_info);
+            api.vkSetDebugUtilsObjectNameEXT(api.device, &name_info);
 #endif
         }
 
         VkMemoryRequirements memory_requirements;
-        api_ctx->vkGetImageMemoryRequirements(api_ctx->device, new_img.img, &memory_requirements);
+        api.vkGetImageMemoryRequirements(api.device, new_img.img, &memory_requirements);
 
         VkMemoryPropertyFlags memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        const uint32_t memory_type = Ren::FindMemoryType(
-            0, &api_ctx->mem_properties, memory_requirements.memoryTypeBits, memory_props, memory_requirements.size);
+        const uint32_t memory_type = Ren::FindMemoryType(0, &api.mem_properties, memory_requirements.memoryTypeBits,
+                                                         memory_props, memory_requirements.size);
         assert(memory_type < 32);
 
         new_res.mem_size = uint32_t(memory_requirements.size);
@@ -269,14 +272,14 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
 
         VkMemoryPriorityAllocateInfoEXT prio_info = {VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT};
         prio_info.priority = 1.0f; // highest priority
-        if (api_ctx->pageable_memory_supported) {
+        if (api.pageable_memory_supported) {
             (*pp_next) = &prio_info;
             pp_next = &prio_info.pNext;
         }
 
         VkMemoryAllocateFlagsInfoKHR additional_flags = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR};
         additional_flags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
-        if (api_ctx->raytracing_supported) {
+        if (api.raytracing_supported) {
             (*pp_next) = &additional_flags;
             pp_next = &additional_flags.pNext;
         }
@@ -285,7 +288,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         heap.size = total_heap_size;
 
         // TODO: Handle failure properly
-        VkResult result = api_ctx->vkAllocateMemory(api_ctx->device, &mem_alloc_info, nullptr, &heap.mem);
+        VkResult result = api.vkAllocateMemory(api.device, &mem_alloc_info, nullptr, &heap.mem);
         if (result != VK_SUCCESS) {
             ctx_.log()->Error("Failed to allocate memory!");
             return false;
@@ -295,11 +298,11 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             resource_t &res = all_resources[res_index];
             res.mem_heap = int8_t(memory_heaps_.size()) - 1;
             if (res.type == eFgResType::Buffer) {
-                result = api_ctx->vkBindBufferMemory(api_ctx->device, std::get<Ren::BufHandle>(res.handle).buf,
-                                                     heap.mem, res.mem_offset);
+                result = api.vkBindBufferMemory(api.device, std::get<Ren::BufferMain>(res.handle).buf, heap.mem,
+                                                res.mem_offset);
             } else if (res.type == eFgResType::Image) {
-                result = api_ctx->vkBindImageMemory(api_ctx->device, std::get<Ren::ImgHandle>(res.handle).img, heap.mem,
-                                                    res.mem_offset);
+                result = api.vkBindImageMemory(api.device, std::get<Ren::ImgHandle>(res.handle).img, heap.mem,
+                                               res.mem_offset);
             }
             if (result != VK_SUCCESS) {
                 ctx_.log()->Error("Failed to bind memory!");
@@ -308,24 +311,27 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         }
     }
 
-    for (auto it = std::begin(buffers_); it != std::end(buffers_); ++it) {
-        FgAllocBuf &buf = *it;
-        if (buf.external || !buf.lifetime.is_used()) {
+    for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+        if (fgbuf_cold.external || !fgbuf_cold.lifetime.is_used()) {
             continue;
         }
-        buf.alias_of = -1;
-        assert(!buf.ref);
-        if (buffer_to_resource[it.index()] != -1) {
-            const resource_t &resource = all_resources[buffer_to_resource[it.index()]];
+        fgbuf_cold.alias_of = -1;
+        assert(!fgbuf_main.handle);
+        if (buffer_to_resource[it->val.index] != -1) {
+            const resource_t &resource = all_resources[buffer_to_resource[it->val.index]];
             Ren::MemAllocation alloc = {resource.mem_offset, resource.mem_size, resource.mem_heap};
-            buf.strong_ref = ctx_.LoadBuffer(buf.name, buf.desc.type, std::get<Ren::BufHandle>(resource.handle),
-                                             std::move(alloc), buf.desc.size, 16);
+            fgbuf_main.handle =
+                ctx_.CreateBuffer(fgbuf_cold.name, fgbuf_cold.desc.type, std::get<Ren::BufferMain>(resource.handle),
+                                  std::move(alloc), fgbuf_cold.desc.size, 16);
         } else {
-            buf.strong_ref = ctx_.LoadBuffer(buf.name, buf.desc.type, buf.desc.size, 16);
+            fgbuf_main.handle =
+                ctx_.FindOrCreateBuffer(fgbuf_cold.name, fgbuf_cold.desc.type, fgbuf_cold.desc.size, 16);
         }
-        buf.ref = buf.strong_ref;
-        for (int i = 0; i < int(buf.desc.views.size()); ++i) {
-            const int view_index = buf.ref->AddView(buf.desc.views[i]);
+
+        const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+        for (int i = 0; i < int(fgbuf_cold.desc.views.size()); ++i) {
+            const int view_index = Buffer_AddView(api, buf_main, buf_cold, fgbuf_cold.desc.views[i]);
             assert(view_index == i);
         }
     }
@@ -348,8 +354,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         img.ref = img.strong_ref;
         for (int i = 0; i < int(img.desc.views.size()); ++i) {
             const auto &v = img.desc.views[i];
-            const int view_index =
-                img.ref->AddView(v.format, v.mip_level, v.mip_count, v.base_layer, v.layer_count);
+            const int view_index = img.ref->AddView(v.format, v.mip_level, v.mip_count, v.base_layer, v.layer_count);
             assert(view_index == i + 1);
         }
     }
@@ -368,17 +373,18 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             FgNode *node = reordered_nodes_[i];
             for (const FgResource &res : node->input_) {
                 if (res.type == eFgResType::Buffer) {
-                    const FgAllocBuf &buf = buffers_.at(res.index);
-                    if (buf.external) {
+                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(res.opaque_handle);
+                    if (fgbuf_cold.external) {
                         continue;
                     }
-                    const Ren::MemAllocation &alloc = buf.ref->mem_alloc();
+                    const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+                    const Ren::MemAllocation &alloc = buf_cold.alloc;
                     if (alloc.pool == 0xffff) {
                         // this is dedicated allocation
                         continue;
                     }
-                    assert(buffer_to_resource[res.index] != -1);
-                    const resource_t &r = all_resources[buffer_to_resource[res.index]];
+                    assert(buffer_to_resource[int(res.opaque_handle >> 32)] != -1);
+                    const resource_t &r = all_resources[buffer_to_resource[int(res.opaque_handle >> 32)]];
                     if (r.lifetime[j][1] == i + 1 &&
                         (i != int(reordered_nodes_.size()) - 1 || r.lifetime[!j][0] != 0)) {
                         deactivated_regions.push_back(region_t{alloc.offset, alloc.block, res});
@@ -406,11 +412,13 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                 const Ren::MemAllocation *this_alloc = nullptr;
                 bool deactivate = false;
                 if (res.type == eFgResType::Buffer) {
-                    this_res = &buffers_.at(res.index);
-                    if (buffers_.at(res.index).ref) {
-                        this_alloc = &buffers_.at(res.index).ref->mem_alloc();
-                        if (buffer_to_resource[res.index] != -1) {
-                            const resource_t &r = all_resources[buffer_to_resource[res.index]];
+                    this_res = &buffers_.Get(res.opaque_handle).second;
+                    const FgAllocBufMain &fgbuf_main = buffers_.Get(res.opaque_handle).first;
+                    if (fgbuf_main.handle) {
+                        const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+                        this_alloc = &buf_cold.alloc;
+                        if (buffer_to_resource[int(res.opaque_handle >> 32)] != -1) {
+                            const resource_t &r = all_resources[buffer_to_resource[int(res.opaque_handle >> 32)]];
                             deactivate = (r.lifetime[j][1] == i + 1 &&
                                           (i != int(reordered_nodes_.size()) - 1 || r.lifetime[!j][0] != 0));
                         }
@@ -451,8 +459,11 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                         assert(it->res.type != res.type || it->res.index != res.index);
                         FgAllocRes *other_res = nullptr;
                         if (it->res.type == eFgResType::Buffer) {
-                            other_res = &buffers_.at(it->res.index);
-                            const Ren::MemAllocation &other_alloc = buffers_.at(it->res.index).ref->mem_alloc();
+                            other_res = &buffers_.GetUnsafe(it->res.index).second;
+
+                            const auto &[buf_main, buf_cold] =
+                                ctx_.buffers().Get(buffers_.GetUnsafe(it->res.index).first.handle);
+                            const Ren::MemAllocation &other_alloc = buf_cold.alloc;
                             if (other_alloc.pool != this_alloc->pool) {
                                 ++it;
                                 continue;
@@ -525,7 +536,7 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
     // Simulate execution over 2 frames, but perform clear instead of actual work
     //
     for (int j = 0; j < 2; ++j) {
-        Ren::DebugMarker exec_marker(ctx_.api_ctx(), cmd_buf, "Eng::FgBuilder::ClearResources_MemHeaps");
+        Ren::DebugMarker exec_marker(ctx_.api(), cmd_buf, "Eng::FgBuilder::ClearResources_MemHeaps");
 
         // Swap history images
         for (FgAllocImg &img : images_) {
@@ -538,11 +549,15 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
             }
         }
         // Reset resources
-        for (FgAllocBuf &buf : buffers_) {
-            buf._generation = 0;
-            buf.used_in_stages = {};
-            if (buf.ref) {
-                buf.used_in_stages = StagesForState(buf.ref->resource_state);
+        const auto &all_buffers = buffers_.items_by_name();
+        for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+            const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+
+            fgbuf_cold._generation = 0;
+            fgbuf_cold.used_in_stages = {};
+            if (fgbuf_main.handle) {
+                const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+                fgbuf_cold.used_in_stages = StagesForState(buf_main.resource_state);
             }
         }
         for (FgAllocImg &img : images_) {
@@ -562,12 +577,12 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
         for (int i = 0; i < int(reordered_nodes_.size()); ++i) {
             const FgNode *node = reordered_nodes_[i];
 
-            Ren::DebugMarker _(ctx_.api_ctx(), cmd_buf, node->name());
+            Ren::DebugMarker _(ctx_.api(), cmd_buf, node->name());
 
             Ren::SmallVector<Ren::TransitionInfo, 32> res_transitions;
             Ren::Bitmask<Ren::eStage> src_stages, dst_stages;
 
-            std::vector<Ren::BufRef> bufs_to_clear;
+            std::vector<Ren::BufferHandle> bufs_to_clear;
             std::vector<Ren::ImgRef> imgs_to_clear;
 
             // for (const FgResource &res : node->input_) {
@@ -575,11 +590,11 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
             // }
             for (const FgResource &res : node->output_) {
                 if (res.type == eFgResType::Buffer) {
-                    FgAllocBuf &buf = buffers_.at(res.index);
-                    if (buf.external) {
+                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(res.opaque_handle);
+                    if (fgbuf_cold.external) {
                         continue;
                     }
-                    bufs_to_clear.push_back(buf.ref);
+                    bufs_to_clear.push_back(fgbuf_main.handle);
                     HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
                 } else if (res.type == eFgResType::Image) {
                     FgAllocImg &img = images_.at(res.index);
@@ -590,13 +605,15 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
                     HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
                 }
             }
-            TransitionResourceStates(ctx_.api_ctx(), cmd_buf, Ren::AllStages, Ren::AllStages, res_transitions);
-            for (Ren::BufRef &b : bufs_to_clear) {
-                if (b->resource_state == Ren::eResState::CopyDst) {
+            TransitionResourceStates(ctx_.api(), ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages,
+                                     res_transitions);
+            for (const Ren::BufferHandle b : bufs_to_clear) {
+                const Ren::BufferMain &buf_main = ctx_.buffers().Get(b).first;
+                if (buf_main.resource_state == Ren::eResState::CopyDst) {
                     ClearBuffer_AsTransfer(b, cmd_buf);
-                } else if (b->resource_state == Ren::eResState::UnorderedAccess) {
+                } else if (buf_main.resource_state == Ren::eResState::UnorderedAccess) {
                     ClearBuffer_AsStorage(b, cmd_buf);
-                } else if (b->resource_state == Ren::eResState::BuildASWrite) {
+                } else if (buf_main.resource_state == Ren::eResState::BuildASWrite) {
                     // NOTE: Skipped
                 } else {
                     assert(false);
@@ -620,10 +637,10 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
 }
 
 void Eng::FgBuilder::ReleaseMemHeaps() {
-    Ren::ApiContext *api_ctx = ctx_.api_ctx();
-    api_ctx->vkDeviceWaitIdle(api_ctx->device);
+    const Ren::ApiContext &api = ctx_.api();
+    api.vkDeviceWaitIdle(api.device);
     for (Ren::MemHeap &heap : memory_heaps_) {
-        api_ctx->vkFreeMemory(api_ctx->device, heap.mem, nullptr);
+        api.vkFreeMemory(api.device, heap.mem, nullptr);
     }
     memory_heaps_.clear();
 }

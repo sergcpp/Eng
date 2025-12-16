@@ -25,7 +25,6 @@ Ren::DescrPool &Ren::DescrPool::operator=(DescrPool &&rhs) noexcept {
 
     Destroy();
 
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
     handle_ = std::exchange(rhs.handle_, {});
     sets_count_ = std::exchange(rhs.sets_count_, 0);
     next_free_ = std::exchange(rhs.next_free_, 0);
@@ -47,7 +46,7 @@ bool Ren::DescrPool::Init(const DescrSizes &sizes, const uint32_t sets_count) {
     descr_counts_[int(eDescrType::UniformTexBuffer)] = sizes.utbuf_count;
     descr_counts_[int(eDescrType::StorageBuffer)] = sizes.sbuf_count;
     descr_counts_[int(eDescrType::StorageTexBuffer)] = sizes.stbuf_count;
-    if (api_ctx_->raytracing_supported) {
+    if (api_.raytracing_supported) {
         descr_counts_[int(eDescrType::AccStructure)] = sizes.acc_count;
     }
 
@@ -65,13 +64,13 @@ bool Ren::DescrPool::Init(const DescrSizes &sizes, const uint32_t sets_count) {
 
     sets_count_ = sets_count;
 
-    const VkResult res = api_ctx_->vkCreateDescriptorPool(api_ctx_->device, &pool_info, nullptr, &handle_);
+    const VkResult res = api_.vkCreateDescriptorPool(api_.device, &pool_info, nullptr, &handle_);
     return res == VK_SUCCESS;
 }
 
 void Ren::DescrPool::Destroy() {
     if (handle_) {
-        api_ctx_->descriptor_pools_to_destroy[api_ctx_->backend_frame].emplace_back(handle_);
+        api_.descriptor_pools_to_destroy[api_.backend_frame].emplace_back(handle_);
         handle_ = {};
     }
 }
@@ -87,7 +86,7 @@ VkDescriptorSet Ren::DescrPool::Alloc(const VkDescriptorSetLayout layout) {
     alloc_info.pSetLayouts = &layout;
 
     VkDescriptorSet descr_set = VK_NULL_HANDLE;
-    const VkResult res = api_ctx_->vkAllocateDescriptorSets(api_ctx_->device, &alloc_info, &descr_set);
+    const VkResult res = api_.vkAllocateDescriptorSets(api_.device, &alloc_info, &descr_set);
     assert(res == VK_SUCCESS);
 
     ++next_free_;
@@ -97,7 +96,7 @@ VkDescriptorSet Ren::DescrPool::Alloc(const VkDescriptorSetLayout layout) {
 
 bool Ren::DescrPool::Reset() {
     next_free_ = 0;
-    const VkResult res = api_ctx_->vkResetDescriptorPool(api_ctx_->device, handle_, 0);
+    const VkResult res = api_.vkResetDescriptorPool(api_.device, handle_, 0);
     return res == VK_SUCCESS;
 }
 
@@ -111,7 +110,7 @@ VkDescriptorSet Ren::DescrPoolAlloc::Alloc(const VkDescriptorSetLayout layout) {
             // allocate twice more sets each time
             const uint32_t count_mul = (1u << pools_.size());
 
-            DescrPool &new_pool = pools_.emplace_back(api_ctx_);
+            DescrPool &new_pool = pools_.emplace_back(api_);
             if (!new_pool.Init(sizes_, count_mul * initial_sets_count_)) {
                 return VK_NULL_HANDLE;
             }
@@ -135,7 +134,7 @@ bool Ren::DescrPoolAlloc::Reset() {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-Ren::DescrMultiPoolAlloc::DescrMultiPoolAlloc(ApiContext *api_ctx, const uint32_t pool_step,
+Ren::DescrMultiPoolAlloc::DescrMultiPoolAlloc(const ApiContext &api, const uint32_t pool_step,
                                               const uint32_t max_img_sampler_count, const uint32_t max_img_count,
                                               const uint32_t max_sampler_count, const uint32_t max_store_img_count,
                                               const uint32_t max_ubuf_count, const uint32_t max_tbuf_count,
@@ -189,7 +188,7 @@ Ren::DescrMultiPoolAlloc::DescrMultiPoolAlloc(ApiContext *api_ctx, const uint32_
         pool_sizes.img_sampler_count = pool_step * ((index % img_sampler_based_count_) + 1);
         index /= img_sampler_based_count_;
 
-        pools_.emplace_back(api_ctx, pool_sizes, initial_sets_count);
+        pools_.emplace_back(api, pool_sizes, initial_sets_count);
     }
     assert(pools_.size() == required_pools_count);
 }

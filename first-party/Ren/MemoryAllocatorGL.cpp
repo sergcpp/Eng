@@ -2,9 +2,9 @@
 
 void Ren::MemAllocation::Release() {}
 
-Ren::MemAllocator::MemAllocator(const std::string_view name, ApiContext *api_ctx, const uint32_t initial_block_size,
+Ren::MemAllocator::MemAllocator(const std::string_view name, const ApiContext *api, const uint32_t initial_block_size,
                                 uint32_t mem_type_index, const float growth_factor, const uint32_t max_pool_size)
-    : name_(name), api_ctx_(api_ctx), growth_factor_(growth_factor), mem_type_index_(mem_type_index),
+    : name_(name), api_(api), growth_factor_(growth_factor), mem_type_index_(mem_type_index),
       max_pool_size_(max_pool_size) {
     assert(growth_factor_ > 1);
     AllocateNewPool(initial_block_size);

@@ -132,7 +132,7 @@ class HashMap32 : HashFunc, KeyEqual, Allocator {
         return InsertInternal(hash, key);
     }
 
-    bool Erase(const K &key) {
+    template <typename K2> bool Erase(const K2 &key) {
         const uint32_t hash = HashFunc::operator()(key);
         const uint8_t ctrl_to_find = OccupiedBit | (hash & HashMask);
 

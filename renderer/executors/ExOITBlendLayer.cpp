@@ -5,13 +5,13 @@
 #include "../../utils/ShaderLoader.h"
 
 Eng::ExOITBlendLayer::ExOITBlendLayer(
-    PrimDraw &prim_draw, const DrawList **p_list, const view_state_t *view_state, const FgResRef vtx_buf1,
-    const FgResRef vtx_buf2, const FgResRef ndx_buf, const FgResRef materials_buf,
-    const BindlessTextureData *bindless_tex, const FgResRef cells_buf, const FgResRef items_buf,
-    const FgResRef lights_buf, const FgResRef decals_buf, const FgResRef noise_tex, const FgResRef dummy_white,
-    const FgResRef shadow_map, const FgResRef ltc_luts_tex, const FgResRef env_tex, const FgResRef instances_buf,
-    const FgResRef instance_indices_buf, const FgResRef shared_data_buf, const FgResRef depth_tex,
-    const FgResRef color_tex, const FgResRef oit_depth_buf, const FgResRef oit_specular_tex,
+    PrimDraw &prim_draw, const DrawList **p_list, const view_state_t *view_state, const FgBufHandle vtx_buf1,
+    const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf, const FgBufHandle materials_buf,
+    const BindlessTextureData *bindless_tex, const FgBufHandle cells_buf, const FgBufHandle items_buf,
+    const FgBufHandle lights_buf, const FgBufHandle decals_buf, const FgResRef noise_tex, const FgResRef dummy_white,
+    const FgResRef shadow_map, const FgResRef ltc_luts_tex, const FgResRef env_tex, const FgBufHandle instances_buf,
+    const FgBufHandle instance_indices_buf, const FgBufHandle shared_data_buf, const FgResRef depth_tex,
+    const FgResRef color_tex, const FgBufHandle oit_depth_buf, const FgResRef oit_specular_tex,
     const int depth_layer_index, const FgResRef irradiance_tex, const FgResRef distance_tex, const FgResRef offset_tex,
     const FgResRef back_color_tex, const FgResRef back_depth_tex)
     : prim_draw_(prim_draw), view_state_(view_state), bindless_tex_(bindless_tex), p_list_(p_list), vtx_buf1_(vtx_buf1),
@@ -24,10 +24,10 @@ Eng::ExOITBlendLayer::ExOITBlendLayer(
       offset_tex_(offset_tex), back_color_tex_(back_color_tex), back_depth_tex_(back_depth_tex), depth_tex_(depth_tex),
       color_tex_(color_tex) {}
 
-void Eng::ExOITBlendLayer::Execute(FgContext &fg) {
-    Ren::WeakBufRef vtx_buf1 = fg.AccessROBufferRef(vtx_buf1_);
-    Ren::WeakBufRef vtx_buf2 = fg.AccessROBufferRef(vtx_buf2_);
-    Ren::WeakBufRef ndx_buf = fg.AccessROBufferRef(ndx_buf_);
+void Eng::ExOITBlendLayer::Execute(const FgContext &fg) {
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(depth_tex_);
     Ren::WeakImgRef color_tex = fg.AccessRWImageRef(color_tex_);
@@ -36,8 +36,8 @@ void Eng::ExOITBlendLayer::Execute(FgContext &fg) {
     DrawTransparent(fg, depth_tex);
 }
 
-void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                                    const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf,
+void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
+                                    const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
                                     const Ren::WeakImgRef &depth_tex, const Ren::WeakImgRef &color_tex) {
     const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
     const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
@@ -51,7 +51,7 @@ void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, co
 
         prog_oit_blit_depth_ = sh.LoadProgram("internal/blit.vert.glsl", "internal/blit_oit_depth.frag.glsl");
 
-        Ren::ProgramRef oit_blend_simple_prog, oit_blend_vegetation_prog;
+        Ren::ProgramHandle oit_blend_simple_prog, oit_blend_vegetation_prog;
         if (irradiance_tex_) {
             if (oit_specular_tex_) {
                 oit_blend_simple_prog = sh.LoadProgram(
@@ -96,12 +96,11 @@ void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, co
             }
         }
 
-        Ren::RenderPassRef rp_oit_blend = sh.LoadRenderPass(depth_target, color_targets);
+        const Ren::RenderPassHandle rp_oit_blend = sh.LoadRenderPass(depth_target, color_targets);
 
-        const int buf1_stride = 16, buf2_stride = 16;
+        static const int buf1_stride = 16, buf2_stride = 16;
 
-        Ren::VertexInputRef vi_simple, vi_vegetation;
-
+        Ren::VertexInputHandle vi_simple, vi_vegetation;
         { // VertexInput for simple and skinned meshes
             const Ren::VtxAttribDesc attribs[] = {
                 // Attributes from buffer 1
@@ -171,9 +170,12 @@ void Eng::ExOITBlendLayer::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, co
 
     fb_to_use_ = (fb_to_use_ + 1) % 2;
 
-    if (!main_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(ctx.api_ctx(), *pi_simple_[0]->render_pass(),
-                                                              depth_tex->params.w, depth_tex->params.h, depth_target,
-                                                              depth_target, color_targets, ctx.log())) {
+    const Ren::PipelineMain &pi_simple_main = ctx.pipelines().Get(pi_simple_[0]).first;
+    const Ren::RenderPassMain &rp_main = ctx.render_passes().Get(pi_simple_main.render_pass).first;
+
+    if (!main_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(&ctx.api(), rp_main, depth_tex->params.w,
+                                                              depth_tex->params.h, depth_target, depth_target,
+                                                              color_targets, ctx.log())) {
         ctx.log()->Error("[ExOITBlendLayer::LazyInit]: main_draw_fb_ init failed!");
     }
 }

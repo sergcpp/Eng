@@ -65,7 +65,7 @@ struct MemAllocation {
 
 class MemAllocator {
     std::string name_;
-    ApiContext *api_ctx_ = nullptr;
+    const ApiContext *api_ = nullptr;
     float growth_factor_;
     uint32_t max_pool_size_;
 
@@ -76,7 +76,7 @@ class MemAllocator {
     bool AllocateNewPool(uint32_t size);
 
   public:
-    MemAllocator(std::string_view name, ApiContext *api_ctx, uint32_t initial_block_size, uint32_t mem_type_index,
+    MemAllocator(std::string_view name, const ApiContext *api, uint32_t initial_block_size, uint32_t mem_type_index,
                  float growth_factor, uint32_t max_pool_size);
     ~MemAllocator();
 
@@ -96,7 +96,7 @@ class MemAllocator {
 };
 
 class MemAllocators {
-    ApiContext *api_ctx_;
+    const ApiContext *api_;
     std::string name_;
     uint32_t initial_block_size_;
     float growth_factor_;
@@ -104,9 +104,9 @@ class MemAllocators {
     std::unique_ptr<MemAllocator> allocators_[32];
 
   public:
-    MemAllocators(std::string_view name, ApiContext *api_ctx, const uint32_t initial_block_size,
+    MemAllocators(std::string_view name, const ApiContext *api, const uint32_t initial_block_size,
                   const float growth_factor, const uint32_t max_pool_size)
-        : api_ctx_(api_ctx), name_(name), initial_block_size_(initial_block_size), growth_factor_(growth_factor),
+        : api_(api), name_(name), initial_block_size_(initial_block_size), growth_factor_(growth_factor),
           max_pool_size_(max_pool_size) {}
 
     MemAllocation Allocate(uint32_t alignment, uint32_t size, uint32_t mem_type_index);

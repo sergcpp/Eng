@@ -129,6 +129,7 @@ if(${REN_BACKEND} STREQUAL "GL")
                      BufferGL.cpp
                      ContextGL.cpp
                      DebugMarkerGL.cpp
+                     DescriptorPoolGL.cpp
                      DrawCallGL.cpp
                      FramebufferGL.cpp
                      GL.h

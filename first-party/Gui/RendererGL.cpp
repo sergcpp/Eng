@@ -17,9 +17,19 @@ Gui::Renderer::Renderer(Ren::Context &ctx) : ctx_(ctx) { instance_index_ = g_ins
 
 Gui::Renderer::~Renderer() {
     if (ctx_.capabilities.persistent_buf_mapping) {
-        vertex_stage_buf_->Unmap();
-        index_stage_buf_->Unmap();
+        const Ren::ApiContext &api = ctx_.api();
+
+        const auto &[vtx_stage_main, vtx_stage_cold] = ctx_.buffers().Get(vertex_stage_buf_);
+        Buffer_Unmap(api, vtx_stage_main, vtx_stage_cold);
+
+        const auto &[ndx_stage_main, ndx_stage_cold] = ctx_.buffers().Get(index_stage_buf_);
+        Buffer_Unmap(api, ndx_stage_main, ndx_stage_cold);
     }
+
+    ctx_.ReleaseBuffer(vertex_stage_buf_, true /* immediately */);
+    ctx_.ReleaseBuffer(index_stage_buf_, true /* immediately */);
+    ctx_.ReleaseBuffer(vertex_buf_, true /* immediately */);
+    ctx_.ReleaseBuffer(index_buf_, true /* immediately */);
 }
 
 void Gui::Renderer::Draw(const int w, const int h) {
@@ -37,7 +47,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
         //
         // Update stage buffer
         //
-        glBindBuffer(GL_COPY_READ_BUFFER, vertex_stage_buf_->id());
+        glBindBuffer(GL_COPY_READ_BUFFER, ctx_.buffers().Get(vertex_stage_buf_).first.buf);
 
         const size_t vertex_buf_mem_offset = GLintptr(stage_frame) * MaxVerticesPerRange * sizeof(vertex_t);
         const size_t vertex_buf_mem_size = vtx_count_[stage_frame] * sizeof(vertex_t);
@@ -55,7 +65,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
         //
         // Copy stage buffer contents to actual vertex buffer
         //
-        glBindBuffer(GL_COPY_WRITE_BUFFER, vertex_buf_->id());
+        glBindBuffer(GL_COPY_WRITE_BUFFER, ctx_.buffers().Get(vertex_buf_).first.buf);
         glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, vertex_buf_mem_offset /* read_offset */,
                             0 /* write_offset */, vertex_buf_mem_size);
 
@@ -69,7 +79,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
         //
         // Update stage buffer
         //
-        glBindBuffer(GL_COPY_READ_BUFFER, index_stage_buf_->id());
+        glBindBuffer(GL_COPY_READ_BUFFER, ctx_.buffers().Get(index_stage_buf_).first.buf);
 
         const size_t index_buf_mem_size = ndx_count_[stage_frame] * sizeof(uint16_t);
         if (!ctx_.capabilities.persistent_buf_mapping) {
@@ -86,7 +96,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
         //
         // Copy stage buffer contents to actual index buffer
         //
-        glBindBuffer(GL_COPY_WRITE_BUFFER, index_buf_->id());
+        glBindBuffer(GL_COPY_WRITE_BUFFER, ctx_.buffers().Get(index_buf_).first.buf);
         glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, index_buf_mem_offset /* read_offset */,
                             0 /* write_offset */, index_buf_mem_size);
 
@@ -97,14 +107,18 @@ void Gui::Renderer::Draw(const int w, const int h) {
     //
     // Submit draw call
     //
-    pipeline_.rast_state().viewport[2] = w;
-    pipeline_.rast_state().viewport[3] = h;
-    pipeline_.rast_state().Apply();
+    const Ren::PipelineMain &pi_main = ctx_.pipelines().Get(pipeline_).first;
+    const Ren::ProgramMain &pr_main = ctx_.programs().Get(pi_main.prog).first;
+    const Ren::VertexInputMain &vi = ctx_.vtx_inputs().Get(pi_main.vtx_input).first;
+
+    pi_main.rast_state.viewport[2] = w;
+    pi_main.rast_state.viewport[3] = h;
+    pi_main.rast_state.Apply();
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    glBindVertexArray(pipeline_.vtx_input()->GetVAO());
-    glUseProgram(pipeline_.prog()->id());
+    glBindVertexArray(VertexInput_GetVAO(vi, ctx_.buffers()));
+    glUseProgram(pr_main.id);
 
     glActiveTexture(GL_TEXTURE0 + TexAtlasSlot);
     glBindTexture(GL_TEXTURE_2D_ARRAY, GLuint(ctx_.image_atlas().id()));

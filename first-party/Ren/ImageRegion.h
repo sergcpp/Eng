@@ -6,7 +6,6 @@
 #include "Storage.h"
 
 namespace Ren {
-class Buffer;
 class ImageAtlasArray;
 
 class ImageRegion : public RefCounter {
@@ -15,8 +14,8 @@ class ImageRegion : public RefCounter {
     int pos_[3] = {};
     bool ready_ = false;
 
-    [[nodiscard]] bool InitFromDDSFile(Span<const uint8_t> data, ImgParams p, ImageAtlasArray *atlas);
-    [[nodiscard]] bool InitFromRAWData(const Buffer &sbuf, int data_off, int data_len, CommandBuffer cmd_buf,
+    [[nodiscard]] bool InitFromDDSFile(Span<const uint8_t> data, ImgParams p, ImageAtlasArray *atlas, ILog *log);
+    [[nodiscard]] bool InitFromRAWData(const BufferMain &sbuf, int data_off, int data_len, CommandBuffer cmd_buf,
                                        const ImgParams &p, ImageAtlasArray *atlas);
 
   public:
@@ -25,9 +24,9 @@ class ImageRegion : public RefCounter {
     ImageRegion() = default;
     ImageRegion(std::string_view name, ImageAtlasArray *atlas, const int texture_pos[3]);
     ImageRegion(std::string_view name, Span<const uint8_t> data, const ImgParams &p, CommandBuffer cmd_buf,
-                ImageAtlasArray *atlas, eImgLoadStatus *load_status);
-    ImageRegion(std::string_view name, const Buffer &sbuf, int data_off, int data_len, const ImgParams &p,
-                CommandBuffer cmd_buf, ImageAtlasArray *atlas, eImgLoadStatus *load_status);
+                ImageAtlasArray *atlas, eImgLoadStatus *load_status, ILog *log);
+    ImageRegion(std::string_view name, const BufferMain &sbuf, int data_off, int data_len, const ImgParams &p,
+                CommandBuffer cmd_buf, ImageAtlasArray *atlas, eImgLoadStatus *load_status, ILog *log);
     ~ImageRegion();
 
     ImageRegion(const ImageRegion &rhs) = default;
@@ -41,9 +40,9 @@ class ImageRegion : public RefCounter {
     [[nodiscard]] bool ready() const { return ready_; }
 
     void Init(Span<const uint8_t> data, const ImgParams &p, CommandBuffer cmd_buf, ImageAtlasArray *atlas,
-              eImgLoadStatus *load_status);
-    void Init(const Buffer &sbuf, int data_off, int data_len, const ImgParams &p, CommandBuffer cmd_buf,
-              ImageAtlasArray *atlas, eImgLoadStatus *load_status);
+              eImgLoadStatus *load_status, ILog *log);
+    void Init(const BufferMain &sbuf, int data_off, int data_len, const ImgParams &p, CommandBuffer cmd_buf,
+              ImageAtlasArray *atlas, eImgLoadStatus *load_status, ILog *log);
 };
 
 using ImageRegionRef = StrongRef<ImageRegion, NamedStorage<ImageRegion>>;

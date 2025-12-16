@@ -14,42 +14,42 @@ class ExRTReflections final : public FgExecutor {
   public:
     struct Args {
         FgResRef noise_tex;
-        FgResRef geo_data;
-        FgResRef materials;
-        FgResRef vtx_buf1;
-        FgResRef vtx_buf2;
-        FgResRef ndx_buf;
-        FgResRef shared_data;
+        FgBufHandle geo_data;
+        FgBufHandle materials;
+        FgBufHandle vtx_buf1;
+        FgBufHandle vtx_buf2;
+        FgBufHandle ndx_buf;
+        FgBufHandle shared_data;
         FgResRef depth_tex;
         FgResRef normal_tex;
         FgResRef env_tex;
-        FgResRef lights_buf;
+        FgBufHandle lights_buf;
         FgResRef shadow_depth_tex, shadow_color_tex;
         FgResRef ltc_luts_tex;
-        FgResRef cells_buf;
-        FgResRef items_buf;
-        FgResRef ray_counter;
-        FgResRef ray_list;
-        FgResRef indir_args;
-        FgResRef tlas_buf;
+        FgBufHandle cells_buf;
+        FgBufHandle items_buf;
+        FgBufHandle ray_counter;
+        FgBufHandle ray_list;
+        FgBufHandle indir_args;
+        FgBufHandle tlas_buf;
 
         FgResRef irradiance_tex;
         FgResRef distance_tex;
         FgResRef offset_tex;
 
-        FgResRef stoch_lights_buf;
-        FgResRef light_nodes_buf;
+        FgBufHandle stoch_lights_buf;
+        FgBufHandle light_nodes_buf;
 
-        FgResRef oit_depth_buf;
+        FgBufHandle oit_depth_buf;
 
         const Ren::IAccStructure *tlas = nullptr;
         const probe_volume_t *probe_volume = nullptr;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgResRef rt_blas_buf;
-            FgResRef prim_ndx_buf;
-            FgResRef mesh_instances_buf;
+            FgBufHandle rt_blas_buf;
+            FgBufHandle prim_ndx_buf;
+            FgBufHandle mesh_instances_buf;
         } swrt;
 
         bool layered = false;
@@ -60,16 +60,16 @@ class ExRTReflections final : public FgExecutor {
 
     explicit ExRTReflections(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args,
                              bool use_rt_pipeline)
-        : view_state_(view_state), bindless_tex_(bindless_tex), args_(args), use_rt_pipeline_(use_rt_pipeline) {}
+        : view_state_(view_state), bindless_tex_(bindless_tex), use_rt_pipeline_(use_rt_pipeline), args_(args) {}
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 
   private:
     bool initialized_ = false;
     bool use_rt_pipeline_ = false;
 
     // lazily initialized data
-    Ren::PipelineRef pi_rt_reflections_[2];
+    Ren::PipelineHandle pi_rt_reflections_[2];
 
     // temp data (valid only between Setup and Execute calls)
     const view_state_t *view_state_ = nullptr;
@@ -79,7 +79,7 @@ class ExRTReflections final : public FgExecutor {
 
     void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
 
-    void Execute_HWRT(FgContext &fg);
-    void Execute_SWRT(FgContext &fg);
+    void Execute_HWRT(const FgContext &fg);
+    void Execute_SWRT(const FgContext &fg);
 };
 } // namespace Eng

@@ -493,7 +493,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                             custom_draw_batch_t &fwd_batch = list.custom_batches.emplace_back();
 
                             fwd_batch.alpha_blend_bit = (front_mat->flags & eMatFlags::AlphaBlend) ? 1 : 0;
-                            fwd_batch.pipe_id = front_mat->pipelines[pipeline_index].index();
+                            fwd_batch.pipe_id = front_mat->pipelines[pipeline_index].index;
                             fwd_batch.alpha_test_bit = (front_mat->flags & eMatFlags::AlphaTest) ? 1 : 0;
                             fwd_batch.depth_write_bit = (front_mat->flags & eMatFlags::DepthWrite) ? 1 : 0;
                             fwd_batch.two_sided_bit = (front_mat->flags & eMatFlags::TwoSided) ? 1 : 0;

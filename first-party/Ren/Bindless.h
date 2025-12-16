@@ -7,7 +7,7 @@ struct BindlessDescriptors {
 #if defined(REN_VK_BACKEND)
     VkDescriptorSet descr_set;
 #elif defined(REN_GL_BACKEND)
-    Ren::WeakBufRef buf;
+    Ren::BufferHandle buf;
 #endif
 };
 }

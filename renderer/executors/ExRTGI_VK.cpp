@@ -9,27 +9,27 @@
 #include "../PrimDraw.h"
 #include "../shaders/rt_gi_interface.h"
 
-void Eng::ExRTGI::Execute_HWRT(FgContext &fg) {
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
     const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
     const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
-    const Ren::Buffer &ray_list_buf = fg.AccessROBuffer(args_->ray_list);
-    const Ren::Buffer &indir_args_buf = fg.AccessROBuffer(args_->indir_args);
-    [[maybe_unused]] const Ren::Buffer &rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle ray_list_buf = fg.AccessROBuffer(args_->ray_list);
+    const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
+    [[maybe_unused]] const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
-    Ren::Buffer &ray_counter_buf = fg.AccessRWBuffer(args_->ray_counter);
-    Ren::Buffer &out_ray_hits_buf = fg.AccessRWBuffer(args_->out_ray_hits_buf);
+    const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(args_->ray_counter);
+    const Ren::BufferHandle out_ray_hits_buf = fg.AccessRWBuffer(args_->out_ray_hits_buf);
 
-    Ren::ApiContext *api_ctx = fg.ren_ctx().api_ctx();
+    const Ren::ApiContext &api = fg.ren_ctx().api();
 
     auto *acc_struct = static_cast<Ren::AccStructureVK *>(args_->tlas);
 
-    VkCommandBuffer cmd_buf = api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+    VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
@@ -45,16 +45,16 @@ void Eng::ExRTGI::Execute_HWRT(FgContext &fg) {
         {Ren::eBindTarget::SBufRO, RTGI::NDX_BUF_SLOT, ndx_buf},
         {Ren::eBindTarget::SBufRW, RTGI::OUT_RAY_HITS_BUF_SLOT, out_ray_hits_buf}};
 
-    const Ren::Pipeline &pi = *pi_rt_gi_;
+    const Ren::PipelineMain &pi = fg.pipelines().Get(pi_rt_gi_).first;
+    const Ren::ProgramMain &pr = fg.programs().Get(pi.prog).first;
 
     VkDescriptorSet descr_sets[2];
     descr_sets[0] =
-        PrepareDescriptorSet(api_ctx, pi.prog()->descr_set_layouts()[0], bindings, fg.descr_alloc(), fg.log());
+        PrepareDescriptorSet(api, &fg.storages(), pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->rt_inline_textures.descr_set;
 
-    api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle());
-    api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout(), 0, 2, descr_sets, 0,
-                                     nullptr);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+    api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 2, descr_sets, 0, nullptr);
 
     RTGI::Params uniform_params;
     uniform_params.img_size = Ren::Vec2u{view_state_->ren_res};
@@ -62,9 +62,8 @@ void Eng::ExRTGI::Execute_HWRT(FgContext &fg) {
     uniform_params.frame_index = view_state_->frame_index;
     uniform_params.lights_count = view_state_->stochastic_lights_count;
 
-    api_ctx->vkCmdPushConstants(cmd_buf, pi.layout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uniform_params),
-                                &uniform_params);
+    api.vkCmdPushConstants(cmd_buf, pi.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uniform_params), &uniform_params);
 
-    api_ctx->vkCmdDispatchIndirect(cmd_buf, indir_args_buf.vk_handle(),
-                                   VkDeviceSize(sizeof(VkTraceRaysIndirectCommandKHR)));
+    const auto &[indir_args_main, indir_args_cold] = fg.ren_ctx().buffers().Get(indir_args_buf);
+    api.vkCmdDispatchIndirect(cmd_buf, indir_args_main.buf, VkDeviceSize(sizeof(VkTraceRaysIndirectCommandKHR)));
 }

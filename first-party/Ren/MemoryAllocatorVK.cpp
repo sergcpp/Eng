@@ -29,9 +29,9 @@ void Ren::MemAllocation::Release() {
     }
 }
 
-Ren::MemAllocator::MemAllocator(const std::string_view name, ApiContext *api_ctx, const uint32_t initial_block_size,
+Ren::MemAllocator::MemAllocator(const std::string_view name, const ApiContext *api, const uint32_t initial_block_size,
                                 const uint32_t mem_type_index, const float growth_factor, const uint32_t max_pool_size)
-    : name_(name), api_ctx_(api_ctx), growth_factor_(growth_factor), max_pool_size_(max_pool_size),
+    : name_(name), api_(api), growth_factor_(growth_factor), max_pool_size_(max_pool_size),
       mem_type_index_(mem_type_index) {
 
     assert(growth_factor_ > 1);
@@ -40,7 +40,7 @@ Ren::MemAllocator::MemAllocator(const std::string_view name, ApiContext *api_ctx
 
 Ren::MemAllocator::~MemAllocator() {
     for (MemHeap &pool : pools_) {
-        api_ctx_->vkFreeMemory(api_ctx_->device, pool.mem, nullptr);
+        api_->vkFreeMemory(api_->device, pool.mem, nullptr);
     }
 }
 
@@ -50,13 +50,13 @@ bool Ren::MemAllocator::AllocateNewPool(const uint32_t size) {
     mem_alloc_info.memoryTypeIndex = mem_type_index_;
 
     VkMemoryAllocateFlagsInfoKHR additional_flags = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR};
-    if (api_ctx_->raytracing_supported) {
+    if (api_->raytracing_supported) {
         additional_flags.flags |= VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
         mem_alloc_info.pNext = &additional_flags;
     }
 
     VkDeviceMemory new_mem = {};
-    const VkResult res = api_ctx_->vkAllocateMemory(api_ctx_->device, &mem_alloc_info, nullptr, &new_mem);
+    const VkResult res = api_->vkAllocateMemory(api_->device, &mem_alloc_info, nullptr, &new_mem);
     if (res == VK_SUCCESS) {
         MemHeap &new_pool = pools_.emplace_back();
         new_pool.mem = new_mem;
@@ -106,8 +106,8 @@ Ren::MemAllocation Ren::MemAllocators::Allocate(uint32_t alignment, uint32_t siz
 
     if (!allocators_[mem_type_index]) {
         const std::string name = name_ + " (type " + std::to_string(mem_type_index) + ")";
-        allocators_[mem_type_index] = std::make_unique<MemAllocator>(name, api_ctx_, initial_block_size_,
-                                                                     mem_type_index, growth_factor_, max_pool_size_);
+        allocators_[mem_type_index] = std::make_unique<MemAllocator>(name, api_, initial_block_size_, mem_type_index,
+                                                                     growth_factor_, max_pool_size_);
     }
 
     return allocators_[mem_type_index]->Allocate(alignment, size);
@@ -116,13 +116,13 @@ Ren::MemAllocation Ren::MemAllocators::Allocate(uint32_t alignment, uint32_t siz
 Ren::MemAllocation Ren::MemAllocators::Allocate(const VkMemoryRequirements &mem_req,
                                                 const VkMemoryPropertyFlags desired_mem_flags) {
     uint32_t mem_type_index =
-        FindMemoryType(0, &api_ctx_->mem_properties, mem_req.memoryTypeBits, desired_mem_flags, uint32_t(mem_req.size));
+        FindMemoryType(0, &api_->mem_properties, mem_req.memoryTypeBits, desired_mem_flags, uint32_t(mem_req.size));
     while (mem_type_index != 0xffffffff) {
         MemAllocation alloc = Allocate(uint32_t(mem_req.alignment), uint32_t(mem_req.size), mem_type_index);
         if (alloc) {
             return alloc;
         }
-        mem_type_index = FindMemoryType(mem_type_index + 1, &api_ctx_->mem_properties, mem_req.memoryTypeBits,
+        mem_type_index = FindMemoryType(mem_type_index + 1, &api_->mem_properties, mem_req.memoryTypeBits,
                                         desired_mem_flags, uint32_t(mem_req.size));
     }
     return {};

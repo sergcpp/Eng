@@ -43,11 +43,9 @@ set(SOURCE_FILES main.cpp
                  test_utils.cpp)
 
 if(${REN_BACKEND} STREQUAL "VK")
-    set(SOURCE_FILES ${SOURCE_FILES}
-                     test_programVK.cpp)
+    set(SOURCE_FILES ${SOURCE_FILES})
 elseif(${REN_BACKEND} STREQUAL "GL")
-    set(SOURCE_FILES ${SOURCE_FILES}
-                     test_programGL.cpp)
+    set(SOURCE_FILES ${SOURCE_FILES})
 elseif(${REN_BACKEND} STREQUAL "VK")
 
 endif()

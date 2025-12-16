@@ -7,14 +7,14 @@
 #include "../PrimDraw.h"
 #include "../shaders/probe_debug_interface.h"
 
-Eng::ExDebugProbes::ExDebugProbes(PrimDraw &prim_draw, FgContext &fg, const DrawList &list,
+Eng::ExDebugProbes::ExDebugProbes(PrimDraw &prim_draw, ShaderLoader &sh, const DrawList &list,
                                   const view_state_t *view_state, const Args *args)
     : prim_draw_(prim_draw), view_state_(view_state), args_(args) {
-    prog_probe_debug_ = fg.sh().LoadProgram("internal/probe_debug.vert.glsl", "internal/probe_debug.frag.glsl");
+    prog_probe_debug_ = sh.LoadProgram("internal/probe_debug.vert.glsl", "internal/probe_debug.frag.glsl");
 }
 
-void Eng::ExDebugProbes::Execute(FgContext &fg) {
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExDebugProbes::Execute(const FgContext &fg) {
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &off_tex = fg.AccessROImage(args_->offset_tex);
     const Ren::Image &irr_tex = fg.AccessROImage(args_->irradiance_tex);
     [[maybe_unused]] const Ren::Image &dist_tex = fg.AccessROImage(args_->distance_tex);

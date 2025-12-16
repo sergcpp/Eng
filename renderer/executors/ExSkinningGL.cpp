@@ -1,37 +1,55 @@
 #include "ExSkinning.h"
 
 #include <Ren/Buffer.h>
+#include <Ren/Context.h>
 #include <Ren/GL.h>
+#include <Sys/ScopeExit.h>
 
 #include "../Renderer_Structs.h"
 
 #include "../shaders/skinning_interface.h"
 
-void Eng::ExSkinning::Execute(FgContext &fg) {
-    const Ren::Buffer &skin_vtx_buf = fg.AccessROBuffer(skin_vtx_buf_);
-    const Ren::Buffer &skin_transforms_buf = fg.AccessROBuffer(skin_transforms_buf_);
-    const Ren::Buffer &shape_keys_buf = fg.AccessROBuffer(shape_keys_buf_);
-    const Ren::Buffer &delta_buf = fg.AccessROBuffer(delta_buf_);
+void Eng::ExSkinning::Execute(const FgContext &fg) {
+    LazyInit(fg.ren_ctx(), fg.sh());
 
-    Ren::Buffer &vtx_buf1 = fg.AccessRWBuffer(vtx_buf1_);
-    Ren::Buffer &vtx_buf2 = fg.AccessRWBuffer(vtx_buf2_);
+    const Ren::BufferHandle skin_vtx_buf = fg.AccessROBuffer(skin_vtx_buf_);
+    const Ren::BufferHandle skin_transforms_buf = fg.AccessROBuffer(skin_transforms_buf_);
+    const Ren::BufferHandle shape_keys_buf = fg.AccessROBuffer(shape_keys_buf_);
+    const Ren::BufferHandle delta_buf = fg.AccessROBuffer(delta_buf_);
+
+    const Ren::BufferHandle vtx_buf1 = fg.AccessRWBuffer(vtx_buf1_);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessRWBuffer(vtx_buf2_);
+
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
+
+    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_skinning_).first;
+    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
 
     if (!p_list_->skin_regions.empty()) {
-        const GLuint vertex_buf1_id = vtx_buf1.id();
-        const GLuint vertex_buf2_id = vtx_buf2.id();
-        const GLuint delta_buf_id = delta_buf.id();
-        const GLuint skin_vtx_buf_id = skin_vtx_buf.id();
+        const GLuint vertex_buf1_id = storages.buffers.Get(vtx_buf1).first.buf;
+        const GLuint vertex_buf2_id = storages.buffers.Get(vtx_buf2).first.buf;
 
-        glUseProgram(pi_skinning_->prog()->id());
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_VERTICES_SLOT, skin_vtx_buf_id);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_MATRICES_SLOT, GLuint(skin_transforms_buf.id()));
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_SHAPE_KEYS_SLOT, GLuint(shape_keys_buf.id()));
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_DELTAS_SLOT, delta_buf_id);
+        glUseProgram(pr.id);
+        const Ren::BufferMain &skin_vtx_buf_main = storages.buffers.Get(skin_vtx_buf).first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_VERTICES_SLOT, skin_vtx_buf_main.buf);
+        const Ren::BufferMain &skin_transforms_buf_main = storages.buffers.Get(skin_transforms_buf).first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_MATRICES_SLOT, GLuint(skin_transforms_buf_main.buf));
+        const Ren::BufferMain &shape_keys_buf_main = storages.buffers.Get(shape_keys_buf).first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_SHAPE_KEYS_SLOT, GLuint(shape_keys_buf_main.buf));
+        const Ren::BufferMain &delta_buf_main = storages.buffers.Get(delta_buf).first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::IN_DELTAS_SLOT, delta_buf_main.buf);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::OUT_VERTICES0, vertex_buf1_id);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Skinning::OUT_VERTICES1, vertex_buf2_id);
 
-        Ren::Buffer temp_unif_buffer =
-            Ren::Buffer("Temp uniform buf", nullptr, Ren::eBufType::Uniform, sizeof(Skinning::Params));
+        Ren::BufferMain temp_unif_buffer_main = {};
+        Ren::BufferCold temp_unif_buffer_cold = {};
+        if (!Buffer_Init(api, temp_unif_buffer_main, temp_unif_buffer_cold, Ren::String{"Temp uniform buf"},
+                         Ren::eBufType::Uniform, sizeof(Skinning::Params), fg.log())) {
+            fg.log()->Error("Failed to initialize temp uniform buffer");
+            return;
+        }
+        SCOPE_EXIT({ Buffer_Destroy(api, temp_unif_buffer_main, temp_unif_buffer_cold); })
 
         for (uint32_t i = 0; i < uint32_t(p_list_->skin_regions.size()); i++) {
             const skin_region_t &sr = p_list_->skin_regions[i];
@@ -39,30 +57,47 @@ void Eng::ExSkinning::Execute(FgContext &fg) {
             const uint32_t non_shapekeyed_vertex_count = sr.vertex_count - sr.shape_keyed_vertex_count;
 
             if (non_shapekeyed_vertex_count) {
-                Ren::Buffer temp_stage_buffer =
-                    Ren::Buffer("Temp upload buf", nullptr, Ren::eBufType::Upload, sizeof(Skinning::Params));
+                Ren::BufferMain temp_stage_buffer_main = {};
+                Ren::BufferCold temp_stage_buffer_cold = {};
+                if (!Buffer_Init(api, temp_stage_buffer_main, temp_stage_buffer_cold, Ren::String{"Temp upload buf"},
+                                 Ren::eBufType::Upload, sizeof(Skinning::Params), fg.log())) {
+                    fg.log()->Error("Failed to initialize temp upload buffer");
+                    return;
+                }
+                SCOPE_EXIT({ Buffer_Destroy(api, temp_stage_buffer_main, temp_stage_buffer_cold); })
+
                 {
-                    Skinning::Params *stage_data = reinterpret_cast<Skinning::Params *>(temp_stage_buffer.Map());
+                    Skinning::Params *stage_data = reinterpret_cast<Skinning::Params *>(
+                        Buffer_Map(api, temp_stage_buffer_main, temp_stage_buffer_cold));
 
                     stage_data->uSkinParams =
                         Ren::Vec4u{sr.in_vtx_offset, non_shapekeyed_vertex_count, sr.xform_offset, sr.out_vtx_offset};
                     stage_data->uShapeParamsCurr = Ren::Vec4u{0};
                     stage_data->uShapeParamsPrev = Ren::Vec4u{0};
 
-                    temp_stage_buffer.Unmap();
+                    Buffer_Unmap(api, temp_stage_buffer_main, temp_stage_buffer_cold);
                 }
-                CopyBufferToBuffer(temp_stage_buffer, 0, temp_unif_buffer, 0, sizeof(Skinning::Params), nullptr);
+                CopyBufferToBuffer(api, temp_stage_buffer_main, 0, temp_unif_buffer_main, 0, sizeof(Skinning::Params),
+                                   nullptr);
 
-                glBindBufferBase(GL_UNIFORM_BUFFER, BIND_PUSH_CONSTANT_BUF, temp_unif_buffer.id());
+                glBindBufferBase(GL_UNIFORM_BUFFER, BIND_PUSH_CONSTANT_BUF, temp_unif_buffer_main.buf);
 
                 glDispatchCompute((sr.vertex_count + Skinning::GRP_SIZE - 1) / Skinning::GRP_SIZE, 1, 1);
             }
 
             if (sr.shape_keyed_vertex_count) {
-                Ren::Buffer temp_stage_buffer =
-                    Ren::Buffer("Temp upload buf", nullptr, Ren::eBufType::Upload, sizeof(Skinning::Params));
+                Ren::BufferMain temp_stage_buffer_main = {};
+                Ren::BufferCold temp_stage_buffer_cold = {};
+                if (!Buffer_Init(api, temp_stage_buffer_main, temp_stage_buffer_cold, Ren::String{"Temp upload buf"},
+                                 Ren::eBufType::Upload, sizeof(Skinning::Params), fg.log())) {
+                    fg.log()->Error("Failed to initialize temp upload buffer");
+                    return;
+                }
+                SCOPE_EXIT({ Buffer_Destroy(api, temp_stage_buffer_main, temp_stage_buffer_cold); })
+
                 {
-                    Skinning::Params *stage_data = reinterpret_cast<Skinning::Params *>(temp_stage_buffer.Map());
+                    Skinning::Params *stage_data = reinterpret_cast<Skinning::Params *>(
+                        Buffer_Map(api, temp_stage_buffer_main, temp_stage_buffer_cold));
 
                     stage_data->uSkinParams =
                         Ren::Vec4u{sr.in_vtx_offset + non_shapekeyed_vertex_count, sr.shape_keyed_vertex_count,
@@ -72,11 +107,12 @@ void Eng::ExSkinning::Execute(FgContext &fg) {
                     stage_data->uShapeParamsPrev =
                         Ren::Vec4u{sr.shape_key_offset_prev, sr.shape_key_count_prev, sr.delta_offset, 0};
 
-                    temp_stage_buffer.Unmap();
+                    Buffer_Unmap(api, temp_stage_buffer_main, temp_stage_buffer_cold);
                 }
-                CopyBufferToBuffer(temp_stage_buffer, 0, temp_unif_buffer, 0, sizeof(Skinning::Params), nullptr);
+                CopyBufferToBuffer(api, temp_stage_buffer_main, 0, temp_unif_buffer_main, 0, sizeof(Skinning::Params),
+                                   nullptr);
 
-                glBindBufferBase(GL_UNIFORM_BUFFER, BIND_PUSH_CONSTANT_BUF, temp_unif_buffer.id());
+                glBindBufferBase(GL_UNIFORM_BUFFER, BIND_PUSH_CONSTANT_BUF, temp_unif_buffer_main.buf);
 
                 glDispatchCompute((sr.shape_keyed_vertex_count + Skinning::GRP_SIZE - 1) / Skinning::GRP_SIZE, 1, 1);
             }

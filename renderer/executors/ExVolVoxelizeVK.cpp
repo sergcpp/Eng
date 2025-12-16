@@ -10,16 +10,16 @@
 #include "../Renderer_Structs.h"
 #include "../shaders/vol_interface.h"
 
-void Eng::ExVolVoxelize::Execute_HWRT(FgContext &fg) {
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExVolVoxelize::Execute_HWRT(const FgContext &fg) {
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &stbn_tex = fg.AccessROImage(args_->stbn_tex);
 
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::Buffer &tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
-    Ren::Image &out_emission_tex = fg.AccessRWImage(args_->out_emission_tex);
-    Ren::Image &out_scatter_tex = fg.AccessRWImage(args_->out_scatter_tex);
+    const Ren::Image &out_emission_tex = fg.AccessRWImage(args_->out_emission_tex);
+    const Ren::Image &out_scatter_tex = fg.AccessRWImage(args_->out_scatter_tex);
 
     if (view_state_->skip_volumetrics) {
         return;
@@ -53,6 +53,6 @@ void Eng::ExVolVoxelize::Execute_HWRT(FgContext &fg) {
     uniform_params.frame_index = view_state_->frame_index;
     uniform_params.hist_weight = (view_state_->pre_exposure / view_state_->prev_pre_exposure);
 
-    DispatchCompute(*pi_vol_voxelize_, grp_count, bindings, &uniform_params, sizeof(uniform_params), fg.descr_alloc(),
-                    fg.log());
+    DispatchCompute(fg.cmd_buf(), pi_vol_voxelize_, fg.storages(), grp_count, bindings, &uniform_params,
+                    sizeof(uniform_params), fg.descr_alloc(), fg.log());
 }

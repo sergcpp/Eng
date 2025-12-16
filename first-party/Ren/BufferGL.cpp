@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cassert>
 
+#include "Common.h"
 #include "Config.h"
 #include "GL.h"
+#include "GLCtx.h"
 #include "Log.h"
 
 namespace Ren {
@@ -48,114 +50,81 @@ GLbitfield GetGLBufStorageFlags(const eBufType type) {
 uint32_t GLInternalFormatFromFormat(eFormat format);
 } // namespace Ren
 
-int Ren::Buffer::g_GenCounter = 0;
+bool Ren::Buffer_Init(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold, String name,
+                      const eBufType type, const uint32_t initial_size, ILog *log, const uint32_t size_alignment,
+                      MemAllocators *mem_allocs) {
+    buf_cold.name = std::move(name);
+    buf_cold.type = type;
+    buf_cold.size = 0;
+    buf_cold.size_alignment = size_alignment;
 
-Ren::Buffer::Buffer(const std::string_view name, ApiContext *api_ctx, const eBufType type, const uint32_t initial_size,
-                    const uint32_t size_alignment, MemAllocators *mem_allocs)
-    : name_(name), api_ctx_(api_ctx), type_(type), size_(0), size_alignment_(size_alignment) {
-    Resize(initial_size);
+    return Buffer_Resize(api, buf_main, buf_cold, initial_size, log);
 }
 
-Ren::Buffer::~Buffer() { Free(); }
+bool Ren::Buffer_Init(const ApiContext &api, BufferCold &buf_cold, String name, const eBufType type,
+                      MemAllocation &&alloc, const uint32_t initial_size, ILog *log, const uint32_t size_alignment) {
+    buf_cold.name = std::move(name);
+    buf_cold.type = type;
+    buf_cold.size = initial_size;
+    buf_cold.size_alignment = size_alignment;
 
-Ren::Buffer &Ren::Buffer::operator=(Buffer &&rhs) noexcept {
-    RefCounter::operator=(static_cast<RefCounter &&>(rhs));
-
-    Free();
-
-    assert(mapped_offset_ == 0xffffffff);
-    assert(mapped_ptr_ == nullptr);
-
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
-    handle_ = std::exchange(rhs.handle_, {});
-    name_ = std::move(rhs.name_);
-    sub_alloc_ = std::move(rhs.sub_alloc_);
-    type_ = std::exchange(rhs.type_, eBufType::Undefined);
-
-    size_ = std::exchange(rhs.size_, 0);
-    mapped_ptr_ = std::exchange(rhs.mapped_ptr_, nullptr);
-    mapped_offset_ = std::exchange(rhs.mapped_offset_, 0xffffffff);
-
-    return (*this);
-}
-
-Ren::SubAllocation Ren::Buffer::AllocSubRegion(const uint32_t req_size, const uint32_t req_alignment,
-                                               std::string_view tag, const Buffer *init_buf, void *,
-                                               const uint32_t init_off) {
-    if (!sub_alloc_) {
-        sub_alloc_ = std::make_unique<FreelistAlloc>(size_);
-    }
-
-    FreelistAlloc::Allocation alloc = sub_alloc_->Alloc(req_alignment, req_size);
-    while (alloc.pool == 0xffff) {
-        const auto new_size = req_alignment * ((uint32_t(size_ * 1.25f) + req_alignment - 1) / req_alignment);
-        Resize(new_size);
-        alloc = sub_alloc_->Alloc(req_alignment, req_size);
-    }
-    assert(alloc.pool == 0);
-    assert(sub_alloc_->IntegrityCheck());
-    const SubAllocation ret = {alloc.offset, alloc.block};
-    if (ret.offset != 0xffffffff) {
-        if (init_buf) {
-            UpdateSubRegion(ret.offset, req_size, *init_buf, init_off);
-        }
-    }
-    return ret;
-}
-
-void Ren::Buffer::UpdateSubRegion(const uint32_t offset, const uint32_t size, const Buffer &init_buf,
-                                  const uint32_t init_off, CommandBuffer) {
-    glBindBuffer(GL_COPY_READ_BUFFER, GLuint(init_buf.handle_.buf));
-    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(handle_.buf));
-
-    glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, GLintptr(init_off), GLintptr(offset),
-                        GLsizeiptr(size));
-
-    glBindBuffer(GL_COPY_READ_BUFFER, 0);
-    glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
-}
-
-bool Ren::Buffer::FreeSubRegion(const SubAllocation alloc) {
-    sub_alloc_->Free(alloc.block);
-    assert(sub_alloc_->IntegrityCheck());
     return true;
 }
 
-void Ren::Buffer::Resize(uint32_t new_size, const bool keep_content) {
-    new_size = size_alignment_ * ((new_size + size_alignment_ - 1) / size_alignment_);
-    if (size_ >= new_size) {
-        return;
+void Ren::Buffer_Destroy(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold) {
+    assert(buf_cold.mapped_offset == 0xffffffff && !buf_cold.mapped_ptr);
+    if (buf_main.buf) {
+        auto gl_buf = GLuint(buf_main.buf);
+        glDeleteBuffers(1, &gl_buf);
+        for (const auto view : buf_main.views) {
+            auto gl_tex = GLuint(view.second);
+            glDeleteTextures(1, &gl_tex);
+        }
+    }
+    buf_main = {};
+    buf_cold = {};
+}
+
+void Ren::Buffer_DestroyImmediately(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold) {
+    Buffer_Destroy(api, buf_main, buf_cold);
+}
+
+bool Ren::Buffer_Resize(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold, uint32_t new_size, ILog *log,
+                        const bool keep_content, const bool release_immediately) {
+    new_size = RoundUp(new_size, buf_cold.size_alignment);
+    if (buf_cold.size == new_size) {
+        return true;
     }
 
-    const uint32_t old_size = size_;
+    const uint32_t old_size = buf_cold.size;
 
-    size_ = new_size;
-    assert(size_ > 0);
+    buf_cold.size = new_size;
+    assert(buf_cold.size > 0);
 
-    if (sub_alloc_) {
-        sub_alloc_->ResizePool(0, size_);
-        assert(sub_alloc_->IntegrityCheck());
+    if (buf_cold.sub_alloc) {
+        buf_cold.sub_alloc->ResizePool(0, buf_cold.size);
+        assert(buf_cold.sub_alloc->IntegrityCheck());
     }
 
     GLuint gl_buffer;
     glGenBuffers(1, &gl_buffer);
-    glBindBuffer(g_buf_targets_gl[int(type_)], gl_buffer);
+    glBindBuffer(g_buf_targets_gl[int(buf_cold.type)], gl_buffer);
 #ifdef ENABLE_GPU_DEBUG
-    glObjectLabel(GL_BUFFER, gl_buffer, -1, name_.c_str());
+    glObjectLabel(GL_BUFFER, gl_buffer, -1, buf_cold.name.c_str());
 #endif
-    glBufferStorage(g_buf_targets_gl[int(type_)], size_, nullptr, GetGLBufStorageFlags(type_));
+    glBufferStorage(g_buf_targets_gl[int(buf_cold.type)], buf_cold.size, nullptr, GetGLBufStorageFlags(buf_cold.type));
 
-    auto views = std::move(handle_.views);
+    auto views = std::move(buf_main.views);
 
-    if (handle_.buf) {
-        glBindBuffer(g_buf_targets_gl[int(type_)], GLuint(handle_.buf));
+    if (buf_main.buf) {
+        glBindBuffer(g_buf_targets_gl[int(buf_cold.type)], GLuint(buf_main.buf));
         glBindBuffer(GL_COPY_WRITE_BUFFER, gl_buffer);
 
         if (keep_content) {
-            glCopyBufferSubData(g_buf_targets_gl[int(type_)], GL_COPY_WRITE_BUFFER, 0, 0, old_size);
+            glCopyBufferSubData(g_buf_targets_gl[int(buf_cold.type)], GL_COPY_WRITE_BUFFER, 0, 0, old_size);
         }
 
-        auto old_buffer = GLuint(handle_.buf);
+        auto old_buffer = GLuint(buf_main.buf);
         glDeleteBuffers(1, &old_buffer);
         for (const auto view : views) {
             auto gl_tex = GLuint(view.second);
@@ -165,33 +134,33 @@ void Ren::Buffer::Resize(uint32_t new_size, const bool keep_content) {
         glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
     }
 
-    handle_.buf = uint32_t(gl_buffer);
-    handle_.generation = g_GenCounter++;
+    buf_main.buf = uint32_t(gl_buffer);
+    buf_main.generation = api.buffer_counter++;
     for (auto view : views) {
-        AddView(view.first);
+        Buffer_AddView(api, buf_main, buf_cold, view.first);
     }
+
+    return true;
 }
 
-void Ren::Buffer::Free() {
-    assert(mapped_offset_ == 0xffffffff && !mapped_ptr_);
-    if (handle_.buf) {
-        auto gl_buf = GLuint(handle_.buf);
-        glDeleteBuffers(1, &gl_buf);
-        for (const auto view : handle_.views) {
-            auto gl_tex = GLuint(view.second);
-            glDeleteTextures(1, &gl_tex);
-        }
-        handle_ = {};
-        size_ = 0;
-        sub_alloc_ = {};
-    }
+int Ren::Buffer_AddView(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold, const eFormat format) {
+    GLuint tex_id;
+    glCreateTextures(GL_TEXTURE_BUFFER, 1, &tex_id);
+#ifdef ENABLE_GPU_DEBUG
+    glObjectLabel(GL_TEXTURE, tex_id, -1, buf_cold.name.c_str());
+#endif
+    glBindTexture(GL_TEXTURE_BUFFER, tex_id);
+    glTexBufferRange(GL_TEXTURE_BUFFER, GLInternalFormatFromFormat(format), GLuint(buf_main.buf), 0, buf_cold.size);
+    glBindTexture(GL_TEXTURE_BUFFER, 0);
+
+    buf_main.views.emplace_back(format, tex_id);
+    return int(buf_main.views.size()) - 1;
 }
 
-void Ren::Buffer::FreeImmediate() { Free(); }
-
-uint8_t *Ren::Buffer::MapRange(const uint32_t offset, const uint32_t size, const bool persistent) const {
-    assert(mapped_offset_ == 0xffffffff && !mapped_ptr_);
-    assert(offset + size <= size_);
+uint8_t *Ren::Buffer_MapRange(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold, const uint32_t offset,
+                              const uint32_t size, const bool persistent) {
+    assert(buf_cold.mapped_offset == 0xffffffff && !buf_cold.mapped_ptr);
+    assert(offset + size <= buf_cold.size);
 
     GLbitfield buf_map_range_flags = GLbitfield(GL_MAP_COHERENT_BIT);
 
@@ -199,66 +168,111 @@ uint8_t *Ren::Buffer::MapRange(const uint32_t offset, const uint32_t size, const
         buf_map_range_flags |= GLbitfield(GL_MAP_PERSISTENT_BIT);
     }
 
-    if (type_ == eBufType::Upload) {
+    if (buf_cold.type == eBufType::Upload) {
         buf_map_range_flags |= GLbitfield(GL_MAP_UNSYNCHRONIZED_BIT) | GLbitfield(GL_MAP_WRITE_BIT) |
                                GLbitfield(GL_MAP_INVALIDATE_RANGE_BIT);
-    } else if (type_ == eBufType::Readback) {
+    } else if (buf_cold.type == eBufType::Readback) {
         buf_map_range_flags |= GLbitfield(GL_MAP_READ_BIT);
     }
 
-    glBindBuffer(g_buf_targets_gl[int(type_)], GLuint(handle_.buf));
-    auto *ret = (uint8_t *)glMapBufferRange(g_buf_targets_gl[int(type_)], GLintptr(offset), GLsizeiptr(size),
+    glBindBuffer(g_buf_targets_gl[int(buf_cold.type)], GLuint(buf_main.buf));
+    auto *ret = (uint8_t *)glMapBufferRange(g_buf_targets_gl[int(buf_cold.type)], GLintptr(offset), GLsizeiptr(size),
                                             buf_map_range_flags);
-    glBindBuffer(g_buf_targets_gl[int(type_)], GLuint(0));
+    glBindBuffer(g_buf_targets_gl[int(buf_cold.type)], GLuint(0));
 
-    mapped_offset_ = offset;
-    mapped_ptr_ = ret;
+    buf_cold.mapped_offset = offset;
+    buf_cold.mapped_ptr = ret;
 
     return ret;
 }
 
-void Ren::Buffer::Unmap() const {
-    assert(mapped_offset_ != 0xffffffff && mapped_ptr_);
-    glBindBuffer(g_buf_targets_gl[int(type_)], GLuint(handle_.buf));
-    glUnmapBuffer(g_buf_targets_gl[int(type_)]);
-    glBindBuffer(g_buf_targets_gl[int(type_)], GLuint(0));
-    mapped_offset_ = 0xffffffff;
-    mapped_ptr_ = nullptr;
+void Ren::Buffer_Unmap(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold) {
+    assert(buf_cold.mapped_offset != 0xffffffff && buf_cold.mapped_ptr);
+    glBindBuffer(g_buf_targets_gl[int(buf_cold.type)], GLuint(buf_main.buf));
+    glUnmapBuffer(g_buf_targets_gl[int(buf_cold.type)]);
+    glBindBuffer(g_buf_targets_gl[int(buf_cold.type)], GLuint(0));
+    buf_cold.mapped_offset = 0xffffffff;
+    buf_cold.mapped_ptr = nullptr;
 }
 
-void Ren::Buffer::Fill(const uint32_t dst_offset, const uint32_t size, const uint32_t data, CommandBuffer) {
-    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(handle_.buf));
+Ren::SubAllocation Ren::Buffer_AllocSubRegion(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold,
+                                              const uint32_t req_size, const uint32_t req_alignment,
+                                              std::string_view tag, ILog *log, const BufferMain *init_buf,
+                                              CommandBuffer cmd_buf, const uint32_t init_off) {
+    if (!buf_cold.sub_alloc) {
+        buf_cold.sub_alloc = std::make_unique<FreelistAlloc>(buf_cold.size);
+    }
+
+    FreelistAlloc::Allocation alloc = buf_cold.sub_alloc->Alloc(req_alignment, req_size);
+    while (alloc.pool == 0xffff) {
+        const auto new_size = req_alignment * ((uint32_t(buf_cold.size * 1.25f) + req_alignment - 1) / req_alignment);
+        if (!Buffer_Resize(api, buf_main, buf_cold, new_size, log)) {
+            return {};
+        }
+        alloc = buf_cold.sub_alloc->Alloc(req_alignment, req_size);
+    }
+    assert(alloc.pool == 0);
+    assert(buf_cold.sub_alloc->IntegrityCheck());
+    const SubAllocation ret = {alloc.offset, alloc.block};
+    if (ret.offset != 0xffffffff) {
+        if (init_buf) {
+            Buffer_UpdateSubRegion(api, buf_main, buf_cold, ret.offset, req_size, *init_buf, init_off);
+        }
+    }
+    return ret;
+}
+
+void Ren::Buffer_UpdateSubRegion(const ApiContext &api, BufferMain &buf_main, BufferCold &buf_cold,
+                                 const uint32_t offset, const uint32_t size, const BufferMain &init_buf,
+                                 const uint32_t init_off, CommandBuffer cmd_buf) {
+    glBindBuffer(GL_COPY_READ_BUFFER, GLuint(init_buf.buf));
+    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(buf_main.buf));
+
+    glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, GLintptr(init_off), GLintptr(offset),
+                        GLsizeiptr(size));
+
+    glBindBuffer(GL_COPY_READ_BUFFER, 0);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+}
+
+bool Ren::Buffer_FreeSubRegion(BufferCold &buf_cold, SubAllocation alloc) {
+    buf_cold.sub_alloc->Free(alloc.block);
+    assert(buf_cold.sub_alloc->IntegrityCheck());
+    return true;
+}
+
+void Ren::Buffer_Fill(const ApiContext &, const BufferMain &buf_main, const uint32_t dst_offset, const uint32_t size,
+                      const uint32_t data, CommandBuffer) {
+    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(buf_main.buf));
     glClearBufferSubData(GL_COPY_WRITE_BUFFER, GL_R32UI, GLintptr(dst_offset), GLsizeiptr(size), GL_RED,
                          GL_UNSIGNED_INT, &data);
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
-void Ren::Buffer::UpdateImmediate(const uint32_t dst_offset, const uint32_t size, const void *data, CommandBuffer) {
-    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(handle_.buf));
+void Ren::Buffer_UpdateInPlace(const ApiContext &, const BufferMain &buf_main, const uint32_t dst_offset,
+                               const uint32_t size, const void *data, CommandBuffer) {
+    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(buf_main.buf));
     glBufferSubData(GL_COPY_WRITE_BUFFER, GLintptr(dst_offset), size, data);
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
-int Ren::Buffer::AddView(const eFormat format) {
-    GLuint tex_id;
-    glCreateTextures(GL_TEXTURE_BUFFER, 1, &tex_id);
-#ifdef ENABLE_GPU_DEBUG
-    glObjectLabel(GL_TEXTURE, tex_id, -1, name_.c_str());
-#endif
-    glBindTexture(GL_TEXTURE_BUFFER, tex_id);
-    glTexBufferRange(GL_TEXTURE_BUFFER, GLInternalFormatFromFormat(format), GLuint(handle_.buf), 0, size_);
-    glBindTexture(GL_TEXTURE_BUFFER, 0);
-
-    handle_.views.emplace_back(format, tex_id);
-    return int(handle_.views.size()) - 1;
+void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const uint32_t src_offset,
+                             const BufferMain &dst, const uint32_t dst_offset, const uint32_t size, CommandBuffer) {
+    glBindBuffer(GL_COPY_READ_BUFFER, GLuint(src.buf));
+    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(dst.buf));
+    glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, src_offset, dst_offset, size);
+    glBindBuffer(GL_COPY_READ_BUFFER, 0);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
-uint32_t Ren::Buffer::AlignMapOffset(const uint32_t offset) const { return offset; }
+void Ren::CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, const BufferHandle src,
+                             const uint32_t src_offset, const BufferHandle dst, const uint32_t dst_offset,
+                             const uint32_t size, CommandBuffer cmd_buf) {
+    const auto &[src_main, src_cold] = storages.buffers.Get(src);
+    const auto &[dst_main, dst_cold] = storages.buffers.Get(dst);
 
-void Ren::CopyBufferToBuffer(const Buffer &src, const uint32_t src_offset, Buffer &dst, const uint32_t dst_offset,
-                             const uint32_t size, CommandBuffer) {
-    glBindBuffer(GL_COPY_READ_BUFFER, GLuint(src.id()));
-    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(dst.id()));
+    glBindBuffer(GL_COPY_READ_BUFFER, GLuint(src_main.buf));
+    glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(dst_main.buf));
     glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, src_offset, dst_offset, size);
     glBindBuffer(GL_COPY_READ_BUFFER, 0);
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);

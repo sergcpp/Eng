@@ -23,49 +23,53 @@ void insert_sorted(Ren::SmallVectorImpl<int16_t> &vec, const int16_t val) {
 }
 } // namespace FgBuilderInternal
 
-Ren::CommandBuffer Eng::FgContext::cmd_buf() { return ctx_.current_cmd_buf(); }
+const Ren::StoragesRef &Eng::FgContext::storages() const { return ctx_.storages(); }
 
-Ren::ILog *Eng::FgContext::log() { return ctx_.log(); }
+const Ren::DualStorage<Ren::ProgramMain, Ren::ProgramCold> &Eng::FgContext::programs() const { return ctx_.programs(); }
 
-Ren::DescrMultiPoolAlloc &Eng::FgContext::descr_alloc() { return ctx_.default_descr_alloc(); }
+const Ren::DualStorage<Ren::PipelineMain, Ren::PipelineCold> &Eng::FgContext::pipelines() const {
+    return ctx_.pipelines();
+}
+
+Ren::CommandBuffer Eng::FgContext::cmd_buf() const { return ctx_.current_cmd_buf(); }
+
+Ren::ILog *Eng::FgContext::log() const { return ctx_.log(); }
+
+Ren::DescrMultiPoolAlloc &Eng::FgContext::descr_alloc() const { return ctx_.default_descr_alloc(); }
 
 int Eng::FgContext::backend_frame() const { return ctx_.backend_frame(); }
 
-const Ren::Buffer &Eng::FgContext::AccessROBuffer(const FgResRef handle) { return *AccessROBufferRef(handle); }
+Ren::BufferHandle Eng::FgContext::AccessROBuffer(const FgBufHandle handle) const {
+    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle.handle);
+    assert(fgbuf_cold.write_count == handle.write_count);
+    ++fgbuf_cold.read_count;
+    return fgbuf_main.handle;
+}
 
-const Ren::Image &Eng::FgContext::AccessROImage(const FgResRef handle) { return *AccessROImageRef(handle); }
+const Ren::Image &Eng::FgContext::AccessROImage(const FgResRef handle) const { return *AccessROImageRef(handle); }
 
-Ren::Buffer &Eng::FgContext::AccessRWBuffer(const FgResRef handle) {
-    assert(handle.type == eFgResType::Buffer);
-    FgAllocBuf &buf = buffers_.at(handle.index);
-    assert(buf.write_count + 1 == handle.write_count);
+Ren::BufferHandle Eng::FgContext::AccessRWBuffer(const FgBufHandle handle) const {
+    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle.handle);
+    assert(fgbuf_cold.write_count + 1 == handle.write_count);
     // assert(buf.ref->resource_state == handle.desired_state);
-    ++buf.write_count;
-    return *buf.ref;
+    ++fgbuf_cold.write_count;
+    return fgbuf_main.handle;
 }
 
-Ren::Image &Eng::FgContext::AccessRWImage(const FgResRef handle) { return *AccessRWImageRef(handle); }
+const Ren::Image &Eng::FgContext::AccessRWImage(const FgResRef handle) const { return *AccessRWImageRef(handle); }
 
-Ren::WeakBufRef Eng::FgContext::AccessROBufferRef(const FgResRef handle) {
-    assert(handle.type == eFgResType::Buffer);
-    FgAllocBuf &buf = buffers_.at(handle.index);
-    assert(buf.write_count == handle.write_count);
-    ++buf.read_count;
-    return buf.ref;
-}
-
-Ren::WeakImgRef Eng::FgContext::AccessROImageRef(const FgResRef handle) {
+Ren::WeakImgRef Eng::FgContext::AccessROImageRef(const FgResRef handle) const {
     assert(handle.type == eFgResType::Image);
-    FgAllocImg &img = images_.at(handle.index);
+    const FgAllocImg &img = images_.at(handle.index);
     assert(img.write_count == handle.write_count);
     // assert(img.ref->resource_state == handle.desired_state);
     ++img.read_count;
     return img.ref;
 }
 
-Ren::WeakImgRef Eng::FgContext::AccessRWImageRef(const FgResRef handle) {
+Ren::WeakImgRef Eng::FgContext::AccessRWImageRef(const FgResRef handle) const {
     assert(handle.type == eFgResType::Image);
-    FgAllocImg &img = images_.at(handle.index);
+    const FgAllocImg &img = images_.at(handle.index);
     assert(img.write_count + 1 == handle.write_count);
     // assert(img.ref->resource_state == handle.desired_state);
     ++img.write_count;
@@ -141,16 +145,17 @@ std::string Eng::FgBuilder::GetResourceDebugInfo(const FgResource &res) const {
             return "[Img] " + images_[res.index].name;
         }
     } else if (res.type == eFgResType::Buffer) {
-        if (buffers_[res.index].external) {
-            return "[Buf] " + buffers_[res.index].name + " (ext)";
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(res.opaque_handle);
+        if (fgbuf_cold.external) {
+            return "[Buf] " + fgbuf_cold.name + " (ext)";
         } else {
-            return "[Buf] " + buffers_[res.index].name;
+            return "[Buf] " + fgbuf_cold.name;
         }
     }
     return "";
 }
 
-void Eng::FgBuilder::GetResourceFrameLifetime(const FgAllocBuf &b, uint16_t out_lifetime[2][2]) const {
+void Eng::FgBuilder::GetResourceFrameLifetime(const FgAllocBufCold &b, uint16_t out_lifetime[2][2]) const {
     out_lifetime[0][0] = out_lifetime[1][0] = uint16_t(b.lifetime.first_used_node());
     out_lifetime[0][1] = out_lifetime[1][1] = uint16_t(b.lifetime.last_used_node());
 }
@@ -180,81 +185,79 @@ void Eng::FgBuilder::GetResourceFrameLifetime(const FgAllocImg &t, uint16_t out_
     }
 }
 
-Eng::FgResRef Eng::FgBuilder::ReadBuffer(const FgResRef handle, const Ren::eResState desired_state,
-                                         const Ren::Bitmask<Ren::eStage> stages, FgNode &node) {
-    assert(handle.type == eFgResType::Buffer);
+Eng::FgBufHandle Eng::FgBuilder::ReadBuffer(const FgBufHandle handle, const Ren::eResState desired_state,
+                                            const Ren::Bitmask<Ren::eStage> stages, FgNode &node) {
+    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle.handle);
 
-    FgAllocBuf &buf = buffers_[handle.index];
-    const FgResource ret = {eFgResType::Buffer, buf._generation, desired_state, stages, handle.index};
+    const FgResource res = {eFgResType::Buffer, fgbuf_cold._generation, desired_state, uint64_t(handle.handle), stages};
 
-    buf.read_in_nodes.push_back({node.index_, int16_t(node.input_.size())});
-    assert(buf.write_count == handle.write_count);
-    ++buf.read_count;
+    fgbuf_cold.read_in_nodes.push_back({node.index_, int16_t(node.input_.size())});
+    assert(fgbuf_cold.write_count == handle.write_count);
+    ++fgbuf_cold.read_count;
 
 #ifndef NDEBUG
     // Ensure uniqueness
     for (const FgResource &r : node.input_) {
-        assert(r.type != eFgResType::Buffer || r.index != ret.index);
+        assert(r.type != eFgResType::Buffer || r.opaque_handle != res.opaque_handle);
     }
 #endif
-    node.input_.push_back(ret);
+    node.input_.push_back(res);
 
-    return ret;
+    return FgBufHandle{handle.handle, res._generation};
 }
 
-Eng::FgResRef Eng::FgBuilder::ReadBuffer(const Ren::WeakBufRef &ref, const Ren::eResState desired_state,
-                                         const Ren::Bitmask<Ren::eStage> stages, FgNode &node, const int slot_index) {
-    FgResource ret;
-    ret.type = eFgResType::Buffer;
+Eng::FgBufHandle Eng::FgBuilder::ReadBuffer(const Ren::BufferHandle _handle, const Ren::eResState desired_state,
+                                            const Ren::Bitmask<Ren::eStage> stages, FgNode &node,
+                                            const int slot_index) {
+    const auto &[buf_main, buf_cold] = ctx_.storages().buffers.Get(_handle);
 
-    const uint16_t *pbuf_index = name_to_buffer_.Find(ref->name());
-    if (!pbuf_index) {
-        FgAllocBuf new_buf;
-        new_buf.name = ref->name().c_str();
-        new_buf.desc = FgBufDesc{ref->type(), ref->size()};
-        new_buf.external = true;
+    Ren::Handle<FgAllocBufMain> handle = buffers_.Find(buf_cold.name);
+    if (!handle) {
+        handle = buffers_.Emplace(buf_cold.name);
 
-        ret.index = buffers_.emplace(new_buf);
-        name_to_buffer_[new_buf.name] = ret.index;
-    } else {
-        ret.index = *pbuf_index;
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle);
+
+        assert(fgbuf_cold._generation == 0);
+        fgbuf_cold.name = buf_cold.name;
+        fgbuf_cold.desc = FgBufDesc{buf_cold.type, buf_cold.size};
+        fgbuf_cold.external = true;
     }
+    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle);
+    assert(fgbuf_cold.desc.size == buf_cold.size && fgbuf_cold.desc.type == buf_cold.type);
 
-    FgAllocBuf &buf = buffers_[ret.index];
-    assert(buf.desc.size == ref->size() && buf.desc.type == ref->type());
-    buf.ref = ref;
-    ret._generation = buf._generation;
-    ret.desired_state = desired_state;
-    ret.stages = stages;
+    fgbuf_main.handle = _handle;
 
-    buf.read_in_nodes.push_back({node.index_, int16_t(node.input_.size())});
-    ++buf.read_count;
+    auto res = FgResource{eFgResType::Buffer, fgbuf_cold._generation, desired_state, uint64_t(handle), stages};
+
+    fgbuf_cold.read_in_nodes.push_back({node.index_, int16_t(node.input_.size())});
+    ++fgbuf_cold.read_count;
 
     if (slot_index == -1) {
 #ifndef NDEBUG
         for (const FgResource &r : node.input_) {
-            assert(r.type != eFgResType::Buffer || r.index != ret.index);
+            assert(r.type != eFgResType::Buffer || r.opaque_handle != res.opaque_handle);
         }
 #endif
-        node.input_.push_back(ret);
+        node.input_.push_back(res);
     } else {
         // Replace existing input
-        FgAllocBuf &prev_buf = buffers_[node.input_[slot_index].index];
-        --prev_buf.write_count;
-        for (size_t i = 0; i < prev_buf.written_in_nodes.size();) {
-            if (prev_buf.written_in_nodes[i].node_index == node.index_) {
-                prev_buf.written_in_nodes.erase(prev_buf.written_in_nodes.begin() + i);
+        const auto &[prev_buf_main, prev_buf_cold] = buffers_.GetUnsafe(node.input_[slot_index].opaque_handle >> 32);
+        --prev_buf_cold.write_count;
+        for (size_t i = 0; i < prev_buf_cold.written_in_nodes.size();) {
+            if (prev_buf_cold.written_in_nodes[i].node_index == node.index_) {
+                prev_buf_cold.written_in_nodes.erase(prev_buf_cold.written_in_nodes.begin() + i);
             } else {
                 ++i;
             }
         }
-        if (node.input_[slot_index].index == ret.index) {
-            --ret.write_count;
+        if (node.input_[slot_index].opaque_handle == res.opaque_handle) {
+            --res.write_count;
         }
-        node.input_[slot_index] = ret;
+        node.input_[slot_index] = res;
     }
 
-    return ret;
+    ++res.read_count;
+    return FgBufHandle{handle, res._generation};
 }
 
 Eng::FgResRef Eng::FgBuilder::ReadImage(const FgResRef handle, const Ren::eResState desired_state,
@@ -262,7 +265,7 @@ Eng::FgResRef Eng::FgBuilder::ReadImage(const FgResRef handle, const Ren::eResSt
     assert(handle.type == eFgResType::Image);
 
     FgAllocImg &img = images_[handle.index];
-    const FgResource ret = {eFgResType::Image, img._generation, desired_state, stages, handle.index};
+    const FgResource ret = {eFgResType::Image, img._generation, desired_state, handle.index, stages};
 
     img.read_in_nodes.push_back({node.index_, int16_t(node.input_.size())});
     // assert(img.write_count == handle.write_count);
@@ -284,7 +287,7 @@ Eng::FgResRef Eng::FgBuilder::ReadImage(std::string_view name, const Ren::eResSt
     assert(img_index && "Image does not exist!");
 
     FgAllocImg &img = images_[*img_index];
-    const FgResource ret = {eFgResType::Image, img._generation, desired_state, stages, *img_index};
+    const FgResource ret = {eFgResType::Image, img._generation, desired_state, *img_index, stages};
 
     img.read_in_nodes.push_back({node.index_, int16_t(node.input_.size())});
     ++img.read_count;
@@ -358,8 +361,8 @@ Eng::FgResRef Eng::FgBuilder::ReadHistoryImage(const FgResRef handle, const Ren:
     }
     FgAllocImg &img = images_[orig_img->history_index];
 
-    const FgResource ret = {eFgResType::Image, img._generation, desired_state, stages,
-                            uint16_t(orig_img->history_index)};
+    const FgResource ret = {eFgResType::Image, img._generation, desired_state, uint16_t(orig_img->history_index),
+                            stages};
 
     img.desc = orig_img->desc;
     img.read_in_nodes.push_back({node.index_, int16_t(node.input_.size())});
@@ -396,103 +399,91 @@ Eng::FgResRef Eng::FgBuilder::ReadHistoryImage(const std::string_view name, cons
     return ReadHistoryImage(ret, desired_state, stages, node);
 }
 
-Eng::FgResRef Eng::FgBuilder::WriteBuffer(const FgResRef handle, const Ren::eResState desired_state,
-                                          const Ren::Bitmask<Ren::eStage> stages, FgNode &node) {
-    assert(handle.type == eFgResType::Buffer);
+Eng::FgBufHandle Eng::FgBuilder::WriteBuffer(const FgBufHandle handle, const Ren::eResState desired_state,
+                                             const Ren::Bitmask<Ren::eStage> stages, FgNode &node) {
+    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle.handle);
 
-    FgAllocBuf &buf = buffers_[handle.index];
-    auto ret = FgResource{eFgResType::Buffer, buf._generation, desired_state, stages, handle.index};
+    auto res = FgResource{eFgResType::Buffer, fgbuf_cold._generation, desired_state, uint64_t(handle.handle), stages};
 
-    buf.written_in_nodes.push_back({node.index_, int16_t(node.output_.size())});
-    assert(buf.write_count == handle.write_count);
-    ++buf.write_count;
+    fgbuf_cold.written_in_nodes.push_back({node.index_, int16_t(node.output_.size())});
+    assert(fgbuf_cold.write_count == handle.write_count);
+    ++fgbuf_cold.write_count;
 
 #ifndef NDEBUG
     for (const FgResource &r : node.output_) {
-        assert(r.type != eFgResType::Buffer || r.index != ret.index);
+        assert(r.type != eFgResType::Buffer || r.opaque_handle != res.opaque_handle);
     }
 #endif
-    node.output_.push_back(ret);
+    node.output_.push_back(res);
 
-    ++ret.write_count;
-    return ret;
+    ++res.write_count;
+    return FgBufHandle{handle.handle, res._generation};
 }
 
-Eng::FgResRef Eng::FgBuilder::WriteBuffer(const std::string_view name, const FgBufDesc &desc,
-                                          const Ren::eResState desired_state, const Ren::Bitmask<Ren::eStage> stages,
-                                          FgNode &node) {
-    FgResource ret;
-    ret.type = eFgResType::Buffer;
+Eng::FgBufHandle Eng::FgBuilder::WriteBuffer(const std::string_view name, const FgBufDesc &desc,
+                                             const Ren::eResState desired_state, const Ren::Bitmask<Ren::eStage> stages,
+                                             FgNode &node) {
+    Ren::Handle<FgAllocBufMain> handle = buffers_.Find(name);
+    assert(!handle);
 
-    const uint16_t *pbuf_index = name_to_buffer_.Find(name);
-    if (!pbuf_index) {
-        FgAllocBuf new_buf;
-        new_buf.name = name;
-        new_buf.desc = desc;
+    Ren::String name_str{name};
+    handle = buffers_.Emplace(name_str);
 
-        ret.index = buffers_.emplace(new_buf);
-        name_to_buffer_[new_buf.name] = ret.index;
-    } else {
-        ret.index = *pbuf_index;
-    }
+    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle);
 
-    FgAllocBuf &buf = buffers_[ret.index];
-    buf.desc = desc;
-    ret._generation = buf._generation;
-    ret.desired_state = desired_state;
-    ret.stages = stages;
+    fgbuf_cold.name = name_str;
+    fgbuf_cold.desc = desc;
 
-    buf.written_in_nodes.push_back({node.index_, int16_t(node.output_.size())});
-    ++buf.write_count;
+    auto res = FgResource{eFgResType::Buffer, fgbuf_cold._generation, desired_state, uint64_t(handle), stages};
+
+    fgbuf_cold.written_in_nodes.push_back({node.index_, int16_t(node.output_.size())});
+    ++fgbuf_cold.write_count;
 
 #ifndef NDEBUG
     for (const FgResource &r : node.output_) {
-        assert(r.type != eFgResType::Buffer || r.index != ret.index);
+        assert(r.type != eFgResType::Buffer || r.opaque_handle != res.opaque_handle);
     }
 #endif
-    node.output_.push_back(ret);
+    node.output_.push_back(res);
 
-    ++ret.write_count;
-    return ret;
+    ++res.write_count;
+    return FgBufHandle{handle, res._generation};
 }
 
-Eng::FgResRef Eng::FgBuilder::WriteBuffer(const Ren::WeakBufRef &ref, const Ren::eResState desired_state,
-                                          const Ren::Bitmask<Ren::eStage> stages, FgNode &node) {
-    FgResource ret;
-    ret.type = eFgResType::Buffer;
+Eng::FgBufHandle Eng::FgBuilder::WriteBuffer(const Ren::BufferHandle _handle, const Ren::eResState desired_state,
+                                             const Ren::Bitmask<Ren::eStage> stages, FgNode &node) {
+    const auto &[buf_main, buf_cold] = ctx_.storages().buffers.Get(_handle);
 
-    const uint16_t *pbuf_index = name_to_buffer_.Find(ref->name());
-    if (!pbuf_index) {
-        FgAllocBuf new_buf;
-        new_buf.name = ref->name().c_str();
-        new_buf.desc = FgBufDesc{ref->type(), ref->size()};
-        new_buf.external = true;
+    Ren::Handle<FgAllocBufMain> handle = buffers_.Find(buf_cold.name);
+    if (!handle) {
+        handle = buffers_.Emplace(buf_cold.name);
 
-        ret.index = buffers_.emplace(new_buf);
-        name_to_buffer_[new_buf.name] = ret.index;
-    } else {
-        ret.index = *pbuf_index;
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle);
+
+        fgbuf_main.handle = _handle;
+
+        assert(fgbuf_cold._generation == 0);
+        fgbuf_cold.name = buf_cold.name;
+        fgbuf_cold.desc = FgBufDesc{buf_cold.type, buf_cold.size};
+        fgbuf_cold.external = true;
     }
+    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle);
+    assert(fgbuf_cold.desc.size == buf_cold.size && fgbuf_cold.desc.type == buf_cold.type);
 
-    FgAllocBuf &buf = buffers_[ret.index];
-    assert(buf.desc.size == ref->size() && buf.desc.type == ref->type());
-    buf.ref = ref;
-    ret._generation = buf._generation;
-    ret.desired_state = desired_state;
-    ret.stages = stages;
+    auto res = FgResource{eFgResType::Buffer, fgbuf_cold._generation, desired_state, uint64_t(handle), stages};
 
-    buf.written_in_nodes.push_back({node.index_, int16_t(node.output_.size())});
-    ++buf.write_count;
+    fgbuf_cold.written_in_nodes.push_back({node.index_, int16_t(node.output_.size())});
+    ++fgbuf_cold.write_count;
 
 #ifndef NDEBUG
     for (const FgResource &r : node.output_) {
-        assert(r.type != eFgResType::Buffer || r.index != ret.index);
+        assert(r.type != eFgResType::Buffer || r.opaque_handle != res.opaque_handle);
     }
 #endif
-    node.output_.push_back(ret);
+    node.output_.push_back(res);
 
-    ++ret.write_count;
-    return ret;
+    ++res.write_count;
+    return FgBufHandle{handle, res._generation};
 }
 
 Eng::FgResRef Eng::FgBuilder::WriteImage(const FgResRef handle, const Ren::eResState desired_state,
@@ -500,7 +491,7 @@ Eng::FgResRef Eng::FgBuilder::WriteImage(const FgResRef handle, const Ren::eResS
     assert(handle.type == eFgResType::Image);
 
     FgAllocImg &img = images_[handle.index];
-    auto ret = FgResource{eFgResType::Image, img._generation, desired_state, stages, handle.index};
+    auto ret = FgResource{eFgResType::Image, img._generation, desired_state, handle.index, stages};
 
     assert(img.write_count == handle.write_count);
     img.written_in_nodes.push_back({node.index_, int16_t(node.output_.size())});
@@ -523,7 +514,7 @@ Eng::FgResRef Eng::FgBuilder::WriteImage(std::string_view name, const Ren::eResS
     assert(img_index && "Image does not exist!");
 
     FgAllocImg &img = images_[*img_index];
-    auto ret = FgResource{eFgResType::Image, img._generation, desired_state, stages, *img_index};
+    auto ret = FgResource{eFgResType::Image, img._generation, desired_state, *img_index, stages};
 
     img.written_in_nodes.push_back({node.index_, int16_t(node.output_.size())});
     ++img.write_count;
@@ -663,30 +654,33 @@ Eng::FgResRef Eng::FgBuilder::ImportResource(const Ren::WeakImgRef &ref) {
 }
 
 void Eng::FgBuilder::AllocateNeededResources_Simple() {
-    for (auto it = std::begin(buffers_); it != std::end(buffers_); ++it) {
-        FgAllocBuf &buf = *it;
-        if (buf.external || buf.alias_of != -1 || !buf.lifetime.is_used()) {
+    const auto &all_buffers = buffers_.items_by_name();
+    for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+        if (fgbuf_cold.external || fgbuf_cold.alias_of != -1 || !fgbuf_cold.lifetime.is_used()) {
             continue;
         }
-        assert(!buf.ref);
-        buf.strong_ref = ctx_.LoadBuffer(buf.name, buf.desc.type, buf.desc.size, 16, ctx_.default_mem_allocs());
-        buf.ref = buf.strong_ref;
-        for (int i = 0; i < int(buf.desc.views.size()); ++i) {
-            const int view_index = buf.ref->AddView(buf.desc.views[i]);
+        assert(!fgbuf_main.handle);
+        fgbuf_main.handle = ctx_.FindOrCreateBuffer(fgbuf_cold.name, fgbuf_cold.desc.type, fgbuf_cold.desc.size, 16,
+                                                    ctx_.default_mem_allocs());
+
+        const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+        for (int i = 0; i < int(fgbuf_cold.desc.views.size()); ++i) {
+            const int view_index = Buffer_AddView(ctx_.api(), buf_main, buf_cold, fgbuf_cold.desc.views[i]);
             assert(view_index == i);
         }
     }
-    for (auto it = std::begin(buffers_); it != std::end(buffers_); ++it) {
-        FgAllocBuf &buf = *it;
-        if (buf.external || buf.alias_of == -1 || !buf.lifetime.is_used()) {
+    for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+        if (fgbuf_cold.external || fgbuf_cold.alias_of == -1 || !fgbuf_cold.lifetime.is_used()) {
             continue;
         }
-        const FgAllocBuf &orig_buf = buffers_.at(buf.alias_of);
-        assert(orig_buf.alias_of == -1);
-        buf.ref = orig_buf.ref;
-        buf.strong_ref = {};
-        ctx_.log()->Info("Buf %s will be alias of %s", buf.name.c_str(), orig_buf.name.c_str());
+        const auto &[orig_fgbuf_main, orig_fgbuf_cold] = buffers_.GetUnsafe(fgbuf_cold.alias_of);
+        assert(orig_fgbuf_cold.alias_of == -1);
+        fgbuf_main.handle = orig_fgbuf_main.handle;
+        ctx_.log()->Info("Buf %s will be alias of %s", fgbuf_cold.name.c_str(), orig_fgbuf_cold.name.c_str());
     }
+    ///
     for (auto it = std::begin(images_); it != std::end(images_); ++it) {
         FgAllocImg &img = *it;
         if (img.external || img.alias_of != -1 || !img.lifetime.is_used()) {
@@ -736,15 +730,17 @@ void Eng::FgBuilder::AllocateNeededResources_Simple() {
 }
 
 void Eng::FgBuilder::ClearResources_Simple() {
-    std::vector<Ren::BufRef> buffers_to_clear;
+    std::vector<Ren::BufferHandle> buffers_to_clear;
     std::vector<Ren::ImgRef> images_to_clear;
 
-    for (const FgAllocBuf &b : buffers_) {
-        if (b.external || !b.lifetime.is_used()) {
+    const auto &all_buffers = buffers_.items_by_name();
+    for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+        if (fgbuf_cold.external || !fgbuf_cold.lifetime.is_used()) {
             continue;
         }
-        if (b.strong_ref && b.alias_of == -1) {
-            buffers_to_clear.push_back(b.strong_ref);
+        if (fgbuf_cold.alias_of == -1) {
+            buffers_to_clear.push_back(fgbuf_main.handle);
         }
     }
 
@@ -759,6 +755,8 @@ void Eng::FgBuilder::ClearResources_Simple() {
 
     if (!images_to_clear.empty() || !buffers_to_clear.empty()) { // Clear resources
         Ren::CommandBuffer cmd_buf = ctx_.BegTempSingleTimeCommands();
+
+        const Ren::StoragesRef &storages = ctx_.storages();
 
         std::vector<Ren::TransitionInfo> transitions;
         transitions.reserve(images_to_clear.size() + buffers_to_clear.size());
@@ -776,10 +774,10 @@ void Eng::FgBuilder::ClearResources_Simple() {
                 }
             }
         }
-        for (const Ren::BufRef &b : buffers_to_clear) {
-            transitions.emplace_back(b.get(), Ren::eResState::CopyDst);
+        for (const Ren::BufferHandle b : buffers_to_clear) {
+            transitions.emplace_back(b, Ren::eResState::CopyDst);
         }
-        TransitionResourceStates(ctx_.api_ctx(), cmd_buf, Ren::AllStages, Ren::AllStages, transitions);
+        TransitionResourceStates(ctx_.api(), ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages, transitions);
 
         for (Ren::ImgRef &t : images_to_clear) {
             if (t->resource_state == Ren::eResState::CopyDst) {
@@ -793,12 +791,13 @@ void Eng::FgBuilder::ClearResources_Simple() {
                 assert(false);
             }
         }
-        for (Ren::BufRef &b : buffers_to_clear) {
-            if (b->resource_state == Ren::eResState::CopyDst) {
+        for (Ren::BufferHandle b : buffers_to_clear) {
+            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(b);
+            if (buf_main.resource_state == Ren::eResState::CopyDst) {
                 ClearBuffer_AsTransfer(b, cmd_buf);
-            } else if (b->resource_state == Ren::eResState::UnorderedAccess) {
+            } else if (buf_main.resource_state == Ren::eResState::UnorderedAccess) {
                 ClearBuffer_AsStorage(b, cmd_buf);
-            } else if (b->resource_state == Ren::eResState::BuildASWrite) {
+            } else if (buf_main.resource_state == Ren::eResState::BuildASWrite) {
                 // NOTE: Skipped
             } else {
                 assert(false);
@@ -817,27 +816,39 @@ void Eng::FgBuilder::Reset() {
     nodes_data_.clear();
     alloc_.Reset();
 
-    name_to_buffer_.clear();
     name_to_image_.clear();
 
     for (auto &t : node_timings_) {
         t.clear();
     }
 
-    buffers_.clear();
-    images_.clear();
+    const Ren::StoragesRef &storages = ctx_.storages();
 
-    temp_samplers.clear();
+    auto &all_buffers = buffers_.items_by_name();
+    for (auto it = std::begin(all_buffers); it != std::end(all_buffers);) {
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+        if (fgbuf_cold.external || fgbuf_cold.alias_of != -1) {
+            it = buffers_.Free(it);
+            continue;
+        }
+        if (fgbuf_main.handle) {
+            ctx_.ReleaseBuffer(fgbuf_main.handle);
+        }
+        it = buffers_.Free(it);
+    }
+
+    images_.clear();
 
     ReleaseMemHeaps();
 }
 
-int16_t Eng::FgBuilder::FindPreviousWrittenInNode(const FgResRef handle) {
+int16_t Eng::FgBuilder::FindPreviousWrittenInNode(const FgResource &res) {
     Ren::SmallVectorImpl<fg_node_slot_t> *written_in_nodes = nullptr;
-    if (handle.type == eFgResType::Buffer) {
-        written_in_nodes = &buffers_[handle.index].written_in_nodes;
-    } else if (handle.type == eFgResType::Image) {
-        written_in_nodes = &images_[handle.index].written_in_nodes;
+    if (res.type == eFgResType::Buffer) {
+        FgAllocBufCold &fgbuf_cold = buffers_.Get(res.opaque_handle).second;
+        written_in_nodes = &fgbuf_cold.written_in_nodes;
+    } else if (res.type == eFgResType::Image) {
+        written_in_nodes = &images_[res.index].written_in_nodes;
     }
 
     assert(written_in_nodes);
@@ -847,20 +858,71 @@ int16_t Eng::FgBuilder::FindPreviousWrittenInNode(const FgResRef handle) {
 
     for (const fg_node_slot_t i : *written_in_nodes) {
         const FgNode *node = nodes_[i.node_index];
-        assert(node->output_[i.slot_index].type == handle.type && node->output_[i.slot_index].index == handle.index);
-        if (node->output_[i.slot_index].write_count == handle.write_count - 1) {
+        assert(node->output_[i.slot_index].type == res.type && node->output_[i.slot_index].index == res.index &&
+               node->output_[i.slot_index].opaque_handle == res.opaque_handle);
+        if (node->output_[i.slot_index].write_count == res.write_count - 1) {
             return i.node_index;
         }
     }
     return -1;
 }
 
-void Eng::FgBuilder::FindPreviousReadInNodes(const FgResRef handle, Ren::SmallVectorImpl<int16_t> &out_nodes) {
+int16_t Eng::FgBuilder::FindPreviousWrittenInNode(const FgResRef res) {
+    Ren::SmallVectorImpl<fg_node_slot_t> *written_in_nodes = nullptr;
+    if (res.type == eFgResType::Buffer) {
+        FgAllocBufCold &fgbuf_cold = buffers_.Get(res.opaque_handle).second;
+        written_in_nodes = &fgbuf_cold.written_in_nodes;
+
+    } else if (res.type == eFgResType::Image) {
+        written_in_nodes = &images_[res.index].written_in_nodes;
+    }
+
+    assert(written_in_nodes);
+    if (!written_in_nodes) {
+        return -1;
+    }
+
+    for (const fg_node_slot_t i : *written_in_nodes) {
+        const FgNode *node = nodes_[i.node_index];
+        assert(node->output_[i.slot_index].type == res.type && node->output_[i.slot_index].index == res.index &&
+               node->output_[i.slot_index].opaque_handle == res.opaque_handle);
+        if (node->output_[i.slot_index].write_count == res.write_count - 1) {
+            return i.node_index;
+        }
+    }
+    return -1;
+}
+
+int16_t Eng::FgBuilder::FindPreviousWrittenInNode(const FgBufHandle res) {
+    Ren::SmallVectorImpl<fg_node_slot_t> *written_in_nodes = nullptr;
+    {
+        FgAllocBufCold &fgbuf_cold = buffers_.Get(res.handle).second;
+        written_in_nodes = &fgbuf_cold.written_in_nodes;
+    }
+
+    assert(written_in_nodes);
+    if (!written_in_nodes) {
+        return -1;
+    }
+
+    for (const fg_node_slot_t i : *written_in_nodes) {
+        const FgNode *node = nodes_[i.node_index];
+        assert(node->output_[i.slot_index].type == eFgResType::Buffer &&
+               node->output_[i.slot_index].opaque_handle == uint64_t(res.handle));
+        if (node->output_[i.slot_index].write_count == res.write_count - 1) {
+            return i.node_index;
+        }
+    }
+    return -1;
+}
+
+void Eng::FgBuilder::FindPreviousReadInNodes(const FgResource &res, Ren::SmallVectorImpl<int16_t> &out_nodes) {
     Ren::SmallVectorImpl<fg_node_slot_t> *read_in_nodes = nullptr;
-    if (handle.type == eFgResType::Buffer) {
-        read_in_nodes = &buffers_[handle.index].read_in_nodes;
-    } else if (handle.type == eFgResType::Image) {
-        read_in_nodes = &images_[handle.index].read_in_nodes;
+    if (res.type == eFgResType::Buffer) {
+        FgAllocBufCold &fgbuf_cold = buffers_.Get(Ren::Handle<FgAllocBufMain>{res.opaque_handle}).second;
+        read_in_nodes = &fgbuf_cold.read_in_nodes;
+    } else if (res.type == eFgResType::Image) {
+        read_in_nodes = &images_[res.index].read_in_nodes;
     }
 
     assert(read_in_nodes);
@@ -870,8 +932,9 @@ void Eng::FgBuilder::FindPreviousReadInNodes(const FgResRef handle, Ren::SmallVe
 
     for (const fg_node_slot_t i : *read_in_nodes) {
         const FgNode *node = nodes_[i.node_index];
-        assert(node->input_[i.slot_index].type == handle.type && node->input_[i.slot_index].index == handle.index);
-        if (node->input_[i.slot_index].write_count == handle.write_count) {
+        assert(node->input_[i.slot_index].type == res.type && node->input_[i.slot_index].index == res.index &&
+               node->input_[i.slot_index].opaque_handle == res.opaque_handle);
+        if (node->input_[i.slot_index].write_count == res.write_count) {
             const auto it = std::lower_bound(std::begin(out_nodes), std::end(out_nodes), i.node_index);
             if (it == std::end(out_nodes) || i.node_index < (*it)) {
                 out_nodes.insert(it, i.node_index);
@@ -982,7 +1045,8 @@ void Eng::FgBuilder::PrepareResourceLifetimes() {
         for (const auto &res : node->input_) {
             FgAllocRes *this_res = nullptr;
             if (res.type == eFgResType::Buffer) {
-                this_res = &buffers_.at(res.index);
+                FgAllocBufCold &fgbuf_cold = buffers_.Get(res.opaque_handle).second;
+                this_res = &fgbuf_cold;
             } else /*if (res.type == eFgResType::Image)*/ {
                 assert(res.type == eFgResType::Image);
                 this_res = &images_.at(res.index);
@@ -993,7 +1057,8 @@ void Eng::FgBuilder::PrepareResourceLifetimes() {
         for (const auto &res : node->output_) {
             FgAllocRes *this_res = nullptr;
             if (res.type == eFgResType::Buffer) {
-                this_res = &buffers_.at(res.index);
+                FgAllocBufCold &fgbuf_cold = buffers_.Get(res.opaque_handle).second;
+                this_res = &fgbuf_cold;
             } else /*if (res.type == eFgResType::Image)*/ {
                 assert(res.type == eFgResType::Image);
                 this_res = &images_.at(res.index);
@@ -1010,7 +1075,7 @@ void Eng::FgBuilder::PrepareResourceLifetimes() {
     img_alias_chains_.clear();
     buf_alias_chains_.clear();
     img_alias_chains_.resize(images_.capacity());
-    buf_alias_chains_.resize(buffers_.capacity());
+    buf_alias_chains_.resize(buffers_.Capacity());
 
     std::vector<int> img_aliases(images_.capacity(), -1);
     for (auto i = images_.begin(); i != images_.end(); ++i) {
@@ -1045,34 +1110,37 @@ void Eng::FgBuilder::PrepareResourceLifetimes() {
         }
     }
 
-    std::vector<int> buf_aliases(buffers_.capacity(), -1);
-    for (auto i = buffers_.begin(); i != buffers_.end(); ++i) {
-        const FgAllocBuf &buf1 = *i;
-        if (buf1.external) {
-            continue;
-        }
-        for (auto j = buffers_.begin(); j < i; ++j) {
-            const FgAllocBuf &buf2 = *j;
-            if (buf2.external || buf_aliases[j.index()] != -1) {
+    { // Buffers
+        std::vector<int> buf_aliases(buffers_.Capacity(), -1);
+        const auto &all_buffers = buffers_.items_by_name();
+        for (auto it1 = std::begin(all_buffers); it1 != std::end(all_buffers); ++it1) {
+            const auto &[buf1_main, buf1_cold] = buffers_.Get(it1->val);
+            if (buf1_cold.external) {
                 continue;
             }
-            if (buf1.desc.type == buf2.desc.type && buf1.desc.size == buf2.desc.size &&
-                buf1.desc.views == buf2.desc.views) {
-                bool disjoint = disjoint_lifetimes(buf1.lifetime, buf2.lifetime);
-                for (const int alias : buf_alias_chains_[j.index()]) {
-                    if (alias == i.index()) {
-                        continue;
-                    }
-                    const fg_node_range_t &lifetime = buffers_[alias].lifetime;
-                    disjoint &= disjoint_lifetimes(lifetime, buf2.lifetime);
+            for (auto it2 = std::begin(all_buffers); it2 != it1; ++it2) {
+                const auto &[buf2_main, buf2_cold] = buffers_.Get(it2->val);
+                if (buf2_cold.external || buf_aliases[it2->val.index] != -1) {
+                    continue;
                 }
-                if (disjoint) {
-                    buf_aliases[i.index()] = j.index();
-                    if (buf_alias_chains_[j.index()].empty()) {
-                        buf_alias_chains_[j.index()].push_back(j.index());
+                if (buf1_cold.desc.type == buf2_cold.desc.type && buf1_cold.desc.size == buf2_cold.desc.size &&
+                    buf1_cold.desc.views == buf2_cold.desc.views) {
+                    bool disjoint = disjoint_lifetimes(buf1_cold.lifetime, buf2_cold.lifetime);
+                    for (const int alias : buf_alias_chains_[it2->val.index]) {
+                        if (alias == it1->val.index) {
+                            continue;
+                        }
+                        const fg_node_range_t &lifetime = buffers_.GetUnsafe(alias).second.lifetime;
+                        disjoint &= disjoint_lifetimes(lifetime, buf2_cold.lifetime);
                     }
-                    buf_alias_chains_[j.index()].push_back(i.index());
-                    break;
+                    if (disjoint) {
+                        buf_aliases[it1->val.index] = it2->val.index;
+                        if (buf_alias_chains_[it2->val.index].empty()) {
+                            buf_alias_chains_[it2->val.index].push_back(it2->val.index);
+                        }
+                        buf_alias_chains_[it2->val.index].push_back(it1->val.index);
+                        break;
+                    }
                 }
             }
         }
@@ -1110,14 +1178,15 @@ void Eng::FgBuilder::PrepareResourceLifetimes() {
         }
 
         std::sort(std::begin(chain), std::end(chain), [this](const int lhs, const int rhs) {
-            return buffers_[lhs].lifetime.last_used_node() < buffers_[rhs].lifetime.first_used_node();
+            return buffers_.GetUnsafe(lhs).second.lifetime.last_used_node() <
+                   buffers_.GetUnsafe(rhs).second.lifetime.first_used_node();
         });
 
-        FgAllocBuf &first_buf = buffers_[chain[0]];
+        FgAllocBufCold &first_buf = buffers_.GetUnsafe(chain[0]).second;
         assert(first_buf.alias_of == -1);
 
         for (int i = 1; i < int(chain.size()); ++i) {
-            FgAllocBuf &next_buf = buffers_[chain[i]];
+            FgAllocBufCold &next_buf = buffers_.GetUnsafe(chain[i]).second;
             next_buf.alias_of = chain[0];
         }
 
@@ -1130,7 +1199,7 @@ void Eng::FgBuilder::PrepareResourceLifetimes() {
 void Eng::FgBuilder::BuildResourceLinkedLists() {
     OPTICK_EVENT();
     std::vector<FgResource *> all_resources;
-    all_resources.reserve(buffers_.size() + images_.size());
+    all_resources.reserve(buffers_.Size() + images_.size());
 
     auto resource_compare = [](const FgResource *lhs, const FgResource *rhs) {
         return FgResource::LessThanTypeAndIndex(*lhs, *rhs);
@@ -1159,19 +1228,22 @@ void Eng::FgBuilder::BuildResourceLinkedLists() {
                     if (it2 != std::end(all_resources) && !FgResource::LessThanTypeAndIndex(to_find, **it2)) {
                         (*it2)->next_use = r;
                     }
-                } else if (r->type == eFgResType::Buffer && buffers_[r->index].alias_of != -1) {
-                    const auto &chain = buf_alias_chains_[buffers_[r->index].alias_of];
-                    auto curr_it = std::find(std::begin(chain), std::end(chain), r->index);
-                    assert(curr_it != std::end(chain) && curr_it != std::begin(chain));
+                } else if (r->type == eFgResType::Buffer) {
+                    if (buffers_.Get(r->opaque_handle).second.alias_of != -1) {
+                        const auto &chain = buf_alias_chains_[buffers_.Get(r->opaque_handle).second.alias_of];
+                        const int unsafe_index = int(r->opaque_handle >> 32);
+                        auto curr_it = std::find(std::begin(chain), std::end(chain), unsafe_index);
+                        assert(curr_it != std::end(chain) && curr_it != std::begin(chain));
 
-                    FgResource to_find;
-                    to_find.type = eFgResType::Buffer;
-                    to_find.index = *--curr_it;
+                        FgResource to_find;
+                        to_find.type = eFgResType::Buffer;
+                        to_find.opaque_handle = uint64_t(*--curr_it) << 32; // assume generation is always zero
 
-                    auto it2 = std::lower_bound(std::begin(all_resources), std::end(all_resources), &to_find,
-                                                resource_compare);
-                    if (it2 != std::end(all_resources) && !FgResource::LessThanTypeAndIndex(to_find, **it2)) {
-                        (*it2)->next_use = r;
+                        auto it2 =
+                            std::lower_bound(begin(all_resources), end(all_resources), &to_find, resource_compare);
+                        if (it2 != end(all_resources) && !FgResource::LessThanTypeAndIndex(to_find, **it2)) {
+                            (*it2)->next_use = r;
+                        }
                     }
                 }
                 r->next_use = nullptr;
@@ -1200,18 +1272,22 @@ void Eng::FgBuilder::BuildResourceLinkedLists() {
                     if (it2 != end(all_resources) && !FgResource::LessThanTypeAndIndex(to_find, **it2)) {
                         (*it2)->next_use = r;
                     }
-                } else if (r->type == eFgResType::Buffer && buffers_[r->index].alias_of != -1) {
-                    const auto &chain = buf_alias_chains_[buffers_[r->index].alias_of];
-                    auto curr_it = std::find(std::begin(chain), std::end(chain), r->index);
-                    assert(curr_it != std::end(chain) && curr_it != std::begin(chain));
+                } else if (r->type == eFgResType::Buffer) {
+                    if (buffers_.Get(r->opaque_handle).second.alias_of != -1) {
+                        const auto &chain = buf_alias_chains_[buffers_.Get(r->opaque_handle).second.alias_of];
+                        const int unsafe_index = int(r->opaque_handle >> 32);
+                        auto curr_it = std::find(std::begin(chain), std::end(chain), unsafe_index);
+                        assert(curr_it != std::end(chain) && curr_it != std::begin(chain));
 
-                    FgResource to_find;
-                    to_find.type = eFgResType::Buffer;
-                    to_find.index = *--curr_it;
+                        FgResource to_find;
+                        to_find.type = eFgResType::Buffer;
+                        to_find.opaque_handle = uint64_t(*--curr_it) << 32; // assume generation is always zero
 
-                    auto it2 = std::lower_bound(begin(all_resources), end(all_resources), &to_find, resource_compare);
-                    if (it2 != end(all_resources) && !FgResource::LessThanTypeAndIndex(to_find, **it2)) {
-                        (*it2)->next_use = r;
+                        auto it2 =
+                            std::lower_bound(begin(all_resources), end(all_resources), &to_find, resource_compare);
+                        if (it2 != end(all_resources) && !FgResource::LessThanTypeAndIndex(to_find, **it2)) {
+                            (*it2)->next_use = r;
+                        }
                     }
                 }
                 r->next_use = nullptr;
@@ -1256,7 +1332,7 @@ void Eng::FgBuilder::BuildResourceLinkedLists() {
     }
 }
 
-void Eng::FgBuilder::Compile(Ren::Span<const FgResRef> backbuffer_sources) {
+void Eng::FgBuilder::Compile(Ren::Span<const std::variant<FgResRef, FgBufHandle>> backbuffer_sources) {
     using namespace FgBuilderInternal;
     OPTICK_EVENT();
 
@@ -1269,7 +1345,13 @@ void Eng::FgBuilder::Compile(Ren::Span<const FgResRef> backbuffer_sources) {
         //
         Ren::SmallVector<FgNode *, 32> written_in_nodes;
         for (int i = 0; i < int(backbuffer_sources.size()); ++i) {
-            const int16_t prev_node = FindPreviousWrittenInNode(backbuffer_sources[i]);
+            int16_t prev_node = -1;
+            if (std::holds_alternative<FgResRef>(backbuffer_sources[i])) {
+                prev_node = FindPreviousWrittenInNode(std::get<FgResRef>(backbuffer_sources[i]));
+            } else if (std::holds_alternative<FgBufHandle>(backbuffer_sources[i])) {
+                prev_node = FindPreviousWrittenInNode(std::get<FgBufHandle>(backbuffer_sources[i]));
+            }
+
             if (prev_node != -1) {
                 written_in_nodes.push_back(nodes_[prev_node]);
             }
@@ -1284,20 +1366,20 @@ void Eng::FgBuilder::Compile(Ren::Span<const FgResRef> backbuffer_sources) {
             bool has_consumers =
                 std::find(std::begin(written_in_nodes), std::end(written_in_nodes), node) != std::end(written_in_nodes);
             for (size_t i = 0; i < node->output_.size() && !has_consumers; ++i) {
-                FgResRef handle = node->output_[i];
+                const FgResource &res = node->output_[i];
 
                 Ren::SmallVectorImpl<fg_node_slot_t> *read_in_nodes = nullptr;
-                if (handle.type == eFgResType::Buffer) {
-                    read_in_nodes = &buffers_[handle.index].read_in_nodes;
-                } else if (handle.type == eFgResType::Image) {
-                    read_in_nodes = &images_[handle.index].read_in_nodes;
+                if (res.type == eFgResType::Buffer) {
+                    read_in_nodes = &buffers_.Get(res.opaque_handle).second.read_in_nodes;
+                } else if (res.type == eFgResType::Image) {
+                    read_in_nodes = &images_[res.index].read_in_nodes;
                 }
 
                 for (const fg_node_slot_t slot : *read_in_nodes) {
                     const FgNode *_node = nodes_[slot.node_index];
                     // NOTE: write_count check is skipped because of history images
                     if (_node != node && _node->visited_ /*&&
-                        handle.write_count == _node->input_[slot.slot_index].write_count*/) {
+                        res.write_count == _node->input_[slot.slot_index].write_count*/) {
                         has_consumers = true;
                         break;
                     }
@@ -1308,16 +1390,16 @@ void Eng::FgBuilder::Compile(Ren::Span<const FgResRef> backbuffer_sources) {
                 }
 
                 Ren::SmallVectorImpl<fg_node_slot_t> *written_in = nullptr;
-                if (handle.type == eFgResType::Buffer) {
-                    written_in = &buffers_[handle.index].written_in_nodes;
-                } else if (handle.type == eFgResType::Image) {
-                    written_in = &images_[handle.index].written_in_nodes;
+                if (res.type == eFgResType::Buffer) {
+                    written_in = &buffers_.Get(res.opaque_handle).second.written_in_nodes;
+                } else if (res.type == eFgResType::Image) {
+                    written_in = &images_[res.index].written_in_nodes;
                 }
 
                 for (const fg_node_slot_t slot : *written_in) {
                     const FgNode *_node = nodes_[slot.node_index];
                     if (_node != node && _node->visited_ &&
-                        handle.write_count + 1 == _node->output_[slot.slot_index].write_count) {
+                        res.write_count + 1 == _node->output_[slot.slot_index].write_count) {
                         has_consumers = true;
                         break;
                     }
@@ -1422,31 +1504,37 @@ void Eng::FgBuilder::Compile(Ren::Span<const FgResRef> backbuffer_sources) {
 
     ctx_.log()->Info("============================================================================");
     { // report buffers
-        std::vector<Ren::WeakBufRef> not_handled_buffers;
-        not_handled_buffers.reserve(buffers_.size());
-        for (const FgAllocBuf &buf : buffers_) {
-            if (buf.alias_of != -1) {
-                const FgAllocBuf &orig_buf = buffers_[buf.alias_of];
-                ctx_.log()->Info("Buf %-24.24s alias of %16s\t| %f MB", buf.name.c_str(), orig_buf.name.c_str(), 0.0f);
+        std::vector<Ren::Handle<FgAllocBufMain>> not_handled_buffers;
+        not_handled_buffers.reserve(buffers_.Size());
+        const auto &all_buffers = buffers_.items_by_name();
+        for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+            const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+            if (fgbuf_cold.alias_of != -1) {
+                const auto &[orig_fgbuf_main, orig_fgbuf_cold] = buffers_.GetUnsafe(fgbuf_cold.alias_of);
+                ctx_.log()->Info("Buf %-24.24s alias of %16s\t| %f MB", fgbuf_cold.name.c_str(),
+                                 orig_fgbuf_cold.name.c_str(), 0.0f);
                 continue;
             }
-            if (buf.strong_ref) {
-                const Ren::MemAllocation &alloc = buf.strong_ref->mem_alloc();
+            if (!fgbuf_cold.external && fgbuf_main.handle) {
+                const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+
+                const Ren::MemAllocation &alloc = buf_cold.alloc;
                 if (alloc.pool != 0xffff) {
-                    ctx_.log()->Info("Buf %-24.24s \t\t\t\t\t| %f MB", buf.name.c_str(),
-                                     float(alloc.block) / (1024.0f * 1024.0f));
+                    ctx_.log()->Info("Buf %-24.24s \t\t\t\t\t| %f MB", buf_cold.name.c_str(),
+                                     float(buf_cold.size) / (1024.0f * 1024.0f));
                 } else {
-                    ctx_.log()->Info("Buf %-24.24s (dedicated)\t\t\t| %f MB", buf.name.c_str(),
-                                     float(buf.strong_ref->size()) / (1024.0f * 1024.0f));
+                    ctx_.log()->Info("Buf %-24.24s (dedicated)\t\t\t| %f MB", buf_cold.name.c_str(),
+                                     float(buf_cold.size) / (1024.0f * 1024.0f));
                 }
-            } else if (buf.ref) {
-                not_handled_buffers.push_back(buf.ref);
+            } else if (fgbuf_main.handle) {
+                not_handled_buffers.push_back(it->val);
             }
         }
         ctx_.log()->Info("----------------------------------------------------------------------------");
-        for (const auto &ref : not_handled_buffers) {
-            ctx_.log()->Info("Buf %-24.24s \t\t\t\t\t| %f MB", ref->name().c_str(),
-                             float(ref->size()) / (1024.0f * 1024.0f));
+        for (const Ren::Handle<FgAllocBufMain> handle : not_handled_buffers) {
+            const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(handle);
+            ctx_.log()->Info("Buf %-24.24s \t\t\t\t\t| %f MB", fgbuf_cold.name.c_str(),
+                             float(fgbuf_cold.desc.size) / (1024.0f * 1024.0f));
         }
     }
     ctx_.log()->Info("============================================================================");
@@ -1486,7 +1574,7 @@ void Eng::FgBuilder::Compile(Ren::Span<const FgResRef> backbuffer_sources) {
 void Eng::FgBuilder::Execute() {
     OPTICK_EVENT();
 
-    Ren::DebugMarker exec_marker(ctx_.api_ctx(), ctx_.current_cmd_buf(), "Eng::FgBuilder::Execute");
+    Ren::DebugMarker exec_marker(ctx_.api(), ctx_.current_cmd_buf(), "Eng::FgBuilder::Execute");
 
     // Swap history images
     for (FgAllocImg &img : images_) {
@@ -1499,11 +1587,15 @@ void Eng::FgBuilder::Execute() {
         }
     }
     // Reset resources
-    for (FgAllocBuf &buf : buffers_) {
-        buf._generation = 0;
-        buf.used_in_stages = {};
-        if (buf.ref) {
-            buf.used_in_stages = StagesForState(buf.ref->resource_state);
+    const auto &all_buffers = buffers_.items_by_name();
+    for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+        const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(it->val);
+
+        fgbuf_cold._generation = 0;
+        fgbuf_cold.used_in_stages = {};
+        if (fgbuf_main.handle) {
+            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+            fgbuf_cold.used_in_stages = StagesForState(buf_main.resource_state);
         }
     }
     for (FgAllocImg &img : images_) {
@@ -1534,7 +1626,7 @@ void Eng::FgBuilder::Execute() {
         Ren::ResetGLState();
 #endif
 
-        Ren::DebugMarker _(ctx_.api_ctx(), ctx_.current_cmd_buf(), cur_node->name());
+        Ren::DebugMarker _(ctx_.api(), ctx_.current_cmd_buf(), cur_node->name());
 
         // Start timestamp
         node_timing_t &node_interval = node_timings_[ctx_.backend_frame()].emplace_back();
@@ -1573,14 +1665,17 @@ void Eng::FgBuilder::InsertResourceTransitions(FgNode &node) {
         HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
     }
 
-    TransitionResourceStates(ctx_.api_ctx(), ctx_.current_cmd_buf(), src_stages, dst_stages, res_transitions);
+    TransitionResourceStates(ctx_.api(), ctx_.storages(), ctx_.current_cmd_buf(), src_stages, dst_stages,
+                             res_transitions);
 }
 
 void Eng::FgBuilder::CheckResourceStates(FgNode &node) {
+    const Ren::StoragesRef &storages = ctx_.storages();
     for (const FgResource &res : node.input_) {
         if (res.type == eFgResType::Buffer) {
-            const FgAllocBuf &buf = buffers_[res.index];
-            assert(buf.ref->resource_state == res.desired_state && "Buffer is in unexpected state!");
+            const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(res.opaque_handle);
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(fgbuf_main.handle);
+            assert(buf_main.resource_state == res.desired_state && "Buffer is in unexpected state!");
         } else if (res.type == eFgResType::Image) {
             const FgAllocImg &img = images_[res.index];
             assert(img.ref->resource_state == res.desired_state && "Image is in unexpected state!");
@@ -1588,8 +1683,9 @@ void Eng::FgBuilder::CheckResourceStates(FgNode &node) {
     }
     for (const FgResource &res : node.output_) {
         if (res.type == eFgResType::Buffer) {
-            const FgAllocBuf &buf = buffers_[res.index];
-            assert(buf.ref->resource_state == res.desired_state && "Buffer is in unexpected state!");
+            const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(res.opaque_handle);
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(fgbuf_main.handle);
+            assert(buf_main.resource_state == res.desired_state && "Buffer is in unexpected state!");
         } else if (res.type == eFgResType::Image) {
             const FgAllocImg &img = images_[res.index];
             assert(img.ref->resource_state == res.desired_state && "Image is in unexpected state!");
@@ -1609,22 +1705,27 @@ void Eng::FgBuilder::HandleResourceTransition(const FgResource &res,
     }
 
     if (res.type == eFgResType::Buffer) {
-        FgAllocBuf *buf = &buffers_.at(res.index);
+        const FgAllocBufMain *fgbuf_main = &buffers_.Get(res.opaque_handle).first;
+        FgAllocBufCold *fgbuf_cold = &buffers_.Get(res.opaque_handle).second;
 
-        if (buf->alias_of != -1) {
-            buf = &buffers_.at(buf->alias_of);
-            assert(buf->alias_of == -1);
+        if (fgbuf_cold->alias_of != -1) {
+            fgbuf_main = &buffers_.GetUnsafe(fgbuf_cold->alias_of).first;
+            fgbuf_cold = &buffers_.GetUnsafe(fgbuf_cold->alias_of).second;
+            assert(fgbuf_cold->alias_of == -1);
         }
 
-        if (buf->ref->resource_state == Ren::eResState::Undefined ||
-            buf->ref->resource_state == Ren::eResState::Discarded) {
-            for (const FgResRef other : buf->overlaps_with) {
+        const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main->handle);
+        if (buf_main.resource_state == Ren::eResState::Undefined ||
+            buf_main.resource_state == Ren::eResState::Discarded) {
+            for (const FgResRef other : fgbuf_cold->overlaps_with) {
                 if (other.type == eFgResType::Buffer) {
-                    FgAllocBuf *other_buf = &buffers_.at(other.index);
-                    src_stages |= other_buf->used_in_stages;
-                    dst_stages |= other_buf->aliased_in_stages;
-                    assert(other_buf->ref->resource_state != Ren::eResState::Discarded);
-                    res_transitions.emplace_back(other_buf->ref.get(), Ren::eResState::Discarded);
+                    const auto &[other_main, other_cold] = buffers_.Get(other.opaque_handle);
+                    src_stages |= other_cold.used_in_stages;
+                    dst_stages |= other_cold.aliased_in_stages;
+
+                    const auto &[otherbuf_main, otherbuf_cold] = ctx_.buffers().Get(other_main.handle);
+                    assert(otherbuf_main.resource_state != Ren::eResState::Discarded);
+                    res_transitions.emplace_back(other_main.handle, Ren::eResState::Discarded);
                 } else if (other.type == eFgResType::Image) {
                     FgAllocImg *other_img = &images_.at(other.index);
                     src_stages |= other_img->used_in_stages;
@@ -1635,14 +1736,14 @@ void Eng::FgBuilder::HandleResourceTransition(const FgResource &res,
             }
         }
 
-        if (buf->ref->resource_state != res.desired_state || IsRWState(buf->ref->resource_state)) {
-            src_stages |= buf->used_in_stages;
+        if (buf_main.resource_state != res.desired_state || IsRWState(buf_main.resource_state)) {
+            src_stages |= fgbuf_cold->used_in_stages;
             dst_stages |= res.stages;
-            buf->used_in_stages = {};
-            res_transitions.emplace_back(buf->ref.get(), res.desired_state);
+            fgbuf_cold->used_in_stages = {};
+            res_transitions.emplace_back(fgbuf_main->handle, res.desired_state);
         }
 
-        buf->used_in_stages |= res.stages;
+        fgbuf_cold->used_in_stages |= res.stages;
     } else if (res.type == eFgResType::Image) {
         FgAllocImg *img = &images_.at(res.index);
 
@@ -1655,11 +1756,13 @@ void Eng::FgBuilder::HandleResourceTransition(const FgResource &res,
             img->ref->resource_state == Ren::eResState::Discarded) {
             for (const FgResRef other : img->overlaps_with) {
                 if (other.type == eFgResType::Buffer) {
-                    FgAllocBuf *other_buf = &buffers_.at(other.index);
-                    src_stages |= other_buf->used_in_stages;
-                    dst_stages |= other_buf->aliased_in_stages;
-                    assert(other_buf->ref->resource_state != Ren::eResState::Discarded);
-                    res_transitions.emplace_back(other_buf->ref.get(), Ren::eResState::Discarded);
+                    const auto &[other_main, other_cold] = buffers_.Get(other.opaque_handle);
+                    src_stages |= other_cold.used_in_stages;
+                    dst_stages |= other_cold.aliased_in_stages;
+
+                    const auto &[otherbuf_main, otherbuf_cold] = ctx_.buffers().Get(other_main.handle);
+                    assert(otherbuf_main.resource_state != Ren::eResState::Discarded);
+                    res_transitions.emplace_back(other_main.handle, Ren::eResState::Discarded);
                 } else if (other.type == eFgResType::Image) {
                     FgAllocImg *other_img = &images_.at(other.index);
                     src_stages |= other_img->used_in_stages;
@@ -1681,23 +1784,24 @@ void Eng::FgBuilder::HandleResourceTransition(const FgResource &res,
     }
 }
 
-void Eng::FgBuilder::ClearBuffer_AsTransfer(Ren::BufRef &buf, Ren::CommandBuffer cmd_buf) {
-    buf->Fill(0, buf->size(), 0, cmd_buf);
+void Eng::FgBuilder::ClearBuffer_AsTransfer(const Ren::BufferHandle buf, Ren::CommandBuffer cmd_buf) {
+    const auto &[buf_main, buf_cold] = ctx_.buffers().Get(buf);
+    Buffer_Fill(ctx_.api(), buf_main, 0, buf_cold.size, 0, cmd_buf);
 }
 
-void Eng::FgBuilder::ClearBuffer_AsStorage(Ren::BufRef &buf, Ren::CommandBuffer cmd_buf) {
-    const Ren::Binding bindings[] = {{Ren::eBindTarget::SBufRW, ClearBuffer::OUT_BUF_SLOT, *buf}};
+void Eng::FgBuilder::ClearBuffer_AsStorage(const Ren::BufferHandle buf, Ren::CommandBuffer cmd_buf) {
+    const Ren::Binding bindings[] = {{Ren::eBindTarget::SBufRW, ClearBuffer::OUT_BUF_SLOT, buf}};
 
-    assert((buf->size() % 4) == 0);
+    const auto &[buf_main, buf_cold] = ctx_.buffers().Get(buf);
+    assert((buf_cold.size % 4) == 0);
 
-    const Ren::Vec3u grp_count =
-        Ren::Vec3u{((buf->size() / 4) + ClearBuffer::GRP_SIZE_X - 1u) / ClearBuffer::GRP_SIZE_X, 1u, 1u};
+    const Ren::Vec3u grp_count = Ren::Vec3u{Ren::DivCeil<uint32_t>(buf_cold.size / 4, ClearBuffer::GRP_SIZE_X), 1u, 1u};
 
     ClearBuffer::Params uniform_params;
-    uniform_params.data_len = (buf->size() / 4);
+    uniform_params.data_len = (buf_cold.size / 4);
 
-    Ren::DispatchCompute(cmd_buf, *pi_clear_buffer_, grp_count, bindings, &uniform_params, sizeof(ClearBuffer::Params),
-                         ctx_.default_descr_alloc(), ctx_.log());
+    DispatchCompute(cmd_buf, pi_clear_buffer_, ctx_.storages(), grp_count, bindings, &uniform_params,
+                    sizeof(ClearBuffer::Params), ctx_.default_descr_alloc(), ctx_.log());
 }
 
 void Eng::FgBuilder::ClearImage_AsTransfer(Ren::ImgRef &img, Ren::CommandBuffer cmd_buf) {
@@ -1707,18 +1811,19 @@ void Eng::FgBuilder::ClearImage_AsTransfer(Ren::ImgRef &img, Ren::CommandBuffer 
 
 void Eng::FgBuilder::ClearImage_AsStorage(Ren::ImgRef &img, Ren::CommandBuffer cmd_buf) {
     const Ren::ImgParams p = img->params;
-    const Ren::PipelineRef &pi = (p.flags & Ren::eImgFlags::Array) ? pi_clear_image_[1][int(p.format)]
-                                                                   : (p.d != 0 ? pi_clear_image_[2][int(p.format)]
-                                                                               : pi_clear_image_[0][int(p.format)]);
+    const Ren::PipelineHandle pi = (p.flags & Ren::eImgFlags::Array) ? pi_clear_image_[1][int(p.format)]
+                                                                     : (p.d != 0 ? pi_clear_image_[2][int(p.format)]
+                                                                                 : pi_clear_image_[0][int(p.format)]);
     assert(pi);
 
     const Ren::Binding bindings[] = {{Ren::eBindTarget::ImageRW, ClearImage::OUT_IMG_SLOT, *img}};
 
     const Ren::Vec3u grp_count =
-        Ren::Vec3u{(p.w + ClearImage::GRP_SIZE_X - 1u) / ClearImage::GRP_SIZE_X,
-                   (p.h + ClearImage::GRP_SIZE_Y - 1u) / ClearImage::GRP_SIZE_Y, std::max<uint32_t>(p.d, 1)};
+        Ren::Vec3u{Ren::DivCeil<uint32_t>(p.w, ClearImage::GRP_SIZE_X),
+                   Ren::DivCeil<uint32_t>(p.h, ClearImage::GRP_SIZE_Y), std::max<uint32_t>(p.d, 1)};
 
-    Ren::DispatchCompute(cmd_buf, *pi, grp_count, bindings, nullptr, 0, ctx_.default_descr_alloc(), ctx_.log());
+    Ren::DispatchCompute(cmd_buf, pi, ctx_.storages(), grp_count, bindings, nullptr, 0, ctx_.default_descr_alloc(),
+                         ctx_.log());
 }
 
 void Eng::FgBuilder::ClearImage_AsTarget(Ren::ImgRef &img, Ren::CommandBuffer cmd_buf) {

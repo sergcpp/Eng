@@ -9,7 +9,7 @@ struct ApiContext;
 enum class eWaitResult { Success, Timeout, Fail };
 class SyncFence {
 #if defined(REN_VK_BACKEND)
-    ApiContext *api_ctx_ = nullptr;
+    const ApiContext *api_ = nullptr;
     VkFence fence_ = {};
 #elif defined(REN_GL_BACKEND)
     void *sync_ = nullptr;
@@ -18,7 +18,7 @@ class SyncFence {
   public:
     SyncFence() = default;
 #if defined(REN_VK_BACKEND)
-    SyncFence(ApiContext *api_ctx, VkFence fence) : api_ctx_(api_ctx), fence_(fence) {}
+    SyncFence(const ApiContext *api, VkFence fence) : api_(api), fence_(fence) {}
 #elif defined(REN_GL_BACKEND)
     SyncFence(void *sync) : sync_(sync) {}
 #endif

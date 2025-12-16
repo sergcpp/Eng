@@ -11,9 +11,9 @@ extern const VkFormat g_formats_vk[];
 VkImageUsageFlags to_vk_image_usage(Bitmask<eImgUsage> usage, eFormat format);
 } // namespace Ren
 
-Ren::ImageAtlas::ImageAtlas(ApiContext *api_ctx, const int w, const int h, const int min_res, const int mip_count,
+Ren::ImageAtlas::ImageAtlas(ApiContext *api, const int w, const int h, const int min_res, const int mip_count,
                             const eFormat formats[], const Bitmask<eImgFlags> flags[], eFilter filter, ILog *log)
-    : api_ctx_(api_ctx), splitter_(w, h) {
+    : api_(api), splitter_(w, h) {
     filter_ = filter;
     mip_count_ = mip_count;
 
@@ -39,13 +39,13 @@ Ren::ImageAtlas::ImageAtlas(ApiContext *api_ctx, const int w, const int h, const
             img_info.samples = VK_SAMPLE_COUNT_1_BIT;
             img_info.flags = 0;
 
-            VkResult res = api_ctx_->vkCreateImage(api_ctx_->device, &img_info, nullptr, &img_[i]);
+            VkResult res = api_->vkCreateImage(api_->device, &img_info, nullptr, &img_[i]);
             if (res != VK_SUCCESS) {
                 throw std::runtime_error("Failed to create image!");
             }
 
             VkMemoryRequirements img_tex_mem_req = {};
-            api_ctx_->vkGetImageMemoryRequirements(api_ctx_->device, img_[i], &img_tex_mem_req);
+            api_->vkGetImageMemoryRequirements(api_->device, img_[i], &img_tex_mem_req);
 
             VkMemoryAllocateInfo img_alloc_info = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
             img_alloc_info.allocationSize = img_tex_mem_req.size;
@@ -53,7 +53,7 @@ Ren::ImageAtlas::ImageAtlas(ApiContext *api_ctx, const int w, const int h, const
             uint32_t img_tex_type_bits = img_tex_mem_req.memoryTypeBits;
             const VkMemoryPropertyFlags img_tex_desired_mem_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
             for (uint32_t j = 0; j < 32; j++) {
-                VkMemoryType mem_type = api_ctx_->mem_properties.memoryTypes[j];
+                VkMemoryType mem_type = api_->mem_properties.memoryTypes[j];
                 if (img_tex_type_bits & 1u) {
                     if ((mem_type.propertyFlags & img_tex_desired_mem_flags) == img_tex_desired_mem_flags) {
                         img_alloc_info.memoryTypeIndex = j;
@@ -64,12 +64,12 @@ Ren::ImageAtlas::ImageAtlas(ApiContext *api_ctx, const int w, const int h, const
             }
 
             // TODO: avoid dedicated allocation
-            res = api_ctx_->vkAllocateMemory(api_ctx_->device, &img_alloc_info, nullptr, &mem_[i]);
+            res = api_->vkAllocateMemory(api_->device, &img_alloc_info, nullptr, &mem_[i]);
             if (res != VK_SUCCESS) {
                 throw std::runtime_error("Failed to allocate memory!");
             }
 
-            res = api_ctx_->vkBindImageMemory(api_ctx_->device, img_[i], mem_[i], 0);
+            res = api_->vkBindImageMemory(api_->device, img_[i], mem_[i], 0);
             if (res != VK_SUCCESS) {
                 throw std::runtime_error("Failed to bind memory!");
             }
@@ -86,7 +86,7 @@ Ren::ImageAtlas::ImageAtlas(ApiContext *api_ctx, const int w, const int h, const
             view_info.subresourceRange.baseArrayLayer = 0;
             view_info.subresourceRange.layerCount = 1;
 
-            const VkResult res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &img_view_[i]);
+            const VkResult res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &img_view_[i]);
             if (res != VK_SUCCESS) {
                 throw std::runtime_error("Failed to create image view!");
             }
@@ -96,21 +96,22 @@ Ren::ImageAtlas::ImageAtlas(ApiContext *api_ctx, const int w, const int h, const
     SamplingParams params;
     params.filter = filter;
 
-    sampler_.Init(api_ctx_, params);
+    Sampler_Init(*api_, sampler_.first, sampler_.second, params);
 }
 
 Ren::ImageAtlas::~ImageAtlas() {
     for (int i = 0; i < MaxImageCount; ++i) {
         if (img_[i] != VK_NULL_HANDLE) {
-            api_ctx_->image_views_to_destroy[api_ctx_->backend_frame].push_back(img_view_[i]);
-            api_ctx_->images_to_destroy[api_ctx_->backend_frame].push_back(img_[i]);
-            api_ctx_->mem_to_free[api_ctx_->backend_frame].push_back(mem_[i]);
+            api_->image_views_to_destroy[api_->backend_frame].push_back(img_view_[i]);
+            api_->images_to_destroy[api_->backend_frame].push_back(img_[i]);
+            api_->mem_to_free[api_->backend_frame].push_back(mem_[i]);
         }
     }
+    Sampler_Destroy(*api_, sampler_.first, sampler_.second);
 }
 
 Ren::ImageAtlas::ImageAtlas(ImageAtlas &&rhs) noexcept
-    : api_ctx_(rhs.api_ctx_), filter_(rhs.filter_), splitter_(std::move(rhs.splitter_)) {
+    : api_(rhs.api_), filter_(rhs.filter_), splitter_(std::move(rhs.splitter_)) {
     for (int i = 0; i < MaxImageCount; i++) {
         formats_[i] = rhs.formats_[i];
         rhs.formats_[i] = eFormat::Undefined;
@@ -119,12 +120,12 @@ Ren::ImageAtlas::ImageAtlas(ImageAtlas &&rhs) noexcept
         img_view_[i] = std::exchange(rhs.img_view_[i], VK_NULL_HANDLE);
         mem_[i] = std::exchange(rhs.mem_[i], VK_NULL_HANDLE);
 
-        sampler_ = std::move(rhs.sampler_);
+        sampler_ = std::exchange(rhs.sampler_, {});
     }
 }
 
 Ren::ImageAtlas &Ren::ImageAtlas::operator=(ImageAtlas &&rhs) noexcept {
-    api_ctx_ = rhs.api_ctx_;
+    api_ = rhs.api_;
     filter_ = rhs.filter_;
 
     for (int i = 0; i < MaxImageCount; i++) {
@@ -132,9 +133,9 @@ Ren::ImageAtlas &Ren::ImageAtlas::operator=(ImageAtlas &&rhs) noexcept {
         rhs.formats_[i] = eFormat::Undefined;
 
         if (img_[i] != VK_NULL_HANDLE) {
-            api_ctx_->image_views_to_destroy[api_ctx_->backend_frame].push_back(img_view_[i]);
-            api_ctx_->images_to_destroy[api_ctx_->backend_frame].push_back(img_[i]);
-            api_ctx_->mem_to_free[api_ctx_->backend_frame].push_back(mem_[i]);
+            api_->image_views_to_destroy[api_->backend_frame].push_back(img_view_[i]);
+            api_->images_to_destroy[api_->backend_frame].push_back(img_[i]);
+            api_->mem_to_free[api_->backend_frame].push_back(mem_[i]);
         }
 
         img_[i] = std::exchange(rhs.img_[i], VK_NULL_HANDLE);
@@ -143,7 +144,7 @@ Ren::ImageAtlas &Ren::ImageAtlas::operator=(ImageAtlas &&rhs) noexcept {
     }
 
     splitter_ = std::move(rhs.splitter_);
-    sampler_ = std::move(rhs.sampler_);
+    sampler_ = std::exchange(rhs.sampler_, {});
     return (*this);
 }
 
@@ -152,7 +153,7 @@ int Ren::ImageAtlas::AllocateRegion(const int res[2], int out_pos[2]) {
     return index;
 }
 
-void Ren::ImageAtlas::InitRegion(const Buffer &sbuf, const int data_off, const int data_len, CommandBuffer cmd_buf,
+void Ren::ImageAtlas::InitRegion(const BufferMain &sbuf, const int data_off, const int data_len, CommandBuffer cmd_buf,
                                  const eFormat format, const Bitmask<eImgFlags> flags, const int layer, const int level,
                                  const int pos[2], const int res[2], ILog *log) {
 #ifndef NDEBUG
@@ -164,8 +165,6 @@ void Ren::ImageAtlas::InitRegion(const Buffer &sbuf, const int data_off, const i
     }
 #endif
 
-    assert(sbuf.type() == eBufType::Upload);
-
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 1> buf_barriers;
 
@@ -176,7 +175,7 @@ void Ren::ImageAtlas::InitRegion(const Buffer &sbuf, const int data_off, const i
         new_barrier.dstAccessMask = VKAccessFlagsForState(eResState::CopySrc);
         new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        new_barrier.buffer = sbuf.vk_handle();
+        new_barrier.buffer = sbuf.buf;
         new_barrier.offset = VkDeviceSize(data_off);
         new_barrier.size = VkDeviceSize(data_len);
 
@@ -205,13 +204,13 @@ void Ren::ImageAtlas::InitRegion(const Buffer &sbuf, const int data_off, const i
         dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
     }
 
-    src_stages &= api_ctx_->supported_stages_mask;
-    dst_stages &= api_ctx_->supported_stages_mask;
+    src_stages &= api_->supported_stages_mask;
+    dst_stages &= api_->supported_stages_mask;
 
     if (!buf_barriers.empty() || !img_barriers.empty()) {
-        api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
-                                       0, 0, nullptr, buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
-                                       img_barriers.cdata());
+        api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
+                                   0, nullptr, buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
+                                   img_barriers.cdata());
     }
 
     sbuf.resource_state = eResState::CopySrc;
@@ -230,8 +229,8 @@ void Ren::ImageAtlas::InitRegion(const Buffer &sbuf, const int data_off, const i
     region.imageOffset = {int32_t(pos[0]), int32_t(pos[1]), 0};
     region.imageExtent = {uint32_t(res[0]), uint32_t(res[1]), 1};
 
-    api_ctx_->vkCmdCopyBufferToImage(cmd_buf, sbuf.vk_handle(), img_[layer],
-                                     VkImageLayout(VKImageLayoutForState(eResState::CopyDst)), 1, &region);
+    api_->vkCmdCopyBufferToImage(cmd_buf, sbuf.buf, img_[layer],
+                                 VkImageLayout(VKImageLayoutForState(eResState::CopyDst)), 1, &region);
 }
 
 bool Ren::ImageAtlas::Free(const int pos[2]) {
@@ -267,12 +266,12 @@ void Ren::ImageAtlas::Finalize(CommandBuffer cmd_buf) {
         dst_stages |= VKPipelineStagesForState(eResState::ShaderResource);
     }
 
-    src_stages &= api_ctx_->supported_stages_mask;
-    dst_stages &= api_ctx_->supported_stages_mask;
+    src_stages &= api_->supported_stages_mask;
+    dst_stages &= api_->supported_stages_mask;
 
     if (!img_barriers.empty()) {
-        api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
-                                       0, 0, nullptr, 0, nullptr, img_barriers.size(), img_barriers.cdata());
+        api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
+                                   0, nullptr, 0, nullptr, img_barriers.size(), img_barriers.cdata());
     }
 
     resource_state = eResState::ShaderResource;
@@ -280,10 +279,10 @@ void Ren::ImageAtlas::Finalize(CommandBuffer cmd_buf) {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api_ctx, const std::string_view name, const int w, const int h,
+Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api, const std::string_view name, const int w, const int h,
                                       const int layer_count, const int mip_count, const eFormat format,
                                       const eFilter filter, const Bitmask<eImgUsage> usage)
-    : api_ctx_(api_ctx), name_(name), w_(w), h_(h), mip_count_(mip_count), layer_count_(layer_count), format_(format),
+    : api_(api), name_(name), w_(w), h_(h), mip_count_(mip_count), layer_count_(layer_count), format_(format),
       filter_(filter) {
     { // create image
         VkImageCreateInfo img_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
@@ -301,7 +300,7 @@ Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api_ctx, const std::string_vie
         img_info.samples = VK_SAMPLE_COUNT_1_BIT;
         img_info.flags = 0;
 
-        VkResult res = api_ctx_->vkCreateImage(api_ctx_->device, &img_info, nullptr, &img_);
+        VkResult res = api_->vkCreateImage(api_->device, &img_info, nullptr, &img_);
         if (res != VK_SUCCESS) {
             throw std::runtime_error("Failed to create image!");
         }
@@ -311,11 +310,11 @@ Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api_ctx, const std::string_vie
         name_info.objectType = VK_OBJECT_TYPE_IMAGE;
         name_info.objectHandle = uint64_t(img_);
         name_info.pObjectName = name_.c_str();
-        api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+        api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
 #endif
 
         VkMemoryRequirements img_tex_mem_req = {};
-        api_ctx_->vkGetImageMemoryRequirements(api_ctx_->device, img_, &img_tex_mem_req);
+        api_->vkGetImageMemoryRequirements(api_->device, img_, &img_tex_mem_req);
 
         VkMemoryAllocateInfo img_alloc_info = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
         img_alloc_info.allocationSize = img_tex_mem_req.size;
@@ -323,7 +322,7 @@ Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api_ctx, const std::string_vie
         uint32_t img_tex_type_bits = img_tex_mem_req.memoryTypeBits;
         const VkMemoryPropertyFlags img_tex_desired_mem_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         for (uint32_t i = 0; i < 32; i++) {
-            VkMemoryType mem_type = api_ctx_->mem_properties.memoryTypes[i];
+            VkMemoryType mem_type = api_->mem_properties.memoryTypes[i];
             if (img_tex_type_bits & 1u) {
                 if ((mem_type.propertyFlags & img_tex_desired_mem_flags) == img_tex_desired_mem_flags) {
                     img_alloc_info.memoryTypeIndex = i;
@@ -334,12 +333,12 @@ Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api_ctx, const std::string_vie
         }
 
         // TODO: avoid dedicated allocation
-        res = api_ctx_->vkAllocateMemory(api_ctx_->device, &img_alloc_info, nullptr, &mem_);
+        res = api_->vkAllocateMemory(api_->device, &img_alloc_info, nullptr, &mem_);
         if (res != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate memory!");
         }
 
-        res = api_ctx_->vkBindImageMemory(api_ctx_->device, img_, mem_, 0);
+        res = api_->vkBindImageMemory(api_->device, img_, mem_, 0);
         if (res != VK_SUCCESS) {
             throw std::runtime_error("Failed to bind memory!");
         }
@@ -355,7 +354,7 @@ Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api_ctx, const std::string_vie
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = layer_count_;
 
-        const VkResult res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &img_view_);
+        const VkResult res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &img_view_);
         if (res != VK_SUCCESS) {
             throw std::runtime_error("Failed to create image view!");
         }
@@ -364,7 +363,7 @@ Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api_ctx, const std::string_vie
     SamplingParams params;
     params.filter = filter;
 
-    sampler_.Init(api_ctx_, params);
+    Sampler_Init(*api_, sampler_.first, sampler_.second, params);
 
     splitters_.resize(layer_count, ImageSplitter{w, h});
 }
@@ -381,7 +380,7 @@ Ren::ImageAtlasArray &Ren::ImageAtlasArray::operator=(ImageAtlasArray &&rhs) noe
 
     Free();
 
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
+    api_ = std::exchange(rhs.api_, nullptr);
     img_ = std::exchange(rhs.img_, {});
     mem_ = std::exchange(rhs.mem_, {});
     img_view_ = std::exchange(rhs.img_view_, {});
@@ -396,24 +395,25 @@ Ren::ImageAtlasArray &Ren::ImageAtlasArray::operator=(ImageAtlasArray &&rhs) noe
 
 void Ren::ImageAtlasArray::Free() {
     if (img_ != VK_NULL_HANDLE) {
-        api_ctx_->image_views_to_destroy[api_ctx_->backend_frame].push_back(img_view_);
-        api_ctx_->images_to_destroy[api_ctx_->backend_frame].push_back(img_);
-        api_ctx_->mem_to_free[api_ctx_->backend_frame].push_back(mem_);
+        api_->image_views_to_destroy[api_->backend_frame].push_back(img_view_);
+        api_->images_to_destroy[api_->backend_frame].push_back(img_);
+        api_->mem_to_free[api_->backend_frame].push_back(mem_);
         img_ = VK_NULL_HANDLE;
     }
+    Sampler_Destroy(*api_, sampler_.first, sampler_.second);
 }
 
 void Ren::ImageAtlasArray::FreeImmediate() {
     if (img_ != VK_NULL_HANDLE) {
-        api_ctx_->vkDestroyImageView(api_ctx_->device, img_view_, nullptr);
-        api_ctx_->vkDestroyImage(api_ctx_->device, img_, nullptr);
-        api_ctx_->vkFreeMemory(api_ctx_->device, mem_, nullptr);
+        api_->vkDestroyImageView(api_->device, img_view_, nullptr);
+        api_->vkDestroyImage(api_->device, img_, nullptr);
+        api_->vkFreeMemory(api_->device, mem_, nullptr);
         img_ = VK_NULL_HANDLE;
     }
 }
 
 void Ren::ImageAtlasArray::SetSubImage(const int level, const int layer, const int offsetx, const int offsety,
-                                       const int sizex, const int sizey, const eFormat format, const Buffer &sbuf,
+                                       const int sizex, const int sizey, const eFormat format, const BufferMain &sbuf,
                                        const int data_off, const int data_len, CommandBuffer cmd_buf) {
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 1> buf_barriers;
@@ -425,9 +425,9 @@ void Ren::ImageAtlasArray::SetSubImage(const int level, const int layer, const i
         new_barrier.dstAccessMask = VKAccessFlagsForState(eResState::CopySrc);
         new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        new_barrier.buffer = sbuf.vk_handle();
-        new_barrier.offset = 0;           // VkDeviceSize(data_off);
-        new_barrier.size = VK_WHOLE_SIZE; // VkDeviceSize(data_len);
+        new_barrier.buffer = sbuf.buf;
+        new_barrier.offset = 0;
+        new_barrier.size = VK_WHOLE_SIZE;
 
         src_stages |= VKPipelineStagesForState(sbuf.resource_state);
         dst_stages |= VKPipelineStagesForState(eResState::CopySrc);
@@ -454,13 +454,13 @@ void Ren::ImageAtlasArray::SetSubImage(const int level, const int layer, const i
         dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
     }
 
-    src_stages &= api_ctx_->supported_stages_mask;
-    dst_stages &= api_ctx_->supported_stages_mask;
+    src_stages &= api_->supported_stages_mask;
+    dst_stages &= api_->supported_stages_mask;
 
     if (!buf_barriers.empty() || !img_barriers.empty()) {
-        api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
-                                       0, 0, nullptr, uint32_t(buf_barriers.size()), buf_barriers.cdata(),
-                                       uint32_t(img_barriers.size()), img_barriers.cdata());
+        api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
+                                   0, nullptr, uint32_t(buf_barriers.size()), buf_barriers.cdata(),
+                                   uint32_t(img_barriers.size()), img_barriers.cdata());
     }
 
     sbuf.resource_state = eResState::CopySrc;
@@ -479,8 +479,8 @@ void Ren::ImageAtlasArray::SetSubImage(const int level, const int layer, const i
     region.imageOffset = {int32_t(offsetx), int32_t(offsety), 0};
     region.imageExtent = {uint32_t(sizex), uint32_t(sizey), 1};
 
-    api_ctx_->vkCmdCopyBufferToImage(cmd_buf, sbuf.vk_handle(), img_,
-                                     VkImageLayout(VKImageLayoutForState(eResState::CopyDst)), 1, &region);
+    api_->vkCmdCopyBufferToImage(cmd_buf, sbuf.buf, img_, VkImageLayout(VKImageLayoutForState(eResState::CopyDst)), 1,
+                                 &region);
 }
 
 void Ren::ImageAtlasArray::Clear(const float rgba[4], CommandBuffer cmd_buf) {
@@ -494,5 +494,5 @@ void Ren::ImageAtlasArray::Clear(const float rgba[4], CommandBuffer cmd_buf) {
     clear_range.layerCount = layer_count_;
     clear_range.levelCount = mip_count_;
 
-    api_ctx_->vkCmdClearColorImage(cmd_buf, img_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_val, 1, &clear_range);
+    api_->vkCmdClearColorImage(cmd_buf, img_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_val, 1, &clear_range);
 }

@@ -20,7 +20,7 @@ class IAccStructure {
 
 #if defined(REN_VK_BACKEND)
 class AccStructureVK : public IAccStructure {
-    ApiContext *api_ctx_ = nullptr;
+    const ApiContext *api_ = nullptr;
     VkAccelerationStructureKHR handle_ = {};
 
   public:
@@ -40,7 +40,7 @@ class AccStructureVK : public IAccStructure {
     } // needs to be reference as we take it's address later
     [[nodiscard]] VkDeviceAddress vk_device_address() const;
 
-    [[nodiscard]] bool Init(ApiContext *api_ctx, VkAccelerationStructureKHR handle);
+    [[nodiscard]] bool Init(const ApiContext *api, VkAccelerationStructureKHR handle);
 
     void Free() override;
     void FreeImmediate() override;

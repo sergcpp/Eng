@@ -40,20 +40,20 @@ extern const float AnisotropyLevel;
 
 static_assert(sizeof(GLsync) == sizeof(void *));
 
-Ren::Image::Image(std::string_view name, ApiContext *api_ctx, const ImgParams &p, MemAllocators *, ILog *log)
-    : name_(name) {
+Ren::Image::Image(std::string_view name, ApiContext *api, const ImgParams &p, MemAllocators *, ILog *log)
+    : api_(api), name_(name) {
     Init(p, nullptr, log);
 }
 
-Ren::Image::Image(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> data, const ImgParams &p,
-                  MemAllocators *, eImgLoadStatus *load_status, ILog *log)
-    : name_(name) {
+Ren::Image::Image(std::string_view name, ApiContext *api, Span<const uint8_t> data, const ImgParams &p, MemAllocators *,
+                  eImgLoadStatus *load_status, ILog *log)
+    : api_(api), name_(name) {
     Init(data, p, nullptr, load_status, log);
 }
 
-Ren::Image::Image(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> data[6], const ImgParams &p,
+Ren::Image::Image(std::string_view name, ApiContext *api, Span<const uint8_t> data[6], const ImgParams &p,
                   MemAllocators *mem_allocs, eImgLoadStatus *load_status, ILog *log)
-    : name_(name) {
+    : api_(api), name_(name) {
     Init(data, p, nullptr, load_status, log);
 }
 
@@ -77,7 +77,7 @@ Ren::Image &Ren::Image::operator=(Image &&rhs) noexcept {
 
 uint64_t Ren::Image::GetBindlessHandle() const { return glGetTextureHandleARB(GLuint(handle_.id)); }
 
-void Ren::Image::Init(const ImgParams &p, MemAllocators *, ILog *log) { InitFromRAWData(nullptr, 0, p, log); }
+void Ren::Image::Init(const ImgParams &p, MemAllocators *, ILog *log) { InitFromRAWData(nullptr, nullptr, 0, p, log); }
 
 void Ren::Image::Init(const ImgHandle &handle, const ImgParams &_params, MemAllocation &&alloc, ILog *log) {
     handle_ = handle;
@@ -90,13 +90,18 @@ void Ren::Image::Init(Span<const uint8_t> data, const ImgParams &p, MemAllocator
                       eImgLoadStatus *load_status, ILog *log) {
     assert(!data.empty());
 
-    auto sbuf = Buffer{"Temp Stage Buf", nullptr, eBufType::Upload, uint32_t(data.size())};
-    { // Update staging buffer
-        uint8_t *stage_data = sbuf.Map();
-        memcpy(stage_data, data.data(), data.size());
-        sbuf.Unmap();
+    BufferMain sbuf_main = {};
+    BufferCold sbuf_cold = {};
+    if (!Buffer_Init(*api_, sbuf_main, sbuf_cold, String{"Temp Stage Buf"}, eBufType::Upload, uint32_t(data.size()),
+                     log)) {
+        assert(false);
     }
-    InitFromRAWData(&sbuf, 0, p, log);
+    { // Update staging buffer
+        uint8_t *stage_data = Buffer_Map(*api_, sbuf_main, sbuf_cold);
+        memcpy(stage_data, data.data(), data.size());
+        Buffer_Unmap(*api_, sbuf_main, sbuf_cold);
+    }
+    InitFromRAWData(&sbuf_main, &sbuf_cold, 0, p, log);
 
     (*load_status) = eImgLoadStatus::CreatedFromData;
 }
@@ -105,14 +110,19 @@ void Ren::Image::Init(Span<const uint8_t> data[6], const ImgParams &p, MemAlloca
                       eImgLoadStatus *load_status, ILog *log) {
     assert(data);
 
-    auto sbuf = Buffer{
-        "Temp Stage Buf", nullptr, eBufType::Upload,
-        uint32_t(data[0].size() + data[1].size() + data[2].size() + data[3].size() + data[4].size() + data[5].size())};
+    BufferMain sbuf_main = {};
+    BufferCold sbuf_cold = {};
+    if (!Buffer_Init(*api_, sbuf_main, sbuf_cold, String{"Temp Stage Buf"}, eBufType::Upload,
+                     uint32_t(data[0].size() + data[1].size() + data[2].size() + data[3].size() + data[4].size() +
+                              data[5].size()),
+                     log)) {
+        assert(false);
+    }
+
     int data_off[6];
     { // Update staging buffer
-        uint8_t *stage_data = sbuf.Map();
+        uint8_t *stage_data = Buffer_Map(*api_, sbuf_main, sbuf_cold);
         uint32_t stage_off = 0;
-
         for (int i = 0; i < 6; i++) {
             if (!data[i].empty()) {
                 memcpy(&stage_data[stage_off], data[i].data(), data[i].size());
@@ -122,9 +132,9 @@ void Ren::Image::Init(Span<const uint8_t> data[6], const ImgParams &p, MemAlloca
                 data_off[i] = -1;
             }
         }
-        sbuf.Unmap();
+        Buffer_Unmap(*api_, sbuf_main, sbuf_cold);
     }
-    InitFromRAWData(sbuf, data_off, p, log);
+    InitFromRAWData(&sbuf_main, &sbuf_cold, data_off, p, log);
 
     (*load_status) = eImgLoadStatus::CreatedFromData;
 }
@@ -202,7 +212,8 @@ void Ren::Image::Realloc(const int w, const int h, int mip_count, const int samp
     params.format = format;
 }
 
-void Ren::Image::InitFromRAWData(const Buffer *sbuf, int data_off, const ImgParams &p, ILog *log) {
+void Ren::Image::InitFromRAWData(const BufferMain *sbuf_main, const BufferCold *sbuf_cold, int data_off,
+                                 const ImgParams &p, ILog *log) {
     Free();
 
     GLuint tex_id;
@@ -244,11 +255,11 @@ void Ren::Image::InitFromRAWData(const Buffer *sbuf, int data_off, const ImgPara
                 ren_glTextureStorage3D_Comp(GL_TEXTURE_2D_ARRAY, tex_id, mip_count, internal_format, GLsizei(p.w),
                                             GLsizei(p.h), GLsizei(p.d));
             }
-            if (sbuf) {
-                glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf->id());
+            if (sbuf_main) {
+                glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf_main->buf);
 
                 int w = p.w, h = p.h, d = p.d;
-                int bytes_left = sbuf->size() - data_off;
+                int bytes_left = sbuf_cold->size - data_off;
                 for (int i = 0; i < mip_count; ++i) {
                     const int len = GetDataLenBytes(w, h, d, p.format);
                     if (len > bytes_left) {
@@ -300,7 +311,8 @@ void Ren::Image::InitFromRAWData(const Buffer *sbuf, int data_off, const ImgPara
     CheckError("create texture", log);
 }
 
-void Ren::Image::InitFromRAWData(const Buffer &sbuf, int data_off[6], const ImgParams &p, ILog *log) {
+void Ren::Image::InitFromRAWData(const BufferMain *sbuf_main, const BufferCold *sbuf_cold, int data_off[6],
+                                 const ImgParams &p, ILog *log) {
     assert(p.w > 0 && p.h > 0);
     Free();
 
@@ -328,7 +340,7 @@ void Ren::Image::InitFromRAWData(const Buffer &sbuf, int data_off[6], const ImgP
     // allocate all mip levels
     ren_glTextureStorage2D_Comp(GL_TEXTURE_CUBE_MAP, tex_id, mip_count, internal_format, w, h);
 
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf.id());
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf_main->buf);
 
     for (int i = 0; i < 6; ++i) {
         uint32_t buffer_offset = data_off[i];
@@ -407,15 +419,16 @@ int Ren::Image::AddView(const eFormat format, const int mip_level, const int mip
 
 void Ren::Image::SetSubImage(const int layer, const int level, const int offsetx, const int offsety, const int offsetz,
                              const int sizex, const int sizey, const int sizez, const eFormat format,
-                             const Buffer &sbuf, CommandBuffer cmd_buf, const int data_off, const int data_len) {
+                             const BufferMain &sbuf_main, CommandBuffer cmd_buf, const int data_off,
+                             const int data_len) const {
     assert(format == params.format);
     assert(params.samples == 1);
     assert(offsetx >= 0 && offsetx + sizex <= std::max(params.w >> level, 1));
     assert(offsety >= 0 && offsety + sizey <= std::max(params.h >> level, 1));
     assert(offsetz >= 0 && offsetz + sizez <= std::max(params.d >> level, 1));
-    assert(sbuf.type() == eBufType::Upload);
+    // assert(sbuf_cold.type == eBufType::Upload);
 
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf.id());
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf_main.buf);
 
     if (!(Bitmask<eImgFlags>{params.flags} & eImgFlags::Array)) {
         if (params.d == 0) {
@@ -457,8 +470,9 @@ void Ren::Image::SetSubImage(const int layer, const int level, const int offsetx
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
-void Ren::Image::CopyTextureData(const Buffer &sbuf, CommandBuffer cmd_buf, int data_off, int data_len) const {
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, GLuint(sbuf.id()));
+void Ren::Image::CopyTextureData(const BufferMain &sbuf_main, const BufferCold &sbuf_cold, CommandBuffer cmd_buf,
+                                 const int data_off, const int data_len) const {
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, GLuint(sbuf_main.buf));
 
     if (IsCompressedFormat(params.format)) {
         glGetCompressedTextureImage(GLuint(handle_.id), 0, GLsizei(data_len),
@@ -471,17 +485,17 @@ void Ren::Image::CopyTextureData(const Buffer &sbuf, CommandBuffer cmd_buf, int 
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
-void Ren::CopyImageToImage(CommandBuffer cmd_buf, const Image &src_tex, const uint32_t src_level, const uint32_t src_x,
-                           const uint32_t src_y, const uint32_t src_z, Image &dst_tex, const uint32_t dst_level,
+void Ren::CopyImageToImage(CommandBuffer cmd_buf, const Image &src, const uint32_t src_level, const uint32_t src_x,
+                           const uint32_t src_y, const uint32_t src_z, const Image &dst, const uint32_t dst_level,
                            const uint32_t dst_x, const uint32_t dst_y, const uint32_t dst_z, const uint32_t dst_face,
                            const uint32_t w, const uint32_t h, const uint32_t d) {
-    glCopyImageSubData(GLuint(src_tex.id()), GL_TEXTURE_2D, GLint(src_level), GLint(src_x), GLint(src_y), GLint(src_z),
-                       GLuint(dst_tex.id()), GL_TEXTURE_2D, GLint(dst_level), GLint(dst_x), GLint(dst_y), GLint(dst_z),
+    glCopyImageSubData(GLuint(src.id()), GL_TEXTURE_2D, GLint(src_level), GLint(src_x), GLint(src_y), GLint(src_z),
+                       GLuint(dst.id()), GL_TEXTURE_2D, GLint(dst_level), GLint(dst_x), GLint(dst_y), GLint(dst_z),
                        GLsizei(w), GLsizei(h), GLsizei(d));
 }
 
-void Ren::ClearImage(const Image &tex, const ClearColor &col, CommandBuffer cmd_buf) {
-    glClearTexImage(tex.id(), 0, GLFormatFromFormat(tex.params.format), GLTypeFromFormat(tex.params.format),
+void Ren::ClearImage(const Image &img, const ClearColor &col, CommandBuffer cmd_buf) {
+    glClearTexImage(img.id(), 0, GLFormatFromFormat(img.params.format), GLTypeFromFormat(img.params.format),
                     col.uint32);
 }
 

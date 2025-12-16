@@ -17,10 +17,10 @@ const Ren::Vec2i g_sample_positions[16] = {Ren::Vec2i{1, 0}, Ren::Vec2i{3, 2}, R
                                            Ren::Vec2i{1, 1}, Ren::Vec2i{3, 3}, Ren::Vec2i{0, 2}, Ren::Vec2i{2, 0}};
 } // namespace ExSkydomeCubeInternal
 
-void Eng::ExSkydomeCube::Execute(FgContext &fg) {
+void Eng::ExSkydomeCube::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
 
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &transmittance_lut = fg.AccessROImage(args_->transmittance_lut);
     const Ren::Image &multiscatter_lut = fg.AccessROImage(args_->multiscatter_lut);
     const Ren::Image &moon_tex = fg.AccessROImage(args_->moon_tex);
@@ -115,7 +115,8 @@ void Eng::ExSkydomeCube::Execute(FgContext &fg) {
     for (int face = face_start; face < face_end; ++face) {
         for (int mip = 1; mip < mip_count; mip += 4) {
             const Ren::TransitionInfo transitions[] = {{color_tex.get(), Ren::eResState::UnorderedAccess}};
-            TransitionResourceStates(fg.ren_ctx().api_ctx(), fg.cmd_buf(), Ren::AllStages, Ren::AllStages, transitions);
+            TransitionResourceStates(fg.ren_ctx().api(), fg.storages(), fg.cmd_buf(), Ren::AllStages, Ren::AllStages,
+                                     transitions);
 
             const Ren::Binding _bindings[] = {
                 {Ren::eBindTarget::TexSampled,
@@ -147,8 +148,8 @@ void Eng::ExSkydomeCube::Execute(FgContext &fg) {
                 (uniform_params.img_size[0] + SkydomeDownsample::GRP_SIZE_X - 1) / SkydomeDownsample::GRP_SIZE_X,
                 (uniform_params.img_size[1] + SkydomeDownsample::GRP_SIZE_Y - 1) / SkydomeDownsample::GRP_SIZE_Y, 1u};
 
-            DispatchCompute(*pi_skydome_downsample_, grp_count, _bindings, &uniform_params, sizeof(uniform_params),
-                            fg.descr_alloc(), fg.log());
+            DispatchCompute(fg.cmd_buf(), pi_skydome_downsample_, fg.storages(), grp_count, _bindings, &uniform_params,
+                            sizeof(uniform_params), fg.descr_alloc(), fg.log());
         }
     }
 
@@ -157,7 +158,8 @@ void Eng::ExSkydomeCube::Execute(FgContext &fg) {
     }
 
     const Ren::TransitionInfo transitions[] = {{color_tex.get(), Ren::eResState::RenderTarget}};
-    Ren::TransitionResourceStates(fg.ren_ctx().api_ctx(), fg.cmd_buf(), Ren::AllStages, Ren::AllStages, transitions);
+    Ren::TransitionResourceStates(fg.ren_ctx().api(), fg.storages(), fg.cmd_buf(), Ren::AllStages, Ren::AllStages,
+                                  transitions);
 }
 
 void Eng::ExSkydomeCube::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
@@ -169,10 +171,10 @@ void Eng::ExSkydomeCube::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     }
 }
 
-void Eng::ExSkydomeScreen::Execute(FgContext &fg) {
+void Eng::ExSkydomeScreen::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
 
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
 
     Ren::WeakImgRef color_tex = fg.AccessRWImageRef(args_->color_tex);
 

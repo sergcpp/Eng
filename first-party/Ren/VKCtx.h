@@ -47,8 +47,8 @@ struct ApiContext {
     VkFence in_flight_fences[MaxFramesInFlight] = {};
 
     VkQueryPool query_pools[MaxFramesInFlight] = {};
-    uint32_t query_counts[MaxFramesInFlight] = {};
-    uint64_t query_results[MaxFramesInFlight][MaxTimestampQueries] = {};
+    mutable uint32_t query_counts[MaxFramesInFlight] = {};
+    mutable uint64_t query_results[MaxFramesInFlight][MaxTimestampQueries] = {};
 
     int backend_frame = 0;
 
@@ -76,21 +76,24 @@ struct ApiContext {
 
     uint32_t supported_stages_mask = 0xffffffff;
 
+    // generation counters
+    mutable uint32_t buffer_counter = 0;
+
     // resources scheduled for deferred destruction
-    std::vector<VkImage> images_to_destroy[MaxFramesInFlight];
-    std::vector<VkImageView> image_views_to_destroy[MaxFramesInFlight];
-    std::vector<VkSampler> samplers_to_destroy[MaxFramesInFlight];
-    std::vector<MemAllocation> allocations_to_free[MaxFramesInFlight];
-    std::vector<std::unique_ptr<MemAllocators>> allocators_to_release[MaxFramesInFlight];
-    std::vector<VkBuffer> bufs_to_destroy[MaxFramesInFlight];
-    std::vector<VkBufferView> buf_views_to_destroy[MaxFramesInFlight];
-    std::vector<VkDeviceMemory> mem_to_free[MaxFramesInFlight];
-    std::vector<VkRenderPass> render_passes_to_destroy[MaxFramesInFlight];
-    std::vector<VkFramebuffer> framebuffers_to_destroy[MaxFramesInFlight];
-    std::vector<VkDescriptorPool> descriptor_pools_to_destroy[MaxFramesInFlight];
-    std::vector<VkPipelineLayout> pipeline_layouts_to_destroy[MaxFramesInFlight];
-    std::vector<VkPipeline> pipelines_to_destroy[MaxFramesInFlight];
-    std::vector<VkAccelerationStructureKHR> acc_structs_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkImage> images_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkImageView> image_views_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkSampler> samplers_to_destroy[MaxFramesInFlight];
+    mutable std::vector<MemAllocation> allocations_to_free[MaxFramesInFlight];
+    mutable std::vector<std::unique_ptr<MemAllocators>> allocators_to_release[MaxFramesInFlight];
+    mutable std::vector<VkBuffer> bufs_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkBufferView> buf_views_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkDeviceMemory> mem_to_free[MaxFramesInFlight];
+    mutable std::vector<VkRenderPass> render_passes_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkFramebuffer> framebuffers_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkDescriptorPool> descriptor_pools_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkPipelineLayout> pipeline_layouts_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkPipeline> pipelines_to_destroy[MaxFramesInFlight];
+    mutable std::vector<VkAccelerationStructureKHR> acc_structs_to_destroy[MaxFramesInFlight];
 
     // main functions
     PFN_vkCreateInstance vkCreateInstance = {};
@@ -292,14 +295,14 @@ struct ApiContext {
     bool InitCommandBuffers(uint32_t family_index, ILog *log);
     bool InitPresentImageViews(ILog *log);
 
-    VkCommandBuffer BegSingleTimeCommands();
-    void EndSingleTimeCommands(VkCommandBuffer command_buf);
-    void EndSingleTimeCommands(VkCommandBuffer command_buf, VkFence fence_to_insert);
+    VkCommandBuffer BegSingleTimeCommands() const;
+    void EndSingleTimeCommands(VkCommandBuffer command_buf) const;
+    void EndSingleTimeCommands(VkCommandBuffer command_buf, VkFence fence_to_insert) const;
 
     ~ApiContext();
 };
 
-inline VkDeviceSize AlignTo(VkDeviceSize size, VkDeviceSize alignment) {
+inline VkDeviceSize RoundUp(const VkDeviceSize size, const VkDeviceSize alignment) {
     return alignment * ((size + alignment - 1) / alignment);
 }
 
@@ -307,11 +310,11 @@ bool MatchDeviceNames(std::string_view name, std::string_view pattern);
 
 class ILog;
 
-bool ReadbackTimestampQueries(ApiContext *api_ctx, int i);
+bool ReadbackTimestampQueries(const ApiContext &api, int i);
 
-void DestroyDeferredResources(ApiContext *api_ctx, int i);
+void DestroyDeferredResources(const ApiContext &api, int i);
 
 // Useful for synchronization debugging
-void _SubmitCurrentCommandsWaitForCompletionAndResume(ApiContext *api_ctx);
+void _SubmitCurrentCommandsWaitForCompletionAndResume(ApiContext *api);
 
 } // namespace Ren

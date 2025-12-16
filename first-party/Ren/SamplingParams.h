@@ -46,6 +46,23 @@ inline bool operator==(const SamplingParams lhs, const SamplingParams rhs) {
 }
 inline bool operator!=(const SamplingParams lhs, const SamplingParams rhs) { return !operator==(lhs, rhs); }
 
+inline bool operator<(const SamplingParams lhs, const SamplingParams rhs) {
+    if (lhs.filter < rhs.filter) {
+        return true;
+    } else if (lhs.filter == rhs.filter) {
+        if (lhs.wrap < rhs.wrap) {
+            return true;
+        } else if (lhs.wrap == rhs.wrap) {
+            if (lhs.compare < rhs.compare) {
+                return true;
+            } else if (lhs.compare == rhs.compare) {
+                return lhs.lod_bias.value() < rhs.lod_bias.value();
+            }
+        }
+    }
+    return false;
+}
+
 struct SamplingParamsPacked {
     uint8_t filter : 2;
     uint8_t wrap : 2;
@@ -76,6 +93,23 @@ inline bool operator==(const SamplingParamsPacked lhs, const SamplingParams rhs)
            lhs.lod_bias == rhs.lod_bias;
 }
 inline bool operator!=(const SamplingParamsPacked lhs, const SamplingParams rhs) { return !operator==(lhs, rhs); }
+
+inline bool operator<(const SamplingParamsPacked lhs, const SamplingParamsPacked rhs) {
+    if (lhs.filter < rhs.filter) {
+        return true;
+    } else if (lhs.filter == rhs.filter) {
+        if (lhs.wrap < rhs.wrap) {
+            return true;
+        } else if (lhs.wrap == rhs.wrap) {
+            if (lhs.compare < rhs.compare) {
+                return true;
+            } else if (lhs.compare == rhs.compare) {
+                return lhs.lod_bias.value() < rhs.lod_bias.value();
+            }
+        }
+    }
+    return false;
+}
 
 enum class eSamplerLoadStatus { Found, Created };
 } // namespace Ren

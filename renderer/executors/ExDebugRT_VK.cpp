@@ -8,20 +8,20 @@
 #include "../PrimDraw.h"
 #include "../shaders/rt_debug_interface.h"
 
-void Eng::ExDebugRT::Execute_HWRT(FgContext &fg) {
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data_buf);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials_buf);
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::Buffer &vtx_buf2 = fg.AccessROBuffer(args_->vtx_buf2);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::Buffer &lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+void Eng::ExDebugRT::Execute_HWRT(const FgContext &fg) {
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data_buf);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials_buf);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(args_->vtx_buf2);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &env_tex = fg.AccessROImage(args_->env_tex);
     const Ren::Image &shadow_depth_tex = fg.AccessROImage(args_->shadow_depth_tex);
     const Ren::Image &shadow_color_tex = fg.AccessROImage(args_->shadow_color_tex);
     const Ren::Image &ltc_luts_tex = fg.AccessROImage(args_->ltc_luts_tex);
-    const Ren::Buffer &cells_buf = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::Buffer &items_buf = fg.AccessROBuffer(args_->items_buf);
+    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
+    const Ren::BufferHandle items_buf = fg.AccessROBuffer(args_->items_buf);
 
     const Ren::Image *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
     if (args_->irradiance_tex) {
@@ -30,13 +30,14 @@ void Eng::ExDebugRT::Execute_HWRT(FgContext &fg) {
         off_tex = &fg.AccessROImage(args_->offset_tex);
     }
 
-    Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
+    const Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
 
-    Ren::ApiContext *api_ctx = fg.ren_ctx().api_ctx();
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
 
     const auto *acc_struct = static_cast<const Ren::AccStructureVK *>(args_->tlas);
 
-    VkCommandBuffer cmd_buf = api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+    VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
@@ -60,14 +61,16 @@ void Eng::ExDebugRT::Execute_HWRT(FgContext &fg) {
         bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, *off_tex);
     }
 
+    const auto &[pi_main, pi_cold] = storages.pipelines.Get(pi_debug_);
+    const Ren::ProgramMain &pr = storages.programs.Get(pi_main.prog).first;
+
     VkDescriptorSet descr_sets[2];
-    descr_sets[0] =
-        PrepareDescriptorSet(api_ctx, pi_debug_->prog()->descr_set_layouts()[0], bindings, fg.descr_alloc(), fg.log());
+    descr_sets[0] = PrepareDescriptorSet(api, &storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->rt_textures.descr_set;
 
-    api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pi_debug_->handle());
-    api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pi_debug_->layout(), 0, 2,
-                                     descr_sets, 0, nullptr);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pi_main.handle);
+    api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pi_main.layout, 0, 2, descr_sets, 0,
+                                nullptr);
 
     RTDebug::Params uniform_params;
     uniform_params.img_size[0] = view_state_->ren_res[0];
@@ -75,10 +78,10 @@ void Eng::ExDebugRT::Execute_HWRT(FgContext &fg) {
     uniform_params.pixel_spread_angle = view_state_->pixel_spread_angle;
     uniform_params.cull_mask = args_->cull_mask;
 
-    api_ctx->vkCmdPushConstants(cmd_buf, pi_debug_->layout(), pi_debug_->prog()->pc_range(0).stageFlags, 0,
-                                sizeof(uniform_params), &uniform_params);
+    api.vkCmdPushConstants(cmd_buf, pi_main.layout, pr.pc_ranges[0].stageFlags, 0, sizeof(uniform_params),
+                           &uniform_params);
 
-    api_ctx->vkCmdTraceRaysKHR(cmd_buf, pi_debug_->rgen_table(), pi_debug_->miss_table(), pi_debug_->hit_table(),
-                               pi_debug_->call_table(), uint32_t(view_state_->ren_res[0]),
-                               uint32_t(view_state_->ren_res[1]), 1);
+    api.vkCmdTraceRaysKHR(cmd_buf, &pi_cold.rgen_region, &pi_cold.miss_region, &pi_cold.hit_region,
+                          &pi_cold.call_region, uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1]),
+                          1);
 }

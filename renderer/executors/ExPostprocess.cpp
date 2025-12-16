@@ -27,7 +27,7 @@ Eng::ExPostprocess::ExPostprocess(PrimDraw &prim_draw, ShaderLoader &sh, const v
                                                   "internal/blit_postprocess@ABERRATION;LUT;TWO_TARGETS.frag.glsl");
 }
 
-void Eng::ExPostprocess::Execute(FgContext &fg) {
+void Eng::ExPostprocess::Execute(const FgContext &fg) {
     const Ren::Image &exposure_tex = fg.AccessROImage(args_->exposure_tex);
     const Ren::Image &color_tex = fg.AccessROImage(args_->color_tex);
     const Ren::Image &bloom_tex = fg.AccessROImage(args_->bloom_tex);
@@ -59,7 +59,7 @@ void Eng::ExPostprocess::Execute(FgContext &fg) {
 
     Ren::SmallVector<Ren::Binding, 8> bindings = {
         {Ren::eBindTarget::TexSampled, BlitPostprocess::EXPOSURE_TEX_SLOT, exposure_tex},
-        {Ren::eBindTarget::TexSampled, BlitPostprocess::INPUT_TEX_SLOT, {color_tex, *args_->linear_sampler}},
+        {Ren::eBindTarget::TexSampled, BlitPostprocess::INPUT_TEX_SLOT, {color_tex, args_->linear_sampler}},
         {Ren::eBindTarget::TexSampled, BlitPostprocess::BLOOM_TEX_SLOT, bloom_tex}};
     if (args_->tonemap_mode == 2 && lut_tex) {
         bindings.emplace_back(Ren::eBindTarget::TexSampled, BlitPostprocess::LUT_TEX_SLOT, *lut_tex);

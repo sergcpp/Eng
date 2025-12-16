@@ -18,20 +18,20 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
 }
 } // namespace ExSharedInternal
 
-void Eng::ExDepthFill::Execute(FgContext &fg) {
-    Ren::WeakBufRef vtx_buf1 = fg.AccessROBufferRef(vtx_buf1_);
-    Ren::WeakBufRef vtx_buf2 = fg.AccessROBufferRef(vtx_buf2_);
-    Ren::WeakBufRef ndx_buf = fg.AccessROBufferRef(ndx_buf_);
+void Eng::ExDepthFill::Execute(const FgContext &fg) {
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(depth_tex_);
     Ren::WeakImgRef velocity_tex = fg.AccessRWImageRef(velocity_tex_);
 
     LazyInit(fg.ren_ctx(), fg.sh(), vtx_buf1, vtx_buf2, ndx_buf, depth_tex, velocity_tex);
-    DrawDepth(fg, *vtx_buf1, *vtx_buf2, *ndx_buf);
+    DrawDepth(fg, vtx_buf1, vtx_buf2, ndx_buf);
 }
 
-void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                                const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf,
+void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
+                                const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
                                 const Ren::WeakImgRef &depth_tex, const Ren::WeakImgRef &velocity_tex) {
     const Ren::RenderTarget velocity_target = {velocity_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
     const Ren::RenderTarget depth_clear_target = {depth_tex, Ren::eLoadOp::Clear, Ren::eStoreOp::Store,
@@ -45,29 +45,25 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
 #else
         const bool bindless = true;
 #endif
-        const int buf1_stride = 16, buf2_stride = 16;
+        static const int buf1_stride = 16, buf2_stride = 16;
 
-        Ren::VertexInputRef vi_solid, vi_vege_solid, vi_transp, vi_vege_transp, vi_skin_solid, vi_skin_transp;
-
+        Ren::VertexInputHandle vi_solid, vi_vege_solid, vi_transp, vi_vege_transp, vi_skin_solid, vi_skin_transp;
         { // VertexInput for solid depth-fill pass (uses position attribute only)
             const Ren::VtxAttribDesc attribs[] = {{vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0}};
             vi_solid = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for solid depth-fill pass of vegetation (uses position and color attributes only)
             const Ren::VtxAttribDesc attribs[] = {
                 {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
                 {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
             vi_vege_solid = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for alpha-tested depth-fill pass (uses position and uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
                 {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
                 {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)}};
             vi_transp = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for alpha-tested depth-fill pass of vegetation (uses position, uvs and color attributes)
             const Ren::VtxAttribDesc attribs[] = {
                 {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
@@ -75,14 +71,12 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
                 {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
             vi_vege_transp = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for depth-fill pass of skinned solid meshes (with velocity output)
             const Ren::VtxAttribDesc attribs[] = {
                 {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
                 {vtx_buf1, VTX_PRE_LOC, 3, Ren::eType::Float32, buf1_stride, MAX_SKIN_VERTICES_TOTAL * 16}};
             vi_skin_solid = sh.LoadVertexInput(attribs, ndx_buf);
         }
-
         { // VertexInput for depth-fill pass of skinned transparent meshes (with velocity output)
             const Ren::VtxAttribDesc attribs[] = {
                 {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
@@ -91,49 +85,50 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
             vi_skin_transp = sh.LoadVertexInput(attribs, ndx_buf);
         }
 
-        Ren::ProgramRef fillz_solid_prog = sh.LoadProgram("internal/fillz.vert.glsl", "internal/fillz.frag.glsl");
-        Ren::ProgramRef fillz_solid_mov_prog =
+        const Ren::ProgramHandle fillz_solid_prog =
+            sh.LoadProgram("internal/fillz.vert.glsl", "internal/fillz.frag.glsl");
+        const Ren::ProgramHandle fillz_solid_mov_prog =
             sh.LoadProgram("internal/fillz@MOVING.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        Ren::ProgramRef fillz_vege_solid_vel_prog =
+        const Ren::ProgramHandle fillz_vege_solid_vel_prog =
             sh.LoadProgram(bindless ? "internal/fillz_vege@OUTPUT_VELOCITY.vert.glsl"
                                     : "internal/fillz_vege@OUTPUT_VELOCITY;NO_BINDLESS.vert.glsl",
                            "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        Ren::ProgramRef fillz_vege_solid_vel_mov_prog =
+        const Ren::ProgramHandle fillz_vege_solid_vel_mov_prog =
             sh.LoadProgram(bindless ? "internal/fillz_vege@MOVING;OUTPUT_VELOCITY.vert.glsl"
                                     : "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;NO_BINDLESS.vert.glsl",
                            "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        Ren::ProgramRef fillz_transp_prog = sh.LoadProgram(
+        const Ren::ProgramHandle fillz_transp_prog = sh.LoadProgram(
             bindless ? "internal/fillz@ALPHATEST.vert.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.vert.glsl",
             bindless ? "internal/fillz@ALPHATEST.frag.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.frag.glsl");
-        Ren::ProgramRef fillz_transp_mov_prog =
+        const Ren::ProgramHandle fillz_transp_mov_prog =
             sh.LoadProgram(bindless ? "internal/fillz@MOVING;ALPHATEST.vert.glsl"
                                     : "internal/fillz@MOVING;ALPHATEST;NO_BINDLESS.vert.glsl",
                            bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
                                     : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
-        Ren::ProgramRef fillz_vege_transp_vel_prog =
+        const Ren::ProgramHandle fillz_vege_transp_vel_prog =
             sh.LoadProgram(bindless ? "internal/fillz_vege@OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
                                     : "internal/fillz_vege@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
                            bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
                                     : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
-        Ren::ProgramRef fillz_vege_transp_vel_mov_prog =
+        const Ren::ProgramHandle fillz_vege_transp_vel_mov_prog =
             sh.LoadProgram(bindless ? "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
                                     : "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
                            bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
                                     : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
-        Ren::ProgramRef fillz_skin_solid_vel_prog =
+        const Ren::ProgramHandle fillz_skin_solid_vel_prog =
             sh.LoadProgram("internal/fillz_skin@OUTPUT_VELOCITY.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        Ren::ProgramRef fillz_skin_solid_vel_mov_prog = sh.LoadProgram(
+        const Ren::ProgramHandle fillz_skin_solid_vel_mov_prog = sh.LoadProgram(
             "internal/fillz_skin@MOVING;OUTPUT_VELOCITY.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        Ren::ProgramRef fillz_skin_transp_prog = sh.LoadProgram(
+        const Ren::ProgramHandle fillz_skin_transp_prog = sh.LoadProgram(
             bindless ? "internal/fillz_skin@ALPHATEST.vert.glsl"
                      : "internal/fillz_skin@ALPHATEST;NO_BINDLESS.vert.glsl",
             bindless ? "internal/fillz@ALPHATEST.frag.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.frag.glsl");
-        Ren::ProgramRef fillz_skin_transp_vel_prog =
+        const Ren::ProgramHandle fillz_skin_transp_vel_prog =
             sh.LoadProgram(bindless ? "internal/fillz_skin@OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
                                     : "internal/fillz_skin@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
                            bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
                                     : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
-        Ren::ProgramRef fillz_skin_transp_vel_mov_prog =
+        const Ren::ProgramHandle fillz_skin_transp_vel_mov_prog =
             sh.LoadProgram(bindless ? "internal/fillz_skin@MOVING;OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
                                     : "internal/fillz_skin@MOVING;OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
                            bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
@@ -291,13 +286,15 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
 
     fb_to_use_ = (fb_to_use_ + 1) % 2;
 
-    if (!depth_fill_fb_[ctx.backend_frame()][fb_to_use_].Setup(ctx.api_ctx(), *rp_depth_only_[0], depth_tex->params.w,
+    const Ren::RenderPassMain &rp_depth_only_main = ctx.render_passes().Get(rp_depth_only_[0]).first;
+    if (!depth_fill_fb_[ctx.backend_frame()][fb_to_use_].Setup(&ctx.api(), rp_depth_only_main, depth_tex->params.w,
                                                                depth_tex->params.h, depth_tex, depth_tex,
                                                                Ren::Span<const Ren::WeakImgRef>{}, false, ctx.log())) {
         ctx.log()->Error("[ExDepthFill::LazyInit]: depth_fill_fb_ init failed!");
     }
 
-    if (!depth_fill_vel_fb_[ctx.backend_frame()][fb_to_use_].Setup(ctx.api_ctx(), *rp_depth_velocity_[0],
+    const Ren::RenderPassMain &rp_depth_velocity_main = ctx.render_passes().Get(rp_depth_velocity_[0]).first;
+    if (!depth_fill_vel_fb_[ctx.backend_frame()][fb_to_use_].Setup(&ctx.api(), rp_depth_velocity_main,
                                                                    depth_tex->params.w, depth_tex->params.h, depth_tex,
                                                                    depth_tex, velocity_tex, false, ctx.log())) {
         ctx.log()->Error("[ExDepthFill::LazyInit]: depth_fill_vel_load_fb_ init failed!");

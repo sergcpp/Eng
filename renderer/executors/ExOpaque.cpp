@@ -4,10 +4,10 @@
 
 #include "../../utils/ShaderLoader.h"
 
-void Eng::ExOpaque::Execute(FgContext &fg) {
-    Ren::WeakBufRef vtx_buf1 = fg.AccessROBufferRef(vtx_buf1_);
-    Ren::WeakBufRef vtx_buf2 = fg.AccessROBufferRef(vtx_buf2_);
-    Ren::WeakBufRef ndx_buf = fg.AccessROBufferRef(ndx_buf_);
+void Eng::ExOpaque::Execute(const FgContext &fg) {
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     Ren::WeakImgRef color_tex = fg.AccessRWImageRef(color_tex_);
     Ren::WeakImgRef normal_tex = fg.AccessRWImageRef(normal_tex_);
@@ -18,8 +18,8 @@ void Eng::ExOpaque::Execute(FgContext &fg) {
     DrawOpaque(fg);
 }
 
-void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                             const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf,
+void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
+                             const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
                              const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
                              const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex) {
     const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store},
@@ -29,7 +29,7 @@ void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren
                                             Ren::eStoreOp::Store};
 
     if (!initialized) {
-        const int buf1_stride = 16, buf2_stride = 16;
+        static const int buf1_stride = 16, buf2_stride = 16;
 
         { // VertexInput for main drawing (uses all attributes)
             const Ren::VtxAttribDesc attribs[] = {
@@ -45,7 +45,6 @@ void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren
 
         rp_opaque_ = sh.LoadRenderPass(depth_target, color_targets);
 
-        api_ctx_ = ctx.api_ctx();
 #if defined(REN_VK_BACKEND)
         InitDescrSetLayout();
 #endif
@@ -55,7 +54,8 @@ void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren
 
     fb_to_use_ = (fb_to_use_ + 1) % 2;
 
-    if (!opaque_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(ctx.api_ctx(), *rp_opaque_, depth_tex->params.w,
+    const Ren::RenderPassMain &rp_opaque_main = ctx.render_passes().Get(rp_opaque_).first;
+    if (!opaque_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(&ctx.api(), rp_opaque_main, depth_tex->params.w,
                                                                 depth_tex->params.h, depth_target, depth_target,
                                                                 color_targets, ctx.log())) {
         ctx.log()->Error("ExOpaque: opaque_draw_fb_ init failed!");

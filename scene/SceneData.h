@@ -216,10 +216,13 @@ static_assert(sizeof(light_item_t) == 96);
 static const uint32_t RtBLASChunkSize = 16 * 1024 * 1024;
 
 struct PersistentGpuData {
-    Ren::BufRef instance_buf;
-    Ren::BufRef materials_buf;
-    Ren::BufRef stoch_lights_buf, stoch_lights_nodes_buf;
-    Ren::BufRef vertex_buf1, vertex_buf2, skin_vertex_buf, delta_buf, indices_buf;
+    Ren::Context &ctx;
+
+    Ren::BufferHandle instance_buf;
+    Ren::BufferHandle materials_buf;
+    Ren::BufferHandle stoch_lights_buf, stoch_lights_nodes_buf;
+    Ren::BufferHandle vertex_buf1, vertex_buf2, indices_buf;
+    Ren::BufferHandle skin_vertex_buf, delta_buf;
     std::unique_ptr<Ren::MemAllocators> mem_allocs;
 #if defined(REN_VK_BACKEND)
     std::unique_ptr<Ren::DescrPool> textures_descr_pool;
@@ -229,24 +232,23 @@ struct PersistentGpuData {
     Ren::SmallVector<VkDescriptorSet, 1024> textures_descr_sets[4];
     VkDescriptorSet rt_textures_descr_sets[4] = {}, rt_inline_textures_descr_sets[4] = {};
 #elif defined(REN_GL_BACKEND)
-    Ren::BufRef textures_buf;
+    Ren::BufferHandle textures_buf;
 #endif
-    Ren::SamplerRef trilinear_sampler;
-    Ren::PipelineStorage pipelines;
+    Ren::SamplerHandle trilinear_sampler;
 
     struct {
         uint32_t rt_tlas_build_scratch_size = 0;
 
         Ren::FreelistAlloc rt_blas_mem_alloc;
-        std::vector<Ren::BufRef> rt_blas_buffers;
+        std::vector<Ren::BufferHandle> rt_blas_buffers;
     } hwrt;
 
-    Ren::BufRef rt_tlas_buf[3];
+    Ren::BufferHandle rt_tlas_buf[3];
 
     struct {
-        Ren::BufRef rt_prim_indices_buf;
+        Ren::BufferHandle rt_prim_indices_buf;
         uint32_t rt_root_node = 0;
-        Ren::BufRef rt_blas_buf;
+        Ren::BufferHandle rt_blas_buf;
         Ren::SparseArray<mesh_t> rt_meshes;
     } swrt;
 
@@ -257,7 +259,7 @@ struct PersistentGpuData {
     Ren::ImgRef probe_offset;
     std::vector<probe_volume_t> probe_volumes;
 
-    PersistentGpuData();
+    PersistentGpuData(Ren::Context &ctx);
     ~PersistentGpuData();
 
     PersistentGpuData(PersistentGpuData &&rhs) noexcept = delete;
@@ -273,11 +275,10 @@ struct SceneData {
     Ren::String name;
     Ren::Bitmask<eSceneLoadFlags> load_flags;
 
-    Ren::BufferStorage buffers;
     Ren::ImageStorage textures;
     Ren::MaterialStorage materials;
     std::vector<uint32_t> material_changes;
-    PersistentGpuData persistent_data;
+    std::unique_ptr<PersistentGpuData> persistent_data;
     std::pair<uint32_t, uint32_t> mat_update_ranges[4];
     Ren::MeshStorage meshes;
 

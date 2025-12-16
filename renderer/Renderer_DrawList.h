@@ -98,7 +98,7 @@ struct DrawList {
     frontend_info_t frontend_info;
     Ren::Vec4f sun_shadow_bounds;
     std::vector<Ren::Vec2i> instance_indices;
-    mutable Ren::BufRef instance_indices_stage_buf;
+    mutable Ren::BufferHandle instance_indices_stage_buf;
     std::vector<basic_draw_batch_t> shadow_batches;
     std::vector<uint32_t> shadow_batch_indices;
     DynArray<shadow_list_t> shadow_lists;
@@ -110,32 +110,32 @@ struct DrawList {
     int alpha_blend_start_index = -1;
     int emissive_start_index = -1;
     std::vector<skin_transform_t> skin_transforms;
-    mutable Ren::BufRef skin_transforms_stage_buf;
+    mutable Ren::BufferHandle skin_transforms_stage_buf;
     std::vector<skin_region_t> skin_regions;
     DynArray<shape_key_data_t> shape_keys_data;
-    mutable Ren::BufRef shape_keys_stage_buf;
+    mutable Ren::BufferHandle shape_keys_stage_buf;
     uint32_t skin_vertices_count = 0;
     std::vector<light_item_t> lights;
-    mutable Ren::BufRef lights_stage_buf;
+    mutable Ren::BufferHandle lights_stage_buf;
     std::vector<decal_item_t> decals;
-    mutable Ren::BufRef decals_stage_buf;
+    mutable Ren::BufferHandle decals_stage_buf;
     std::vector<probe_item_t> probes;
     std::vector<ellipse_item_t> ellipsoids;
     std::vector<uint32_t> portals;
     DynArray<cell_data_t> cells, rt_cells;
-    mutable Ren::BufRef cells_stage_buf, rt_cells_stage_buf;
+    mutable Ren::BufferHandle cells_stage_buf, rt_cells_stage_buf;
     DynArray<item_data_t> items, rt_items;
-    mutable Ren::BufRef items_stage_buf, rt_items_stage_buf;
+    mutable Ren::BufferHandle items_stage_buf, rt_items_stage_buf;
 
     DynArray<rt_geo_instance_t> rt_geo_instances[int(eTLASIndex::_Count)];
-    mutable Ren::BufRef rt_geo_instances_stage_buf[int(eTLASIndex::_Count)];
+    mutable Ren::BufferHandle rt_geo_instances_stage_buf[int(eTLASIndex::_Count)];
     DynArray<rt_obj_instance_t> rt_obj_instances[int(eTLASIndex::_Count)];
-    mutable Ren::BufRef rt_obj_instances_stage_buf[int(eTLASIndex::_Count)];
+    mutable Ren::BufferHandle rt_obj_instances_stage_buf[int(eTLASIndex::_Count)];
     struct {
-        mutable Ren::BufRef rt_tlas_nodes_stage_buf[int(eTLASIndex::_Count)];
+        mutable Ren::BufferHandle rt_tlas_nodes_stage_buf[int(eTLASIndex::_Count)];
     } swrt;
 
-    mutable Ren::BufRef shared_data_stage_buf;
+    mutable Ren::BufferHandle shared_data_stage_buf;
 
     int volume_to_update = -1;
     Ren::Vec3f bbox_min, bbox_max;
@@ -157,14 +157,16 @@ struct DrawList {
     int depth_w, depth_h;
     std::vector<uint8_t> depth_pixels;
 
-    void Init(Ren::BufRef shared_data_stage_buf, Ren::BufRef instance_indices_stage_buf,
-              Ren::BufRef skin_transforms_stage_buf, Ren::BufRef shape_keys_stage_buf, Ren::BufRef cells_stage_buf,
-              Ren::BufRef rt_cells_stage_buf, Ren::BufRef items_stage_buf, Ren::BufRef rt_items_stage_buf,
-              Ren::BufRef lights_stage_buf, Ren::BufRef decals_stage_buf, Ren::BufRef rt_geo_instances_stage_buf,
-              Ren::BufRef rt_sh_geo_instances_stage_buf, Ren::BufRef rt_vol_geo_instances_stage_buf,
-              Ren::BufRef rt_obj_instances_stage_buf, Ren::BufRef rt_sh_obj_instances_stage_buf,
-              Ren::BufRef rt_vol_obj_instances_stage_buf, Ren::BufRef rt_tlas_nodes_stage_buf,
-              Ren::BufRef rt_sh_tlas_nodes_stage_buf, Ren::BufRef rt_vol_tlas_nodes_stage_buf);
+    void Init(Ren::BufferHandle shared_data_stage_buf, Ren::BufferHandle instance_indices_stage_buf,
+              Ren::BufferHandle skin_transforms_stage_buf, Ren::BufferHandle shape_keys_stage_buf,
+              Ren::BufferHandle cells_stage_buf, Ren::BufferHandle rt_cells_stage_buf,
+              Ren::BufferHandle items_stage_buf, Ren::BufferHandle rt_items_stage_buf,
+              Ren::BufferHandle lights_stage_buf, Ren::BufferHandle decals_stage_buf,
+              Ren::BufferHandle rt_geo_instances_stage_buf, Ren::BufferHandle rt_sh_geo_instances_stage_buf,
+              Ren::BufferHandle rt_vol_geo_instances_stage_buf, Ren::BufferHandle rt_obj_instances_stage_buf,
+              Ren::BufferHandle rt_sh_obj_instances_stage_buf, Ren::BufferHandle rt_vol_obj_instances_stage_buf,
+              Ren::BufferHandle rt_tlas_nodes_stage_buf, Ren::BufferHandle rt_sh_tlas_nodes_stage_buf,
+              Ren::BufferHandle rt_vol_tlas_nodes_stage_buf);
     void Clear();
 };
 } // namespace Eng

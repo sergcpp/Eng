@@ -13,7 +13,7 @@ Ren::Framebuffer &Ren::Framebuffer::operator=(Framebuffer &&rhs) noexcept {
 
     Destroy();
 
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
+    api_ = std::exchange(rhs.api_, nullptr);
     id_ = std::exchange(rhs.id_, 0);
     w = std::exchange(rhs.w, -1);
     h = std::exchange(rhs.h, -1);
@@ -33,20 +33,20 @@ void Ren::Framebuffer::Destroy() {
     }
 }
 
-bool Ren::Framebuffer::Changed(const RenderPass &render_pass, const WeakImgRef &_depth_attachment,
+bool Ren::Framebuffer::Changed(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
                                const WeakImgRef &_stencil_attachment, Span<const WeakImgRef> _color_attachments) const {
     return depth_attachment != _depth_attachment || stencil_attachment != _stencil_attachment ||
            Span<const Attachment>(color_attachments) != _color_attachments;
 }
 
-bool Ren::Framebuffer::Changed(const RenderPass &render_pass, const WeakImgRef &_depth_attachment,
+bool Ren::Framebuffer::Changed(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
                                const WeakImgRef &_stencil_attachment,
                                Span<const RenderTarget> _color_attachments) const {
     return depth_attachment != _depth_attachment || stencil_attachment != _stencil_attachment ||
            Span<const Attachment>(color_attachments) != _color_attachments;
 }
 
-bool Ren::Framebuffer::LessThan(const RenderPass &render_pass, const WeakImgRef &_depth_attachment,
+bool Ren::Framebuffer::LessThan(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
                                 const WeakImgRef &_stencil_attachment,
                                 Span<const WeakImgRef> _color_attachments) const {
     if (depth_attachment < _depth_attachment) {
@@ -61,7 +61,7 @@ bool Ren::Framebuffer::LessThan(const RenderPass &render_pass, const WeakImgRef 
     return false;
 }
 
-bool Ren::Framebuffer::LessThan(const RenderPass &render_pass, const WeakImgRef &_depth_attachment,
+bool Ren::Framebuffer::LessThan(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
                                 const WeakImgRef &_stencil_attachment,
                                 Span<const RenderTarget> _color_attachments) const {
     if (depth_attachment < _depth_attachment) {
@@ -76,8 +76,8 @@ bool Ren::Framebuffer::LessThan(const RenderPass &render_pass, const WeakImgRef 
     return false;
 }
 
-bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass, int w, int h,
-                             const WeakImgRef _depth_attachment, const WeakImgRef _stencil_attachment,
+bool Ren::Framebuffer::Setup(const ApiContext *api, const RenderPassMain &render_pass, int w, int h,
+                             WeakImgRef _depth_attachment, WeakImgRef _stencil_attachment,
                              Span<const WeakImgRef> _color_attachments, const bool is_multisampled, ILog *log) {
     if (!Changed(render_pass, _depth_attachment, _stencil_attachment, _color_attachments)) {
         // nothing has changed
@@ -95,11 +95,11 @@ bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass,
     }
 
     return Setup(
-        api_ctx, render_pass, w, h, RenderTarget(std::move(_depth_attachment), eLoadOp::DontCare, eStoreOp::DontCare),
+        api, render_pass, w, h, RenderTarget(std::move(_depth_attachment), eLoadOp::DontCare, eStoreOp::DontCare),
         RenderTarget(std::move(_stencil_attachment), eLoadOp::DontCare, eStoreOp::DontCare), color_targets, log);
 }
 
-bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass, int w, int h,
+bool Ren::Framebuffer::Setup(const ApiContext *api, const RenderPassMain &render_pass, int w, int h,
                              const RenderTarget &_depth_target, const RenderTarget &_stencil_target,
                              Span<const RenderTarget> _color_targets, ILog *log) {
     SmallVector<WeakImgRef, 4> color_refs;

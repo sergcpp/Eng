@@ -2,6 +2,7 @@
 
 #include <mutex>
 
+#include "DescriptorPool.h"
 #include "GL.h"
 #include "GLCtx.h"
 
@@ -11,8 +12,6 @@
 #endif
 
 namespace Ren {
-class DescrMultiPoolAlloc {};
-
 void APIENTRY DebugCallback(const GLenum source, const GLenum type, const GLuint id, const GLenum severity,
                             const GLsizei length, const GLchar *message, const void *userParam) {
     auto *self = reinterpret_cast<const Context *>(userParam);
@@ -37,9 +36,9 @@ Ren::Context::Context() {
 }
 
 Ren::Context::~Context() {
-    api_ctx_->present_image_refs.clear();
+    api_->present_image_refs.clear();
     for (int i = 0; i < MaxFramesInFlight; i++) {
-        glDeleteQueries(MaxTimestampQueries, api_ctx_->queries[i]);
+        glDeleteQueries(MaxTimestampQueries, api_->queries[i]);
     }
     ReleaseAll();
 }
@@ -56,10 +55,10 @@ bool Ren::Context::Init(const int w, const int h, ILog *log, const int validatio
     validation_level_ = validation_level;
     log_ = log;
 
-    api_ctx_ = std::make_unique<ApiContext>();
+    api_ = std::make_unique<ApiContext>();
     for (int i = 0; i < MaxFramesInFlight; i++) {
-        api_ctx_->in_flight_fences.emplace_back(MakeFence());
-        glGenQueries(MaxTimestampQueries, api_ctx_->queries[i]);
+        api_->in_flight_fences.emplace_back(MakeFence());
+        glGenQueries(MaxTimestampQueries, api_->queries[i]);
     }
 
     log_->Info("============================================================================");
@@ -180,14 +179,32 @@ bool Ren::Context::Init(const int w, const int h, ILog *log, const int validatio
         params.flags = eImgFlags::NoOwnership;
         params.usage = Bitmask(eImgUsage::RenderTarget);
 
-        api_ctx_->present_image_refs.emplace_back(
-            images_.Insert(name_buf, api_ctx_.get(), ImgHandle{}, params, MemAllocation{}, log_));
+        api_->present_image_refs.emplace_back(
+            images_.Insert(name_buf, api_.get(), ImgHandle{}, params, MemAllocation{}, log_));
     }
 
     image_atlas_ =
-        ImageAtlasArray{api_ctx_.get(),   "Image Atlas",     ImageAtlasWidth,
+        ImageAtlasArray{api_.get(),       "Image Atlas",     ImageAtlasWidth,
                         ImageAtlasHeight, ImageAtlasLayers,  1,
                         eFormat::RGBA8,   eFilter::Bilinear, Bitmask(eImgUsage::Transfer) | eImgUsage::Sampled};
+
+    for (int i = 0; i < MaxFramesInFlight; ++i) {
+        const int PoolStep = 8;
+        const int MaxImgSamplerCount = 32;
+        const int MaxImgCount = 16;
+        const int MaxSamplerCount = 16;
+        const int MaxStoreImgCount = 6;
+        const int MaxUbufCount = 8;
+        const int MaxUTbufCount = 16;
+        const int MaxSbufCount = 16;
+        const int MaxSTbufCount = 4;
+        const int MaxAccCount = 1;
+        const int InitialSetsCount = 16;
+
+        default_descr_alloc_[i] = std::make_unique<DescrMultiPoolAlloc>(
+            *api_, PoolStep, MaxImgSamplerCount, MaxImgCount, MaxSamplerCount, MaxStoreImgCount, MaxUbufCount,
+            MaxUTbufCount, MaxSbufCount, MaxSTbufCount, MaxAccCount, InitialSetsCount);
+    }
 
     return true;
 }
@@ -228,11 +245,6 @@ void Ren::CheckError(const char *op, ILog *log) {
     }
 }
 
-Ren::DescrMultiPoolAlloc &Ren::Context::default_descr_alloc() const {
-    static DescrMultiPoolAlloc stub;
-    return stub;
-}
-
 void Ren::Context::BegSingleTimeCommands(CommandBuffer cmd_buf) {}
 Ren::CommandBuffer Ren::Context::BegTempSingleTimeCommands() { return nullptr; }
 Ren::SyncFence Ren::Context::EndSingleTimeCommands(CommandBuffer cmd_buf) { return MakeFence(); }
@@ -241,15 +253,15 @@ void Ren::Context::InsertReadbackMemoryBarrier(CommandBuffer cmd_buf) { glMemory
 void *Ren::Context::current_cmd_buf() { return nullptr; }
 
 int Ren::Context::WriteTimestamp(const bool) {
-    const uint32_t query_index = api_ctx_->query_counts[api_ctx_->backend_frame]++;
-    glQueryCounter(api_ctx_->queries[api_ctx_->backend_frame][query_index], GL_TIMESTAMP);
+    const uint32_t query_index = api_->query_counts[api_->backend_frame]++;
+    glQueryCounter(api_->queries[api_->backend_frame][query_index], GL_TIMESTAMP);
 
     return int(query_index);
 }
 
 uint64_t Ren::Context::GetTimestampIntervalDurationUs(const int query_beg, const int query_end) const {
-    return uint64_t(float(api_ctx_->query_results[api_ctx_->backend_frame][query_end] -
-                          api_ctx_->query_results[api_ctx_->backend_frame][query_beg]) /
+    return uint64_t(float(api_->query_results[api_->backend_frame][query_end] -
+                          api_->query_results[api_->backend_frame][query_beg]) /
                     1000.0f);
 }
 

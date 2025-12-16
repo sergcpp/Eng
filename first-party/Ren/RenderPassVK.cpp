@@ -38,111 +38,94 @@ static_assert(VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT == 4);
 static_assert(VkSampleCountFlagBits::VK_SAMPLE_COUNT_8_BIT == 8);
 } // namespace Ren
 
-Ren::RenderPass &Ren::RenderPass::operator=(RenderPass &&rhs) noexcept {
-    if (this == &rhs) {
-        return (*this);
-    }
-
-    RefCounter::operator=(static_cast<RefCounter &&>(rhs));
-
-    Destroy();
-
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
-    handle_ = std::exchange(rhs.handle_, {});
-    depth_rt = std::exchange(rhs.depth_rt, {});
-    color_rts = std::move(rhs.color_rts);
-
-    return (*this);
-}
-
-bool Ren::RenderPass::Init(ApiContext *api_ctx, const RenderTargetInfo &_depth_rt,
-                           Span<const RenderTargetInfo> _color_rts, ILog *log) {
-    Destroy();
-
+bool Ren::RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const RenderTargetInfo &depth_rt,
+                          Span<const RenderTargetInfo> color_rts, ILog *log) {
     SmallVector<VkAttachmentDescription, 4> pass_attachments;
-    SmallVector<VkAttachmentReference, 4> color_attachment_refs(uint32_t(_color_rts.size()),
+    SmallVector<VkAttachmentReference, 4> color_attachment_refs(uint32_t(color_rts.size()),
                                                                 {VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED});
     VkAttachmentReference depth_attachment_ref = {VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED};
 
-    depth_rt = {};
-    color_rts.resize(uint32_t(_color_rts.size()));
+    assert(rp_main.handle == VK_NULL_HANDLE);
+    assert(!rp_main.depth_rt);
+    assert(rp_main.color_rts.empty());
 
-    if (_depth_rt) {
+    rp_main.color_rts.resize(uint32_t(color_rts.size()));
+
+    if (depth_rt) {
         const uint32_t att_index = pass_attachments.size();
 
         auto &att_desc = pass_attachments.emplace_back();
-        att_desc.format = Ren::VKFormatFromFormat(_depth_rt.format);
-        att_desc.samples = VkSampleCountFlagBits(_depth_rt.samples);
-        att_desc.loadOp = vk_load_ops[int(_depth_rt.load)];
-        if (att_desc.loadOp == VK_ATTACHMENT_LOAD_OP_NONE_EXT && !api_ctx->renderpass_loadstore_none_supported) {
+        att_desc.format = Ren::VKFormatFromFormat(depth_rt.format);
+        att_desc.samples = VkSampleCountFlagBits(depth_rt.samples);
+        att_desc.loadOp = vk_load_ops[int(depth_rt.load)];
+        if (att_desc.loadOp == VK_ATTACHMENT_LOAD_OP_NONE_EXT && !api.renderpass_loadstore_none_supported) {
             att_desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         }
-        att_desc.storeOp = vk_store_ops[int(_depth_rt.store)];
-        if (att_desc.storeOp == VK_ATTACHMENT_STORE_OP_NONE_EXT && !api_ctx->renderpass_loadstore_none_supported) {
+        att_desc.storeOp = vk_store_ops[int(depth_rt.store)];
+        if (att_desc.storeOp == VK_ATTACHMENT_STORE_OP_NONE_EXT && !api.renderpass_loadstore_none_supported) {
             att_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         }
-        att_desc.stencilLoadOp = vk_load_ops[int(_depth_rt.stencil_load)];
-        if (att_desc.stencilLoadOp == VK_ATTACHMENT_LOAD_OP_NONE_EXT && !api_ctx->renderpass_loadstore_none_supported) {
+        att_desc.stencilLoadOp = vk_load_ops[int(depth_rt.stencil_load)];
+        if (att_desc.stencilLoadOp == VK_ATTACHMENT_LOAD_OP_NONE_EXT && !api.renderpass_loadstore_none_supported) {
             att_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         }
-        att_desc.stencilStoreOp = vk_store_ops[int(_depth_rt.stencil_store)];
-        if (att_desc.stencilStoreOp == VK_ATTACHMENT_STORE_OP_NONE_EXT &&
-            !api_ctx->renderpass_loadstore_none_supported) {
+        att_desc.stencilStoreOp = vk_store_ops[int(depth_rt.stencil_store)];
+        if (att_desc.stencilStoreOp == VK_ATTACHMENT_STORE_OP_NONE_EXT && !api.renderpass_loadstore_none_supported) {
             att_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
         }
-        att_desc.initialLayout = VkImageLayout(_depth_rt.layout);
+        att_desc.initialLayout = VkImageLayout(depth_rt.layout);
         att_desc.finalLayout = att_desc.initialLayout;
 
         depth_attachment_ref.attachment = att_index;
         depth_attachment_ref.layout = att_desc.initialLayout;
 
-        depth_rt = _depth_rt;
+        rp_main.depth_rt = depth_rt;
     }
 
-    for (int i = 0; i < _color_rts.size(); ++i) {
-        if (!_color_rts[i]) {
+    for (int i = 0; i < color_rts.size(); ++i) {
+        if (!color_rts[i]) {
             continue;
         }
 
         const uint32_t att_index = pass_attachments.size();
 
         auto &att_desc = pass_attachments.emplace_back();
-        att_desc.format = VKFormatFromFormat(_color_rts[i].format);
-        att_desc.samples = VkSampleCountFlagBits(_color_rts[i].samples);
-        if (VkImageLayout(_color_rts[i].layout) == VK_IMAGE_LAYOUT_UNDEFINED) {
+        att_desc.format = VKFormatFromFormat(color_rts[i].format);
+        att_desc.samples = VkSampleCountFlagBits(color_rts[i].samples);
+        if (VkImageLayout(color_rts[i].layout) == VK_IMAGE_LAYOUT_UNDEFINED) {
             att_desc.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             att_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         } else {
-            att_desc.loadOp = vk_load_ops[int(_color_rts[i].load)];
-            att_desc.stencilLoadOp = vk_load_ops[int(_color_rts[i].load)];
+            att_desc.loadOp = vk_load_ops[int(color_rts[i].load)];
+            att_desc.stencilLoadOp = vk_load_ops[int(color_rts[i].load)];
         }
-        att_desc.storeOp = vk_store_ops[int(_color_rts[i].store)];
-        att_desc.stencilStoreOp = vk_store_ops[int(_color_rts[i].store)];
-        att_desc.initialLayout = VkImageLayout(_color_rts[i].layout);
+        att_desc.storeOp = vk_store_ops[int(color_rts[i].store)];
+        att_desc.stencilStoreOp = vk_store_ops[int(color_rts[i].store)];
+        att_desc.initialLayout = VkImageLayout(color_rts[i].layout);
         att_desc.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        if (att_desc.loadOp == VK_ATTACHMENT_LOAD_OP_NONE_EXT && !api_ctx->renderpass_loadstore_none_supported) {
+        if (att_desc.loadOp == VK_ATTACHMENT_LOAD_OP_NONE_EXT && !api.renderpass_loadstore_none_supported) {
             att_desc.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         }
-        if (att_desc.stencilLoadOp == VK_ATTACHMENT_LOAD_OP_NONE_EXT && !api_ctx->renderpass_loadstore_none_supported) {
+        if (att_desc.stencilLoadOp == VK_ATTACHMENT_LOAD_OP_NONE_EXT && !api.renderpass_loadstore_none_supported) {
             att_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         }
-        if (att_desc.storeOp == VK_ATTACHMENT_STORE_OP_NONE && !api_ctx->renderpass_loadstore_none_supported) {
+        if (att_desc.storeOp == VK_ATTACHMENT_STORE_OP_NONE && !api.renderpass_loadstore_none_supported) {
             att_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         }
-        if (att_desc.stencilStoreOp == VK_ATTACHMENT_STORE_OP_NONE && !api_ctx->renderpass_loadstore_none_supported) {
+        if (att_desc.stencilStoreOp == VK_ATTACHMENT_STORE_OP_NONE && !api.renderpass_loadstore_none_supported) {
             att_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
         }
 
         color_attachment_refs[i].attachment = att_index;
         color_attachment_refs[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        color_rts[i] = _color_rts[i];
+        rp_main.color_rts[i] = color_rts[i];
     }
 
     VkSubpassDescription subpass = {};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = uint32_t(_color_rts.size());
+    subpass.colorAttachmentCount = uint32_t(color_rts.size());
     subpass.pColorAttachments = color_attachment_refs.data();
     if (depth_attachment_ref.attachment != VK_ATTACHMENT_UNUSED) {
         subpass.pDepthStencilAttachment = &depth_attachment_ref;
@@ -154,49 +137,24 @@ bool Ren::RenderPass::Init(ApiContext *api_ctx, const RenderTargetInfo &_depth_r
     render_pass_create_info.subpassCount = 1;
     render_pass_create_info.pSubpasses = &subpass;
 
-    const VkResult res = api_ctx->vkCreateRenderPass(api_ctx->device, &render_pass_create_info, nullptr, &handle_);
+    const VkResult res = api.vkCreateRenderPass(api.device, &render_pass_create_info, nullptr, &rp_main.handle);
     if (res != VK_SUCCESS) {
         log->Error("Failed to create render pass!");
         return false;
 #ifdef VERBOSE_LOGGING
     } else {
-        log->Info("RenderPass %p created", handle_);
+        log->Info("RenderPass %p created", rp_main.handle);
 #endif
     }
 
-    api_ctx_ = api_ctx;
     return true;
 }
 
-void Ren::RenderPass::Destroy() {
-    if (handle_ != VK_NULL_HANDLE) {
-        api_ctx_->render_passes_to_destroy[api_ctx_->backend_frame].push_back(handle_);
-        handle_ = VK_NULL_HANDLE;
+void Ren::RenderPass_Destroy(const ApiContext &api, RenderPassMain &rp_main) {
+    if (rp_main.handle != VK_NULL_HANDLE) {
+        api.render_passes_to_destroy[api.backend_frame].push_back(rp_main.handle);
     }
-    depth_rt = {};
-    color_rts.clear();
-}
-
-bool Ren::RenderPass::Setup(ApiContext *api_ctx, const RenderTarget &_depth_rt, Span<const RenderTarget> _color_rts,
-                            ILog *log) {
-    if (depth_rt == _depth_rt && Span<const RenderTargetInfo>(color_rts) == _color_rts) {
-        return true;
-    }
-
-    SmallVector<RenderTargetInfo, 4> infos;
-    for (int i = 0; i < _color_rts.size(); ++i) {
-        infos.emplace_back(_color_rts[i]);
-    }
-
-    return Init(api_ctx, RenderTargetInfo{_depth_rt}, infos, log);
-}
-
-bool Ren::RenderPass::Setup(ApiContext *api_ctx, const RenderTargetInfo &_depth_rt,
-                            Span<const RenderTargetInfo> _color_rts, ILog *log) {
-    if (depth_rt == _depth_rt && Span<const RenderTargetInfo>(color_rts) == _color_rts) {
-        return true;
-    }
-    return Init(api_ctx, _depth_rt, _color_rts, log);
+    rp_main = {};
 }
 
 #undef VERBOSE_LOGGING

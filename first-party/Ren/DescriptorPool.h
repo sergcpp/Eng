@@ -37,22 +37,24 @@ struct DescrSizes {
 };
 
 class DescrPool {
-    ApiContext *api_ctx_ = {};
+    const ApiContext &api_;
+#if defined(REN_VK_BACKEND)
     VkDescriptorPool handle_ = {};
+#endif
     uint32_t sets_count_ = 0, next_free_ = 0;
 
     uint32_t descr_counts_[int(eDescrType::_Count)] = {};
 
   public:
-    DescrPool(ApiContext *api_ctx) : api_ctx_(api_ctx) {}
+    DescrPool(const ApiContext &api) : api_(api) {}
     DescrPool(const DescrPool &rhs) = delete;
-    DescrPool(DescrPool &&rhs) noexcept { (*this) = std::move(rhs); }
+    DescrPool(DescrPool &&rhs) : api_(rhs.api_) { (*this) = std::move(rhs); }
     ~DescrPool() { Destroy(); }
 
     DescrPool &operator=(const DescrPool &rhs) = delete;
     DescrPool &operator=(DescrPool &&rhs) noexcept;
 
-    [[nodiscard]] ApiContext *api_ctx() { return api_ctx_; }
+    [[nodiscard]] const ApiContext &api() { return api_; }
 
     [[nodiscard]] uint32_t free_count() const { return sets_count_ - next_free_; }
     [[nodiscard]] uint32_t descr_count(const eDescrType type) const { return descr_counts_[int(type)]; }
@@ -60,15 +62,17 @@ class DescrPool {
     [[nodiscard]] bool Init(const DescrSizes &sizes, uint32_t sets_count);
     void Destroy();
 
+#if defined(REN_VK_BACKEND)
     [[nodiscard]] VkDescriptorSet Alloc(VkDescriptorSetLayout layout);
     [[nodiscard]] bool Reset();
+#endif
 };
 
 //
 // DescrPoolAlloc is able to allocate any amount of sets of specific size
 //
 class DescrPoolAlloc {
-    ApiContext *api_ctx_ = nullptr;
+    const ApiContext &api_;
     DescrSizes sizes_;
     uint32_t initial_sets_count_ = 0;
 
@@ -76,13 +80,15 @@ class DescrPoolAlloc {
     int next_free_pool_ = -1;
 
   public:
-    DescrPoolAlloc(ApiContext *api_ctx, const DescrSizes &sizes, const uint32_t initial_sets_count)
-        : api_ctx_(api_ctx), sizes_(sizes), initial_sets_count_(initial_sets_count) {}
+    DescrPoolAlloc(const ApiContext &api, const DescrSizes &sizes, const uint32_t initial_sets_count)
+        : api_(api), sizes_(sizes), initial_sets_count_(initial_sets_count) {}
 
-    [[nodiscard]] ApiContext *api_ctx() { return api_ctx_; }
+    [[nodiscard]] const ApiContext &api() { return api_; }
 
+#if defined(REN_VK_BACKEND)
     [[nodiscard]] VkDescriptorSet Alloc(VkDescriptorSetLayout layout);
     [[nodiscard]] bool Reset();
+#endif
 };
 
 //
@@ -98,14 +104,16 @@ class DescrMultiPoolAlloc {
     SmallVector<DescrPoolAlloc, 16> pools_;
 
   public:
-    DescrMultiPoolAlloc(ApiContext *api_ctx, uint32_t pool_step, uint32_t max_img_sampler_count, uint32_t max_img_count,
-                        uint32_t max_sampler_count, uint32_t max_store_img_count, uint32_t max_ubuf_count,
-                        uint32_t max_utbuf_count, uint32_t max_sbuf_count, uint32_t max_stbuf_count,
-                        uint32_t max_acc_count, uint32_t initial_sets_count);
+    DescrMultiPoolAlloc(const ApiContext &api, uint32_t pool_step, uint32_t max_img_sampler_count,
+                        uint32_t max_img_count, uint32_t max_sampler_count, uint32_t max_store_img_count,
+                        uint32_t max_ubuf_count, uint32_t max_utbuf_count, uint32_t max_sbuf_count,
+                        uint32_t max_stbuf_count, uint32_t max_acc_count, uint32_t initial_sets_count);
 
-    [[nodiscard]] ApiContext *api_ctx() { return pools_.front().api_ctx(); }
+    [[nodiscard]] const ApiContext &api() { return pools_.front().api(); }
 
+#if defined(REN_VK_BACKEND)
     [[nodiscard]] VkDescriptorSet Alloc(const DescrSizes &sizes, VkDescriptorSetLayout layout);
     [[nodiscard]] bool Reset();
+#endif
 };
 } // namespace Ren

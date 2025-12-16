@@ -8,11 +8,11 @@ class ExReadExposure final : public FgExecutor {
   public:
     struct Args {
         FgResRef input_tex;
-        FgResRef output_buf;
+        FgBufHandle output_buf;
     };
 
     void Setup(const Args *args) { args_ = args; }
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 
     [[nodiscard]] float exposure() const { return exposure_; }
 

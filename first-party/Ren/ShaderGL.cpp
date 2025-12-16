@@ -27,110 +27,60 @@ const GLenum GLShaderTypes[] = {GL_VERTEX_SHADER,
 static_assert(std::size(GLShaderTypes) == int(eShaderType::_Count));
 } // namespace Ren
 
-Ren::Shader::Shader(std::string_view name, ApiContext *api_ctx, std::string_view shader_src, const eShaderType type,
-                    ILog *log) {
-    name_ = String{name};
-    Init(shader_src, type, log);
-}
-
-Ren::Shader::Shader(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> shader_code, const eShaderType type,
-                    ILog *log) {
-    name_ = String{name};
-    Init(shader_code, type, log);
-}
-
-Ren::Shader::~Shader() {
-    if (id_) {
-        auto id = GLuint(id_);
-        glDeleteShader(id);
-    }
-}
-
-Ren::Shader &Ren::Shader::operator=(Shader &&rhs) noexcept {
-    if (this == &rhs) {
-        return (*this);
-    }
-
-    RefCounter::operator=(static_cast<RefCounter &&>(rhs));
-
-    if (id_) {
-        auto id = GLuint(id_);
-        glDeleteShader(id);
-    }
-
-    id_ = std::exchange(rhs.id_, 0);
-    type_ = rhs.type_;
-    source_ = rhs.source_;
-    name_ = std::move(rhs.name_);
-
-    attr_bindings = std::move(rhs.attr_bindings);
-    unif_bindings = std::move(rhs.unif_bindings);
-    blck_bindings = std::move(rhs.blck_bindings);
-
-    return (*this);
-}
-
-void Ren::Shader::Init(std::string_view shader_src, const eShaderType type, ILog *log) {
-    InitFromGLSL(shader_src, type, log);
-}
-
-#ifndef __ANDROID__
-void Ren::Shader::Init(Span<const uint8_t> shader_code, const eShaderType type, ILog *log) {
-    InitFromSPIRV(shader_code, type, log);
-}
-#endif
-
-void Ren::Shader::InitFromGLSL(std::string_view shader_src, const eShaderType type, ILog *log) {
+bool Ren::Shader_Init(const ApiContext &, ShaderMain &shader_main, ShaderCold &shader_cold, std::string_view shader_src,
+                      const String &name, eShaderType type, ILog *log) {
     if (shader_src.empty()) {
-        return;
+        return false;
     }
 
-    assert(id_ == 0);
-    id_ = LoadShader(GLShaderTypes[int(type)], shader_src, log);
-    if (!id_) {
-        return;
+    assert(shader_main.id == 0);
+    shader_main.id = LoadShader(GLShaderTypes[int(type)], shader_src, log);
+    if (!shader_main.id) {
+        return false;
     } else {
 #ifdef ENABLE_GPU_DEBUG
-        glObjectLabel(GL_SHADER, id_, -1, name_.c_str());
+        glObjectLabel(GL_SHADER, shader_main.id, -1, name.c_str());
 #endif
     }
 
-    source_ = eShaderSource::GLSL;
+    shader_cold.name = name;
+    shader_cold.type = type;
+    shader_cold.source = eShaderSource::GLSL;
 
-    ParseGLSLBindings(shader_src, attr_bindings, unif_bindings, blck_bindings, log);
+    return true;
 }
 
-#ifndef __ANDROID__
-void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_data, const eShaderType type, ILog *log) {
-    if (shader_data.empty()) {
-        return;
+bool Ren::Shader_Init(const ApiContext &, ShaderMain &shader_main, ShaderCold &shader_cold,
+                      Span<const uint8_t> shader_code, const String &name, eShaderType type, ILog *log) {
+    if (shader_code.empty()) {
+        return false;
     }
 
-    assert(id_ == 0);
-    id_ = LoadShader(GLShaderTypes[int(type)], shader_data, log);
-    if (!id_) {
-        return;
+    assert(shader_main.id == 0);
+    shader_main.id = LoadShader(GLShaderTypes[int(type)], shader_code, log);
+    if (!shader_main.id) {
+        return false;
     }
 
-    type_ = type;
-    source_ = eShaderSource::SPIRV;
+    shader_cold.name = name;
+    shader_cold.type = type;
+    shader_cold.source = eShaderSource::SPIRV;
 
 #ifdef ENABLE_GPU_DEBUG
-    glObjectLabel(GL_SHADER, id_, -1, name_.c_str());
+    glObjectLabel(GL_SHADER, shader_main.id, -1, name.c_str());
 #endif
 
     SpvReflectShaderModule module = {};
-    const SpvReflectResult res = spvReflectCreateShaderModule(shader_data.size(), shader_data.data(), &module);
-    assert(res == SPV_REFLECT_RESULT_SUCCESS);
-
-    attr_bindings.clear();
-    unif_bindings.clear();
-    blck_bindings.clear();
+    const SpvReflectResult res = spvReflectCreateShaderModule(shader_code.size(), shader_code.data(), &module);
+    if (res != SPV_REFLECT_RESULT_SUCCESS) {
+        log->Error("spvReflectCreateShaderModule failed!");
+        return false;
+    }
 
     for (uint32_t i = 0; i < module.input_variable_count; i++) {
         const auto *var = module.input_variables[i];
         if (var->built_in == -1) {
-            Descr &new_item = attr_bindings.emplace_back();
+            Descr &new_item = shader_cold.attr_bindings.emplace_back();
             new_item.name = String{var->name};
             new_item.loc = var->location;
         }
@@ -139,19 +89,29 @@ void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_data, const eShaderTy
     for (uint32_t i = 0; i < module.descriptor_binding_count; i++) {
         const auto &desc = module.descriptor_bindings[i];
         if (desc.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
-            Descr &new_item = blck_bindings.emplace_back();
+            Descr &new_item = shader_cold.blck_bindings.emplace_back();
             new_item.name = String{desc.name};
             new_item.loc = desc.binding;
         } else {
-            Descr &new_item = unif_bindings.emplace_back();
+            Descr &new_item = shader_cold.unif_bindings.emplace_back();
             new_item.name = String{desc.name};
             new_item.loc = desc.binding;
         }
     }
 
     spvReflectDestroyShaderModule(&module);
+
+    return true;
 }
-#endif
+
+void Ren::Shader_Destroy(const ApiContext &, ShaderMain &shader_main, ShaderCold &shader_cold) {
+    if (shader_main.id) {
+        auto id = GLuint(shader_main.id);
+        glDeleteShader(id);
+    }
+    shader_main = {};
+    shader_cold = {};
+}
 
 GLuint Ren::LoadShader(GLenum shader_type, std::string_view source, ILog *log) {
     GLuint shader = glCreateShader(shader_type);

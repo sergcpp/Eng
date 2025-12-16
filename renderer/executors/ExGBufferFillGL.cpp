@@ -8,10 +8,11 @@
 #include <Ren/RastState.h>
 
 namespace ExSharedInternal {
-uint32_t _draw_range_ext2(Eng::FgContext &fg, const Ren::MaterialStorage &materials, const Ren::Image &white_tex,
+uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &materials, const Ren::Image &white_tex,
                           Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
                           uint32_t i, uint64_t mask, uint32_t &cur_mat_id, int *draws_count) {
-    auto &ren_ctx = fg.ren_ctx();
+    const Ren::Context &ren_ctx = fg.ren_ctx();
+    const Ren::StoragesRef &storages = fg.storages();
 
     for (; i < batch_indices.size(); i++) {
         const auto &batch = batches[batch_indices[i]];
@@ -29,7 +30,7 @@ uint32_t _draw_range_ext2(Eng::FgContext &fg, const Ren::MaterialStorage &materi
             int j = 0;
             for (; j < int(mat.textures.size()); ++j) {
                 ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j, mat.textures[j]->id());
-                glBindSampler(Eng::BIND_MAT_TEX0 + j, mat.samplers[j]->id());
+                glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers.Get(mat.samplers[j]).first.id);
             }
             for (; j < Eng::MAX_TEX_PER_MATERIAL; ++j) {
                 ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j, white_tex.id());
@@ -53,7 +54,7 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
                      uint32_t i, uint32_t mask);
 } // namespace ExSharedInternal
 
-void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
+void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
     using namespace ExSharedInternal;
 
     Ren::RastState _rast_state;
@@ -98,38 +99,47 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
     //
     // Bind resources (shadow atlas, lightmap, cells item data)
     //
-    const Ren::Buffer &instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::Buffer &instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::Buffer &unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::Buffer &cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::Buffer &items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::Buffer &decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(cells_buf_);
+    const Ren::BufferHandle items_buf = fg.AccessROBuffer(items_buf_);
+    const Ren::BufferHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
     const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
     const Ren::Image &dummy_white = fg.AccessROImage(dummy_white_);
     const Ren::Image &dummy_black = fg.AccessROImage(dummy_black_);
 
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf.id()));
+    const Ren::StoragesRef &storages = fg.storages();
+
+    const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
     if (fg.ren_ctx().capabilities.bindless_texture) {
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX,
-                         GLuint(bindless_tex_->rt_inline_textures.buf->id()));
+        const Ren::BufferMain &buf_main = storages.buffers.Get(bindless_tex_->rt_inline_textures.buf).first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX, GLuint(buf_main.buf));
     }
 
-    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf.id());
+    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
+    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
 
     if ((*p_list_)->decals_atlas) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_DECAL_TEX, (*p_list_)->decals_atlas->tex_id(0));
     }
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_DECAL_BUF, GLuint(decals_buf.view(0).second));
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_CELLS_BUF, GLuint(cells_buf.view(0).second));
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_ITEMS_BUF, GLuint(items_buf.view(0).second));
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_DECAL_BUF,
+                               GLuint(storages.buffers.Get(decals_buf).first.views[0].second));
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_CELLS_BUF,
+                               GLuint(storages.buffers.Get(cells_buf).first.views[0].second));
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_ITEMS_BUF,
+                               GLuint(storages.buffers.Get(items_buf).first.views[0].second));
 
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex.id());
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf.view(0).second));
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf.id()));
+    const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
+    const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
 
     const Ren::Span<const basic_draw_batch_t> batches = (*p_list_)->basic_batches;
     const Ren::Span<const uint32_t> batch_indices = (*p_list_)->basic_batch_indices;
@@ -141,16 +151,23 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
 
     using BDB = basic_draw_batch_t;
 
-    { // Simple meshes
-        Ren::DebugMarker _m(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SIMPLE");
+    const Ren::PipelineMain &pi_simple0_main = storages.pipelines.Get(pi_simple_[0]).first;
+    const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
+    const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
 
-        glBindVertexArray(pi_simple_[0]->vtx_input()->GetVAO());
-        glUseProgram(pi_simple_[0]->prog()->id());
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+
+    { // Simple meshes
+        Ren::DebugMarker _m(api, fg.cmd_buf(), "SIMPLE");
+
+        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 
         { // solid one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SOLID-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SOLID-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -158,7 +175,7 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
 
             i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, 0, cur_mat_id, &draws_count);
 
-            rast_state = pi_simple_[1]->rast_state();
+            rast_state = pi_simple1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -169,9 +186,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // solid two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SOLID-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SOLID-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -182,9 +199,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // moving solid one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "MOVING-SOLID-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-SOLID-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -195,9 +212,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // moving solid two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "MOVING-SOLID-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-SOLID-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -209,9 +226,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // alpha-tested one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "ALPHA-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "ALPHA-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -222,9 +239,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // alpha-tested two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "ALPHA-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "ALPHA-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -236,9 +253,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // moving alpha-tested one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "MOVING-ALPHA-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-ALPHA-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -250,9 +267,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // moving alpha-tested two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "MOVING-ALPHA-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-ALPHA-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -265,15 +282,19 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
     }
 
     { // Vegetation meshes
-        Ren::DebugMarker _m(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "VEGETATION");
+        Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGETATION");
 
-        glBindVertexArray(pi_vegetation_[0]->vtx_input()->GetVAO());
-        glUseProgram(pi_vegetation_[0]->prog()->id());
+        const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines.Get(pi_vegetation_[0]).first;
+        const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines.Get(pi_vegetation_[1]).first;
+
+        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input).first;
+        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        glUseProgram(storages.programs.Get(pi_vegetation0_main.prog).first.id);
 
         { // vegetation solid one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "VEGE-SOLID-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-SOLID-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_vegetation_[0]->rast_state();
+            Ren::RastState rast_state = pi_vegetation0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -284,9 +305,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // vegetation solid two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SOLID-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SOLID-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_vegetation_[1]->rast_state();
+            Ren::RastState rast_state = pi_vegetation1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -298,9 +319,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // vegetation moving solid one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "VEGE-MOVING-SOLID-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-MOVING-SOLID-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_vegetation_[0]->rast_state();
+            Ren::RastState rast_state = pi_vegetation0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -312,9 +333,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // vegetation moving solid two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "VEGE-MOVING-SOLID-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-MOVING-SOLID-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_vegetation_[1]->rast_state();
+            Ren::RastState rast_state = pi_vegetation1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -326,9 +347,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // vegetation alpha-tested one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "VEGE-ALPHA-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-ALPHA-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_vegetation_[0]->rast_state();
+            Ren::RastState rast_state = pi_vegetation0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -340,9 +361,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // vegetation alpha-tested two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "VEGE-ALPHA-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-ALPHA-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_vegetation_[1]->rast_state();
+            Ren::RastState rast_state = pi_vegetation1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -354,9 +375,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // vegetation moving alpha-tested one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "VEGE-MOVING-ALPHA-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-MOVING-ALPHA-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_vegetation_[0]->rast_state();
+            Ren::RastState rast_state = pi_vegetation0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -368,9 +389,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // vegetation moving alpha-tested two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "VEGE-MOVING-ALPHA-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "VEGE-MOVING-ALPHA-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_vegetation_[1]->rast_state();
+            Ren::RastState rast_state = pi_vegetation1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -383,15 +404,16 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
     }
 
     { // Skinned meshes
-        Ren::DebugMarker _m(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKINNED");
+        Ren::DebugMarker _m(api, fg.cmd_buf(), "SKINNED");
 
-        glBindVertexArray(pi_simple_[0]->vtx_input()->GetVAO());
-        glUseProgram(pi_simple_[0]->prog()->id());
+        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 
         { // skinned solid one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKIN-SOLID-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-SOLID-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -402,9 +424,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // skinned solid two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKIN-SOLID-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-SOLID-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -416,9 +438,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // skinned moving solid one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKIN-MOVING-SOLID-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-MOVING-SOLID-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -430,9 +452,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // skinned moving solid two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKIN-MOVING-SOLID-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-MOVING-SOLID-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -444,9 +466,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // skinned alpha-tested one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKIN-ALPHA-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-ALPHA-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -458,9 +480,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // skinned alpha-tested two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKIN-ALPHA-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-ALPHA-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -472,9 +494,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // skinned moving alpha-tested one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKIN-MOVING-ALPHA-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-MOVING-ALPHA-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -486,9 +508,9 @@ void Eng::ExGBufferFill::DrawOpaque(FgContext &fg) {
         }
 
         { // skinned moving alpha-tested two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SKIN-MOVING-ALPHA-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SKIN-MOVING-ALPHA-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());

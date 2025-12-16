@@ -9,67 +9,87 @@
 #pragma warning(disable : 4996)
 #endif
 
-Ren::Program::Program(ApiContext *api_ctx, ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref,
-                      ShaderRef gs_ref, ILog *log) {
-    Init(std::move(vs_ref), std::move(fs_ref), std::move(tcs_ref), std::move(tes_ref), std::move(gs_ref), log);
-}
+namespace Ren {
+void InitBindings(const ProgramMain &prog_main, ProgramCold &prog_cold,
+                  const DualStorage<ShaderMain, ShaderCold> &shaders) {
+    for (const ShaderHandle sh_handle : prog_main.shaders) {
+        if (!sh_handle) {
+            continue;
+        }
 
-Ren::Program::Program(ApiContext *api_ctx, ShaderRef cs_ref, ILog *log) { Init(std::move(cs_ref), log); }
+        const auto &[sh_main, sh_cold] = shaders.Get(sh_handle);
+        for (const UniformBlock &b : sh_cold.blck_bindings) {
+            if (int(prog_cold.uniform_blocks.size()) < b.loc + 1) {
+                prog_cold.uniform_blocks.resize(b.loc + 1);
+            }
+            UniformBlock &u = prog_cold.uniform_blocks[b.loc];
+            u.name = b.name;
 
-Ren::Program::~Program() {
-    if (id_) {
-        auto prog = GLuint(id_);
-        glDeleteProgram(prog);
+            if (!b.name.empty() && sh_cold.source == eShaderSource::GLSL) {
+                u.loc = glGetUniformBlockIndex(GLuint(sh_main.id), b.name.c_str());
+                if (u.loc != -1) {
+                    glUniformBlockBinding(GLuint(sh_main.id), u.loc, b.loc);
+                }
+            }
+        }
+    }
+
+    // Enumerate attributes
+    GLint num;
+    glGetProgramiv(GLuint(prog_main.id), GL_ACTIVE_ATTRIBUTES, &num);
+    for (int i = 0; i < num; i++) {
+        int len;
+        GLenum n;
+        char name[128];
+        glGetActiveAttrib(GLuint(prog_main.id), i, 128, &len, &len, &n, name);
+
+        Attribute &new_attr = prog_cold.attributes.emplace_back();
+        new_attr.name = String{name};
+        new_attr.loc = glGetAttribLocation(GLuint(prog_main.id), name);
+    }
+
+    // Enumerate uniforms
+    glGetProgramiv(GLuint(prog_main.id), GL_ACTIVE_UNIFORMS, &num);
+    for (int i = 0; i < num; i++) {
+        int len;
+        GLenum n;
+        char name[128];
+        glGetActiveUniform(GLuint(prog_main.id), i, 128, &len, &len, &n, name);
+
+        Uniform &new_uniform = prog_cold.uniforms.emplace_back();
+        new_uniform.name = String{name};
+        new_uniform.loc = glGetUniformLocation(GLuint(prog_main.id), name);
     }
 }
+} // namespace Ren
 
-Ren::Program &Ren::Program::operator=(Program &&rhs) noexcept {
-    if (this == &rhs) {
-        return (*this);
-    }
-
-    RefCounter::operator=(static_cast<RefCounter &&>(rhs));
-
-    if (id_) {
-        auto prog = GLuint(id_);
-        glDeleteProgram(prog);
-    }
-
-    id_ = std::exchange(rhs.id_, 0);
-    shaders_ = std::move(rhs.shaders_);
-    attributes_ = std::move(rhs.attributes_);
-    uniforms_ = std::move(rhs.uniforms_);
-    uniform_blocks_ = std::move(rhs.uniform_blocks_);
-
-    return *this;
-}
-
-void Ren::Program::Init(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref, ShaderRef gs_ref,
-                        ILog *log) {
-    assert(id_ == 0);
+bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle vs, const ShaderHandle fs,
+                       const ShaderHandle tcs, const ShaderHandle tes, const ShaderHandle gs, ILog *log) {
+    assert(prog_main.id == 0);
 
     std::string prog_name;
-    prog_name += vs_ref->name();
+    prog_name += shaders.Get(vs).second.name;
     prog_name += "&";
-    prog_name += fs_ref->name();
-    if (tcs_ref && tes_ref) {
+    prog_name += shaders.Get(fs).second.name;
+    if (tcs && tes) {
         prog_name += "&";
-        prog_name += tcs_ref->name();
+        prog_name += shaders.Get(tcs).second.name;
         prog_name += "&";
-        prog_name += fs_ref->name();
+        prog_name += shaders.Get(tes).second.name;
     }
     log->Info("Initializing program %s", prog_name.c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
-        glAttachShader(program, GLuint(vs_ref->id()));
-        glAttachShader(program, GLuint(fs_ref->id()));
-        if (tcs_ref && tes_ref) {
-            glAttachShader(program, GLuint(tcs_ref->id()));
-            glAttachShader(program, GLuint(tes_ref->id()));
+        glAttachShader(program, GLuint(shaders.Get(vs).first.id));
+        glAttachShader(program, GLuint(shaders.Get(fs).first.id));
+        if (tcs && tes) {
+            glAttachShader(program, GLuint(shaders.Get(tcs).first.id));
+            glAttachShader(program, GLuint(shaders.Get(tes).first.id));
         }
-        if (gs_ref) {
-            glAttachShader(program, gs_ref->id());
+        if (gs) {
+            glAttachShader(program, GLuint(shaders.Get(gs).first.id));
         }
         glLinkProgram(program);
         GLint link_status = GL_FALSE;
@@ -95,24 +115,31 @@ void Ren::Program::Init(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, S
         log->Error("glCreateProgram failed");
     }
 
-    id_ = uint32_t(program);
-    // store shaders
-    shaders_[int(eShaderType::Vertex)] = std::move(vs_ref);
-    shaders_[int(eShaderType::Fragment)] = std::move(fs_ref);
-    shaders_[int(eShaderType::TesselationControl)] = std::move(tcs_ref);
-    shaders_[int(eShaderType::TesselationEvaluation)] = std::move(tes_ref);
+    if (!program) {
+        return false;
+    }
 
-    InitBindings(log);
+    prog_main.id = uint32_t(program);
+    // store shaders
+    prog_main.shaders[int(eShaderType::Vertex)] = vs;
+    prog_main.shaders[int(eShaderType::Fragment)] = fs;
+    prog_main.shaders[int(eShaderType::TesselationControl)] = tcs;
+    prog_main.shaders[int(eShaderType::TesselationEvaluation)] = tes;
+
+    InitBindings(prog_main, prog_cold, shaders);
+
+    return true;
 }
 
-void Ren::Program::Init(ShaderRef cs_ref, ILog *log) {
-    assert(id_ == 0);
+bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle cs, ILog *log) {
+    assert(prog_main.id == 0);
 
-    log->Info("Initializing program %s", cs_ref->name().c_str());
+    log->Info("Initializing program %s", shaders.Get(cs).second.name.c_str());
 
     GLuint program = glCreateProgram();
     if (program) {
-        glAttachShader(program, (GLuint)cs_ref->id());
+        glAttachShader(program, GLuint(shaders.Get(cs).first.id));
         glLinkProgram(program);
         GLint link_status = GL_FALSE;
         glGetProgramiv(program, GL_LINK_STATUS, &link_status);
@@ -130,93 +157,33 @@ void Ren::Program::Init(ShaderRef cs_ref, ILog *log) {
             program = 0;
         } else {
 #ifdef ENABLE_GPU_DEBUG
-            glObjectLabel(GL_PROGRAM, program, -1, cs_ref->name().c_str());
+            glObjectLabel(GL_PROGRAM, program, -1, shaders.Get(cs).second.name.c_str());
 #endif
         }
     } else {
         log->Error("glCreateProgram failed");
     }
 
-    id_ = uint32_t(program);
-    // store shader
-    shaders_[int(eShaderType::Compute)] = std::move(cs_ref);
+    if (!program) {
+        return false;
+    }
 
-    InitBindings(log);
+    prog_main.id = uint32_t(program);
+    // store shader
+    prog_main.shaders[int(eShaderType::Compute)] = cs;
+
+    InitBindings(prog_main, prog_cold, shaders);
+
+    return true;
 }
 
-void Ren::Program::InitBindings(ILog *log) {
-    for (const ShaderRef &sh_ref : shaders_) {
-        if (!sh_ref) {
-            continue;
-        }
-
-        const Shader &sh = (*sh_ref);
-        for (const Descr &b : sh.blck_bindings) {
-            if (int(uniform_blocks_.size()) < b.loc + 1) {
-                uniform_blocks_.resize(b.loc + 1);
-            }
-            Descr &u = uniform_blocks_[b.loc];
-            u.name = b.name;
-
-            if (!b.name.empty() && sh.source() == eShaderSource::GLSL) {
-                u.loc = glGetUniformBlockIndex(GLuint(id_), b.name.c_str());
-                if (u.loc != -1) {
-                    glUniformBlockBinding(GLuint(id_), u.loc, b.loc);
-                }
-            }
-        }
+void Ren::Program_Destroy(const ApiContext &api, ProgramMain &prog_main, ProgramCold &prog_cold) {
+    if (prog_main.id) {
+        auto prog = GLuint(prog_main.id);
+        glDeleteProgram(prog);
     }
-
-    // Enumerate attributes
-    GLint num;
-    glGetProgramiv(GLuint(id_), GL_ACTIVE_ATTRIBUTES, &num);
-    for (int i = 0; i < num; i++) {
-        int len;
-        GLenum n;
-        char name[128];
-        glGetActiveAttrib(GLuint(id_), i, 128, &len, &len, &n, name);
-
-        Descr &new_attr = attributes_.emplace_back();
-        new_attr.name = String{name};
-        new_attr.loc = glGetAttribLocation(GLuint(id_), name);
-    }
-
-#if 0
-    log->Info("PROGRAM %s", name_.c_str());
-
-    // Print all attributes
-    log->Info("\tATTRIBUTES");
-    for (int i = 0; i < int(attributes_.size()); i++) {
-        if (attributes_[i].loc == -1) {
-            continue;
-        }
-        log->Info("\t\t%s : %i", attributes_[i].name.c_str(), attributes_[i].loc);
-    }
-#endif
-
-    // Enumerate uniforms
-    glGetProgramiv(GLuint(id_), GL_ACTIVE_UNIFORMS, &num);
-    for (int i = 0; i < num; i++) {
-        int len;
-        GLenum n;
-        char name[128];
-        glGetActiveUniform(GLuint(id_), i, 128, &len, &len, &n, name);
-
-        Descr &new_uniform = uniforms_.emplace_back();
-        new_uniform.name = String{name};
-        new_uniform.loc = glGetUniformLocation(GLuint(id_), name);
-    }
-
-#if 0
-    // Print all uniforms
-    log->Info("\tUNIFORMS");
-    for (int i = 0; i < int(uniforms_.size()); i++) {
-        if (uniforms_[i].loc == -1) {
-            continue;
-        }
-        log->Info("\t\t%s : %i", uniforms_[i].name.c_str(), uniforms_[i].loc);
-    }
-#endif
+    prog_main = {};
+    prog_cold = {};
 }
 
 #ifdef _MSC_VER

@@ -19,41 +19,40 @@ class ExDepthFill final : public FgExecutor {
 
     const DrawList **p_list_;
 
-    FgResRef vtx_buf1_;
-    FgResRef vtx_buf2_;
-    FgResRef ndx_buf_;
-    FgResRef instances_buf_;
-    FgResRef instance_indices_buf_;
-    FgResRef shared_data_buf_;
-    FgResRef materials_buf_;
+    FgBufHandle vtx_buf1_;
+    FgBufHandle vtx_buf2_;
+    FgBufHandle ndx_buf_;
+    FgBufHandle instances_buf_;
+    FgBufHandle instance_indices_buf_;
+    FgBufHandle shared_data_buf_;
+    FgBufHandle materials_buf_;
     FgResRef noise_tex_;
 
     FgResRef depth_tex_;
     FgResRef velocity_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                  const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf, const Ren::WeakImgRef &depth_tex,
-                  const Ren::WeakImgRef &velocity_tex);
-    void DrawDepth(FgContext &builder, const Ren::Buffer &vtx_buf1, const Ren::Buffer &vtx_buf2,
-                   const Ren::Buffer &ndx_buf);
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
+                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &depth_tex, const Ren::WeakImgRef &velocity_tex);
+    void DrawDepth(const FgContext &fg, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
+                   Ren::BufferHandle ndx_buf);
 
-    Ren::RenderPassRef rp_depth_only_[2], rp_depth_velocity_[2];
+    Ren::RenderPassHandle rp_depth_only_[2], rp_depth_velocity_[2];
 
-    Ren::PipelineRef pi_static_solid_[3], pi_static_transp_[3];
-    Ren::PipelineRef pi_moving_solid_[3], pi_moving_transp_[3];
-    Ren::PipelineRef pi_vege_static_solid_[2], pi_vege_static_transp_[2];
-    Ren::PipelineRef pi_vege_moving_solid_[2], pi_vege_moving_transp_[2];
-    Ren::PipelineRef pi_skin_static_solid_[2], pi_skin_static_transp_[2];
-    Ren::PipelineRef pi_skin_moving_solid_[2], pi_skin_moving_transp_[2];
+    Ren::PipelineHandle pi_static_solid_[3], pi_static_transp_[3];
+    Ren::PipelineHandle pi_moving_solid_[3], pi_moving_transp_[3];
+    Ren::PipelineHandle pi_vege_static_solid_[2], pi_vege_static_transp_[2];
+    Ren::PipelineHandle pi_vege_moving_solid_[2], pi_vege_moving_transp_[2];
+    Ren::PipelineHandle pi_skin_static_solid_[2], pi_skin_static_transp_[2];
+    Ren::PipelineHandle pi_skin_moving_solid_[2], pi_skin_moving_transp_[2];
 
     Ren::Framebuffer depth_fill_fb_[Ren::MaxFramesInFlight][2], depth_fill_vel_fb_[Ren::MaxFramesInFlight][2];
     int fb_to_use_ = 0;
 
   public:
-    ExDepthFill(const DrawList **list, const view_state_t *view_state, bool clear_depth, const FgResRef vtx_buf1,
-                const FgResRef vtx_buf2, const FgResRef ndx_buf, const FgResRef materials_buf,
-                const BindlessTextureData *bindless_tex, const FgResRef instances_buf,
-                const FgResRef instance_indices_buf, const FgResRef shared_data_buf, const FgResRef noise_tex,
+    ExDepthFill(const DrawList **list, const view_state_t *view_state, bool clear_depth, const FgBufHandle vtx_buf1,
+                const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf, const FgBufHandle materials_buf,
+                const BindlessTextureData *bindless_tex, const FgBufHandle instances_buf,
+                const FgBufHandle instance_indices_buf, const FgBufHandle shared_data_buf, const FgResRef noise_tex,
                 const FgResRef depth_tex, const FgResRef velocity_tex) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;
@@ -75,6 +74,6 @@ class ExDepthFill final : public FgExecutor {
         velocity_tex_ = velocity_tex;
     }
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 };
 } // namespace Eng

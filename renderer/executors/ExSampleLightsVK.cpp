@@ -10,34 +10,35 @@
 #include "../Renderer_Structs.h"
 #include "../shaders/sample_lights_interface.h"
 
-void Eng::ExSampleLights::Execute_HWRT(FgContext &fg) {
+void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
     using namespace SampleLights;
 
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Buffer &random_seq_buf = fg.AccessROBuffer(args_->random_seq);
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferHandle random_seq_buf = fg.AccessROBuffer(args_->random_seq);
 
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    [[maybe_unused]] const Ren::Buffer &rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    [[maybe_unused]] const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
     const Ren::Image &albedo_tex = fg.AccessROImage(args_->albedo_tex);
     const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
     const Ren::Image &norm_tex = fg.AccessROImage(args_->norm_tex);
     const Ren::Image &spec_tex = fg.AccessROImage(args_->spec_tex);
 
-    Ren::Image &out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
-    Ren::Image &out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
+    const Ren::Image &out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
+    const Ren::Image &out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
 
     if (!args_->lights_buf) {
         return;
     }
 
-    const Ren::Buffer &lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::Buffer &nodes_buf = fg.AccessROBuffer(args_->nodes_buf);
+    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::BufferHandle nodes_buf = fg.AccessROBuffer(args_->nodes_buf);
 
-    Ren::ApiContext *api_ctx = fg.ren_ctx().api_ctx();
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
 
     auto *acc_struct = static_cast<Ren::AccStructureVK *>(args_->tlas);
 
@@ -65,18 +66,18 @@ void Eng::ExSampleLights::Execute_HWRT(FgContext &fg) {
     uniform_params.lights_count = view_state_->stochastic_lights_count;
     uniform_params.frame_index = view_state_->frame_index;
 
+    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_sample_lights_).first;
+    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
+
     VkDescriptorSet descr_sets[2];
-    descr_sets[0] = PrepareDescriptorSet(api_ctx, pi_sample_lights_->prog()->descr_set_layouts()[0], bindings,
-                                         fg.descr_alloc(), fg.log());
+    descr_sets[0] = PrepareDescriptorSet(api, &storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->rt_inline_textures.descr_set;
 
-    VkCommandBuffer cmd_buf = api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+    VkCommandBuffer cmd_buf = fg.cmd_buf();
 
-    api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_sample_lights_->handle());
-    api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_sample_lights_->layout(), 0, 2,
-                                     descr_sets, 0, nullptr);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+    api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 2, descr_sets, 0, nullptr);
 
-    api_ctx->vkCmdPushConstants(cmd_buf, pi_sample_lights_->layout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                                sizeof(uniform_params), &uniform_params);
-    api_ctx->vkCmdDispatch(cmd_buf, grp_count[0], grp_count[1], grp_count[2]);
+    api.vkCmdPushConstants(cmd_buf, pi.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uniform_params), &uniform_params);
+    api.vkCmdDispatch(cmd_buf, grp_count[0], grp_count[1], grp_count[2]);
 }

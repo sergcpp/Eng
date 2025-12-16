@@ -4,6 +4,7 @@
 
 #include "Bindless.h"
 #include "Buffer.h"
+#include "DescriptorPool.h"
 #include "GL.h"
 #include "Image.h"
 #include "Pipeline.h"
@@ -47,8 +48,9 @@ uint32_t Ren::GLBindTarget(const Image &img, const int view) {
     return GL_TEXTURE_2D;
 }
 
-void Ren::DispatchCompute(CommandBuffer, const Pipeline &comp_pipeline, Vec3u grp_count, Span<const Binding> bindings,
-                          const void *uniform_data, int uniform_data_len, DescrMultiPoolAlloc &descr_alloc, ILog *log) {
+void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, const StoragesRef &storages,
+                          Vec3u grp_count, Span<const Binding> bindings, const void *uniform_data, int uniform_data_len,
+                          DescrMultiPoolAlloc &descr_alloc, ILog *log) {
     uint32_t occupied[int(eBindTarget::_Count)] = {};
     for (const auto &b : bindings) {
         assert((occupied[g_gl_bind_target_index[int(b.trg)]] & (1u << (b.loc + b.offset))) == 0);
@@ -61,29 +63,42 @@ void Ren::DispatchCompute(CommandBuffer, const Pipeline &comp_pipeline, Vec3u gr
             ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
                                        texture_id);
             if (b.handle.sampler) {
-                ren_glBindSampler(GLuint(b.loc + b.offset), b.handle.sampler->id());
+                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
             } else {
                 ren_glBindSampler(GLuint(b.loc + b.offset), 0);
             }
         } else if (b.trg == eBindTarget::UBuf) {
-            glBindBufferRange(GL_UNIFORM_BUFFER, b.loc, b.handle.buf->id(), b.offset,
-                              b.size ? b.size : b.handle.buf->size());
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            if (b.offset || b.size) {
+                glBindBufferRange(GL_UNIFORM_BUFFER, b.loc, buf_main.buf, b.offset,
+                                  b.size ? b.size : (buf_cold.size - b.offset));
+            } else {
+                glBindBufferBase(GL_UNIFORM_BUFFER, b.loc, buf_main.buf);
+            }
         } else if (b.trg == eBindTarget::SBufRO || b.trg == eBindTarget::SBufRW) {
-            glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, b.handle.buf->id(), b.offset,
-                              b.size ? b.size : b.handle.buf->size());
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            if (b.offset || b.size) {
+                glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf, b.offset,
+                                  b.size ? b.size : (buf_cold.size - b.offset));
+            } else {
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf);
+            }
         } else if (b.trg == eBindTarget::UTBuf) {
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
             ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, GLuint(b.loc),
-                                       GLuint(b.handle.buf->view(b.handle.view_index).second));
+                                       GLuint(buf_main.views[b.handle.view_index].second));
         } else if (b.trg == eBindTarget::STBufRO) {
-            glBindImageTexture(GLuint(b.loc + b.offset), GLuint(b.handle.buf->view(b.handle.view_index).second), 0,
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            glBindImageTexture(GLuint(b.loc + b.offset), GLuint(buf_main.views[b.handle.view_index].second), 0,
                                GL_FALSE, 0, GL_READ_ONLY,
-                               GLInternalFormatFromFormat(b.handle.buf->view(b.handle.view_index).first));
+                               GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == eBindTarget::STBufRW) {
-            glBindImageTexture(GLuint(b.loc + b.offset), GLuint(b.handle.buf->view(b.handle.view_index).second), 0,
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            glBindImageTexture(GLuint(b.loc + b.offset), GLuint(buf_main.views[b.handle.view_index].second), 0,
                                GL_FALSE, 0, GL_READ_WRITE,
-                               GLInternalFormatFromFormat(b.handle.buf->view(b.handle.view_index).first));
+                               GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == eBindTarget::Sampler) {
-            ren_glBindSampler(GLuint(b.loc + b.offset), b.handle.sampler->id());
+            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
         } else if (b.trg == eBindTarget::ImageRO || b.trg == eBindTarget::ImageRW) {
             auto texture_id = GLuint(b.handle.img->id());
             if (b.handle.view_index) {
@@ -94,38 +109,63 @@ void Ren::DispatchCompute(CommandBuffer, const Pipeline &comp_pipeline, Vec3u gr
                                b.trg == eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
                                GLInternalFormatFromFormat(b.handle.img->params.format));
         } else if (b.trg == eBindTarget::BindlessDescriptors) {
-            glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, b.handle.bindless->buf->id(), b.offset,
-                              b.size ? b.size : b.handle.bindless->buf->size());
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.bindless->buf);
+            if (b.offset || b.size) {
+                glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf, b.offset,
+                                  b.size ? b.size : (buf_cold.size - b.offset));
+            } else {
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf);
+            }
         }
     }
 
-    Buffer temp_unif_buffer, temp_stage_buffer;
+    const Ren::ApiContext &api = descr_alloc.api();
+
+    BufferMain temp_unif_buffer_main = {};
+    BufferCold temp_unif_buffer_cold = {};
     if (uniform_data && uniform_data_len) {
-        temp_unif_buffer = Buffer("Temp uniform buf", nullptr, eBufType::Uniform, uniform_data_len);
-        temp_stage_buffer = Buffer("Temp upload buf", nullptr, eBufType::Upload, uniform_data_len);
-        {
-            uint8_t *stage_data = temp_stage_buffer.Map();
-            memcpy(stage_data, uniform_data, uniform_data_len);
-            temp_stage_buffer.Unmap();
+        if (!Buffer_Init(api, temp_unif_buffer_main, temp_unif_buffer_cold, String{"Temp uniform buf"},
+                         eBufType::Uniform, uniform_data_len, log)) {
+            log->Error("Failed to initialize temp uniform buffer");
+            return;
         }
-        CopyBufferToBuffer(temp_stage_buffer, 0, temp_unif_buffer, 0, uniform_data_len, nullptr);
-    }
-    glBindBufferBase(GL_UNIFORM_BUFFER, GLuint(g_param_buf_binding), temp_unif_buffer.id());
+        BufferMain temp_stage_buffer_main = {};
+        BufferCold temp_stage_buffer_cold = {};
+        if (!Buffer_Init(api, temp_stage_buffer_main, temp_stage_buffer_cold, String{"Temp upload buf"},
+                         eBufType::Upload, uniform_data_len, log)) {
+            log->Error("Failed to initialize temp upload buffer");
+            Buffer_DestroyImmediately(api, temp_unif_buffer_main, temp_unif_buffer_cold);
+            return;
+        }
+        {
+            uint8_t *stage_data = Buffer_Map(api, temp_stage_buffer_main, temp_stage_buffer_cold);
+            memcpy(stage_data, uniform_data, uniform_data_len);
+            Buffer_Unmap(api, temp_stage_buffer_main, temp_stage_buffer_cold);
+        }
+        CopyBufferToBuffer(api, temp_stage_buffer_main, 0, temp_unif_buffer_main, 0, uniform_data_len, nullptr);
 
-    glUseProgram(comp_pipeline.prog()->id());
+        Buffer_Destroy(api, temp_stage_buffer_main, temp_stage_buffer_cold);
+    }
+    glBindBufferBase(GL_UNIFORM_BUFFER, GLuint(g_param_buf_binding), temp_unif_buffer_main.buf);
+
+    const auto &[pi_main, pi_cold] = storages.pipelines.Get(pipeline);
+    glUseProgram(storages.programs.Get(pi_main.prog).first.id);
 
     glDispatchCompute(grp_count[0], grp_count[1], grp_count[2]);
+
+    Buffer_Destroy(api, temp_unif_buffer_main, temp_unif_buffer_cold);
 }
 
-void Ren::DispatchCompute(const Pipeline &comp_pipeline, Vec3u grp_count, Span<const Binding> bindings,
-                          const void *uniform_data, int uniform_data_len, DescrMultiPoolAlloc &descr_alloc, ILog *log) {
-    DispatchCompute({}, comp_pipeline, grp_count, bindings, uniform_data, uniform_data_len, descr_alloc, log);
+void Ren::DispatchCompute(const PipelineHandle pipeline, const StoragesRef &storages, Vec3u grp_count,
+                          Span<const Binding> bindings, const void *uniform_data, int uniform_data_len,
+                          DescrMultiPoolAlloc &descr_alloc, ILog *log) {
+    DispatchCompute({}, pipeline, storages, grp_count, bindings, uniform_data, uniform_data_len, descr_alloc, log);
 }
 
-void Ren::DispatchComputeIndirect(CommandBuffer cmd_buf, const Pipeline &comp_pipeline, const Buffer &indir_buf,
-                                  const uint32_t indir_buf_offset, Span<const Binding> bindings,
-                                  const void *uniform_data, int uniform_data_len, DescrMultiPoolAlloc &descr_alloc,
-                                  ILog *log) {
+void Ren::DispatchComputeIndirect(CommandBuffer, const PipelineHandle pipeline, const StoragesRef &storages,
+                                  const BufferHandle indir_buf, const uint32_t indir_buf_offset,
+                                  Span<const Binding> bindings, const void *uniform_data, const int uniform_data_len,
+                                  DescrMultiPoolAlloc &descr_alloc, ILog *log) {
     uint32_t occupied[int(eBindTarget::_Count)] = {};
     for (const auto &b : bindings) {
         assert((occupied[g_gl_bind_target_index[int(b.trg)]] & (1u << (b.loc + b.offset))) == 0);
@@ -138,29 +178,42 @@ void Ren::DispatchComputeIndirect(CommandBuffer cmd_buf, const Pipeline &comp_pi
             ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
                                        texture_id);
             if (b.handle.sampler) {
-                ren_glBindSampler(GLuint(b.loc + b.offset), b.handle.sampler->id());
+                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
             } else {
                 ren_glBindSampler(GLuint(b.loc + b.offset), 0);
             }
         } else if (b.trg == eBindTarget::UBuf) {
-            glBindBufferRange(GL_UNIFORM_BUFFER, b.loc, b.handle.buf->id(), b.offset,
-                              b.size ? b.size : b.handle.buf->size());
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            if (b.offset || b.size) {
+                glBindBufferRange(GL_UNIFORM_BUFFER, b.loc, buf_main.buf, b.offset,
+                                  b.size ? b.size : (buf_cold.size - b.offset));
+            } else {
+                glBindBufferBase(GL_UNIFORM_BUFFER, b.loc, buf_main.buf);
+            }
         } else if (b.trg == eBindTarget::SBufRO || b.trg == eBindTarget::SBufRW) {
-            glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, b.handle.buf->id(), b.offset,
-                              b.size ? b.size : b.handle.buf->size());
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            if (b.offset || b.size) {
+                glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf, b.offset,
+                                  b.size ? b.size : (buf_cold.size - b.offset));
+            } else {
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf);
+            }
         } else if (b.trg == eBindTarget::UTBuf) {
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
             ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, GLuint(b.loc),
-                                       GLuint(b.handle.buf->view(b.handle.view_index).second));
+                                       GLuint(buf_main.views[b.handle.view_index].second));
         } else if (b.trg == eBindTarget::STBufRO) {
-            glBindImageTexture(GLuint(b.loc + b.offset), GLuint(b.handle.buf->view(b.handle.view_index).second), 0,
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            glBindImageTexture(GLuint(b.loc + b.offset), GLuint(buf_main.views[b.handle.view_index].second), 0,
                                GL_FALSE, 0, GL_READ_ONLY,
-                               GLInternalFormatFromFormat(b.handle.buf->view(b.handle.view_index).first));
+                               GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == eBindTarget::STBufRW) {
-            glBindImageTexture(GLuint(b.loc + b.offset), GLuint(b.handle.buf->view(b.handle.view_index).second), 0,
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
+            glBindImageTexture(GLuint(b.loc + b.offset), GLuint(buf_main.views[b.handle.view_index].second), 0,
                                GL_FALSE, 0, GL_READ_WRITE,
-                               GLInternalFormatFromFormat(b.handle.buf->view(b.handle.view_index).first));
+                               GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == eBindTarget::Sampler) {
-            ren_glBindSampler(GLuint(b.loc + b.offset), b.handle.sampler->id());
+            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
         } else if (b.trg == eBindTarget::ImageRO || b.trg == eBindTarget::ImageRW) {
             auto texture_id = GLuint(b.handle.img->id());
             if (b.handle.view_index) {
@@ -171,35 +224,52 @@ void Ren::DispatchComputeIndirect(CommandBuffer cmd_buf, const Pipeline &comp_pi
                                b.trg == eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
                                GLInternalFormatFromFormat(b.handle.img->params.format));
         } else if (b.trg == eBindTarget::BindlessDescriptors) {
-            glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, b.handle.bindless->buf->id(), b.offset,
-                              b.size ? b.size : b.handle.bindless->buf->size());
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.bindless->buf);
+            if (b.offset || b.size) {
+                glBindBufferRange(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf, b.offset,
+                                  b.size ? b.size : (buf_cold.size - b.offset));
+            } else {
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, b.loc, buf_main.buf);
+            }
         }
     }
 
-    Buffer temp_unif_buffer;
-    if (uniform_data) {
-        temp_unif_buffer = Buffer("Temp uniform buf", nullptr, eBufType::Uniform, uniform_data_len);
-        Buffer temp_stage_buffer = Buffer("Temp upload buf", nullptr, eBufType::Upload, uniform_data_len);
+    const Ren::ApiContext &api = descr_alloc.api();
+
+    BufferMain temp_unif_buffer_main = {};
+    BufferCold temp_unif_buffer_cold = {};
+    if (uniform_data && uniform_data_len) {
+        if (!Buffer_Init(api, temp_unif_buffer_main, temp_unif_buffer_cold, String{"Temp uniform buf"},
+                         eBufType::Uniform, uniform_data_len, log)) {
+            log->Error("Failed to initialize temp uniform buffer");
+            return;
+        }
+        BufferMain temp_stage_buffer_main = {};
+        BufferCold temp_stage_buffer_cold = {};
+        if (!Buffer_Init(api, temp_stage_buffer_main, temp_stage_buffer_cold, String{"Temp upload buf"},
+                         eBufType::Upload, uniform_data_len, log)) {
+            log->Error("Failed to initialize temp upload buffer");
+            Buffer_DestroyImmediately(api, temp_unif_buffer_main, temp_unif_buffer_cold);
+            return;
+        }
         {
-            uint8_t *stage_data = temp_stage_buffer.Map();
+            uint8_t *stage_data = Buffer_Map(api, temp_stage_buffer_main, temp_stage_buffer_cold);
             memcpy(stage_data, uniform_data, uniform_data_len);
-            temp_stage_buffer.Unmap();
+            Buffer_Unmap(api, temp_stage_buffer_main, temp_stage_buffer_cold);
         }
-        CopyBufferToBuffer(temp_stage_buffer, 0, temp_unif_buffer, 0, uniform_data_len, nullptr);
+        CopyBufferToBuffer(api, temp_stage_buffer_main, 0, temp_unif_buffer_main, 0, uniform_data_len, nullptr);
+
+        Buffer_Destroy(api, temp_stage_buffer_main, temp_stage_buffer_cold);
     }
-    glBindBufferBase(GL_UNIFORM_BUFFER, GLuint(g_param_buf_binding), temp_unif_buffer.id());
+    glBindBufferBase(GL_UNIFORM_BUFFER, GLuint(g_param_buf_binding), temp_unif_buffer_main.buf);
 
-    glUseProgram(comp_pipeline.prog()->id());
+    const auto &[pi_main, pi_cold] = storages.pipelines.Get(pipeline);
+    glUseProgram(storages.programs.Get(pi_main.prog).first.id);
 
-    glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indir_buf.id());
+    const BufferMain &indir_buf_main = storages.buffers.Get(indir_buf).first;
+    glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indir_buf_main.buf);
     glDispatchComputeIndirect(GLintptr(indir_buf_offset));
     glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
-}
 
-void Ren::DispatchComputeIndirect(const Pipeline &comp_pipeline, const Buffer &indir_buf,
-                                  const uint32_t indir_buf_offset, Span<const Binding> bindings,
-                                  const void *uniform_data, int uniform_data_len, DescrMultiPoolAlloc &descr_alloc,
-                                  ILog *log) {
-    DispatchComputeIndirect({}, comp_pipeline, indir_buf, indir_buf_offset, bindings, uniform_data, uniform_data_len,
-                            descr_alloc, log);
+    Buffer_Destroy(api, temp_unif_buffer_main, temp_unif_buffer_cold);
 }

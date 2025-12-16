@@ -10,7 +10,7 @@ extern const uint32_t g_mag_filter_gl[];
 extern const uint32_t g_wrap_mode_gl[];
 } // namespace Ren
 
-Ren::ImageAtlas::ImageAtlas(ApiContext *api_ctx, const int w, const int h, const int min_res, const int mip_count,
+Ren::ImageAtlas::ImageAtlas(ApiContext *api, const int w, const int h, const int min_res, const int mip_count,
                             const eFormat formats[], const Bitmask<eImgFlags> flags[], eFilter filter, ILog *log)
     : splitter_(w, h) {
     filter_ = filter;
@@ -137,7 +137,7 @@ int Ren::ImageAtlas::AllocateRegion(const int res[2], int out_pos[2]) {
     return index;
 }
 
-void Ren::ImageAtlas::InitRegion(const Buffer &sbuf, const int data_off, const int data_len, CommandBuffer cmd_buf,
+void Ren::ImageAtlas::InitRegion(const BufferMain &sbuf, const int data_off, const int data_len, CommandBuffer cmd_buf,
                                  const eFormat format, const Bitmask<eImgFlags> flags, const int layer, const int level,
                                  const int pos[2], const int res[2], ILog *log) {
 #ifndef NDEBUG
@@ -149,7 +149,7 @@ void Ren::ImageAtlas::InitRegion(const Buffer &sbuf, const int data_off, const i
     }
 #endif
 
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf.id());
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf.buf);
 
     if (IsCompressedFormat(format)) {
         const GLenum tex_format =
@@ -189,10 +189,10 @@ void Ren::ImageAtlas::Finalize(CommandBuffer cmd_buf) {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api_ctx, const std::string_view name, const int w, const int h,
+Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api, const std::string_view name, const int w, const int h,
                                       const int layer_count, const int mip_count, const eFormat format,
                                       const eFilter filter, const Bitmask<eImgUsage> usage)
-    : api_ctx_(api_ctx), name_(name), w_(w), h_(h), layer_count_(layer_count), format_(format), filter_(filter) {
+    : api_(api), name_(name), w_(w), h_(h), layer_count_(layer_count), format_(format), filter_(filter) {
     GLuint tex_id;
     ren_glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &tex_id);
 
@@ -227,6 +227,8 @@ Ren::ImageAtlasArray &Ren::ImageAtlasArray::operator=(ImageAtlasArray &&rhs) noe
         glDeleteTextures(1, &tex_id);
     }
 
+    api_ = std::exchange(rhs.api_, nullptr);
+
     mip_count_ = std::exchange(rhs.mip_count_, 0);
     layer_count_ = std::exchange(rhs.layer_count_, 0);
     format_ = std::exchange(rhs.format_, eFormat::Undefined);
@@ -242,9 +244,9 @@ Ren::ImageAtlasArray &Ren::ImageAtlasArray::operator=(ImageAtlasArray &&rhs) noe
 }
 
 void Ren::ImageAtlasArray::SetSubImage(const int level, const int layer, const int offsetx, const int offsety,
-                                       const int sizex, const int sizey, const eFormat format, const Buffer &sbuf,
+                                       const int sizex, const int sizey, const eFormat format, const BufferMain &sbuf,
                                        const int data_off, const int data_len, void *) {
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf.id());
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sbuf.buf);
 
     ren_glTextureSubImage3D_Comp(GL_TEXTURE_2D_ARRAY, GLuint(tex_id_), level, offsetx, offsety, layer, sizex, sizey, 1,
                                  GLFormatFromFormat(format), GLTypeFromFormat(format),

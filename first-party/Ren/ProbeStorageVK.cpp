@@ -14,8 +14,8 @@ Ren::ProbeStorage::ProbeStorage() = default;
 
 Ren::ProbeStorage::~ProbeStorage() { Destroy(); }
 
-bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, const eFormat format,
-                               const int resolution, const int capacity, ILog *log) {
+bool Ren::ProbeStorage::Resize(ApiContext *api, MemAllocators *mem_allocs, const eFormat format, const int resolution,
+                               const int capacity, ILog *log) {
     const int mip_count = CalcMipCount(resolution, resolution, 16);
 
     Destroy();
@@ -41,7 +41,7 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
         img_info.samples = VkSampleCountFlagBits(1);
         img_info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 
-        VkResult res = api_ctx->vkCreateImage(api_ctx->device, &img_info, nullptr, &handle_.img);
+        VkResult res = api->vkCreateImage(api->device, &img_info, nullptr, &handle_.img);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image!");
             return false;
@@ -52,11 +52,11 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
         name_info.objectType = VK_OBJECT_TYPE_IMAGE;
         name_info.objectHandle = uint64_t(handle_.img);
         name_info.pObjectName = "Probe Storage";
-        api_ctx->vkSetDebugUtilsObjectNameEXT(api_ctx->device, &name_info);
+        api->vkSetDebugUtilsObjectNameEXT(api->device, &name_info);
 #endif
 
         VkMemoryRequirements tex_mem_req;
-        api_ctx->vkGetImageMemoryRequirements(api_ctx->device, handle_.img, &tex_mem_req);
+        api->vkGetImageMemoryRequirements(api->device, handle_.img, &tex_mem_req);
 
         VkMemoryPropertyFlags img_tex_desired_mem_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         alloc_ = mem_allocs->Allocate(tex_mem_req, img_tex_desired_mem_flags);
@@ -66,7 +66,7 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
             alloc_ = mem_allocs->Allocate(tex_mem_req, img_tex_desired_mem_flags);
         }
 
-        res = api_ctx->vkBindImageMemory(api_ctx->device, handle_.img, alloc_.owner->mem(alloc_.pool), alloc_.offset);
+        res = api->vkBindImageMemory(api->device, handle_.img, alloc_.owner->mem(alloc_.pool), alloc_.offset);
         if (res != VK_SUCCESS) {
             log->Error("Failed to bind memory!");
             return false;
@@ -84,7 +84,7 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = capacity * 6;
 
-        const VkResult res = api_ctx->vkCreateImageView(api_ctx->device, &view_info, nullptr, &handle_.views[0]);
+        const VkResult res = api->vkCreateImageView(api->device, &view_info, nullptr, &handle_.views[0]);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image view!");
             return false;
@@ -95,8 +95,13 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
 
     const uint32_t BlankBlockRes = 64;
 
-    Buffer temp_stage_buf("Temp probe upload buf", api_ctx, eBufType::Upload, BlankBlockRes * BlankBlockRes * 4);
-    uint8_t *blank_block = temp_stage_buf.Map();
+    BufferMain temp_stage_buf_main = {};
+    BufferCold temp_stage_buf_cold = {};
+    if (!Buffer_Init(*api, temp_stage_buf_main, temp_stage_buf_cold, String{"Temp probe upload buf"}, eBufType::Upload,
+                     BlankBlockRes * BlankBlockRes * 4, log)) {
+        assert(false);
+    }
+    uint8_t *blank_block = Buffer_Map(*api, temp_stage_buf_main, temp_stage_buf_cold);
 
     if (IsCompressedFormat(format)) {
         for (int i = 0; i < (BlankBlockRes / 4) * (BlankBlockRes / 4) * 16;) {
@@ -110,7 +115,7 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
         }
     }
 
-    temp_stage_buf.Unmap();
+    Buffer_Unmap(*api, temp_stage_buf_main, temp_stage_buf_cold);
 
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 1> buf_barriers;
@@ -119,15 +124,15 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
     { // src buffer barrier
         auto &new_barrier = buf_barriers.emplace_back();
         new_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        new_barrier.srcAccessMask = VKAccessFlagsForState(temp_stage_buf.resource_state);
+        new_barrier.srcAccessMask = VKAccessFlagsForState(temp_stage_buf_main.resource_state);
         new_barrier.dstAccessMask = VKAccessFlagsForState(eResState::CopySrc);
         new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        new_barrier.buffer = temp_stage_buf.vk_handle();
+        new_barrier.buffer = temp_stage_buf_main.buf;
         new_barrier.offset = VkDeviceSize(0);
-        new_barrier.size = VkDeviceSize(temp_stage_buf.size());
+        new_barrier.size = VK_WHOLE_SIZE;
 
-        src_stages |= VKPipelineStagesForState(temp_stage_buf.resource_state);
+        src_stages |= VKPipelineStagesForState(temp_stage_buf_main.resource_state);
         dst_stages |= VKPipelineStagesForState(eResState::CopySrc);
     }
 
@@ -151,16 +156,16 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
         dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
     }
 
-    src_stages &= api_ctx->supported_stages_mask;
-    dst_stages &= api_ctx->supported_stages_mask;
+    src_stages &= api->supported_stages_mask;
+    dst_stages &= api->supported_stages_mask;
 
-    VkCommandBuffer cmd_buf = api_ctx->BegSingleTimeCommands();
+    VkCommandBuffer cmd_buf = api->BegSingleTimeCommands();
 
-    api_ctx->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
-                                  0, nullptr, uint32_t(buf_barriers.size()), buf_barriers.cdata(),
-                                  uint32_t(img_barriers.size()), img_barriers.cdata());
+    api->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0, 0,
+                              nullptr, uint32_t(buf_barriers.size()), buf_barriers.cdata(),
+                              uint32_t(img_barriers.size()), img_barriers.cdata());
 
-    temp_stage_buf.resource_state = eResState::CopySrc;
+    temp_stage_buf_main.resource_state = eResState::CopySrc;
     this->resource_state = eResState::CopyDst;
 
     std::vector<VkBufferImageCopy> all_regions;
@@ -202,11 +207,10 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
         }
     }
 
-    api_ctx->vkCmdCopyBufferToImage(cmd_buf, temp_stage_buf.vk_handle(), handle_.img,
-                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, uint32_t(all_regions.size()),
-                                    all_regions.data());
+    api->vkCmdCopyBufferToImage(cmd_buf, temp_stage_buf_main.buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                uint32_t(all_regions.size()), all_regions.data());
 
-    api_ctx->EndSingleTimeCommands(cmd_buf);
+    api->EndSingleTimeCommands(cmd_buf);
 
     { // create new sampler
         VkSamplerCreateInfo sampler_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -224,13 +228,13 @@ bool Ren::ProbeStorage::Resize(ApiContext *api_ctx, MemAllocators *mem_allocs, c
         sampler_info.minLod = -16;
         sampler_info.maxLod = +16;
 
-        const VkResult res = api_ctx->vkCreateSampler(api_ctx->device, &sampler_info, nullptr, &handle_.sampler);
+        const VkResult res = api->vkCreateSampler(api->device, &sampler_info, nullptr, &handle_.sampler);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create sampler!");
         }
     }
 
-    api_ctx_ = api_ctx;
+    api_ = api;
     format_ = format;
     res_ = resolution;
     capacity_ = capacity;
@@ -247,11 +251,17 @@ bool Ren::ProbeStorage::SetPixelData(const int level, const int layer, const int
         return false;
     }
 
-    Buffer temp_stage_buf("Temp probe upload buf", api_ctx_, eBufType::Upload, data_len);
+    BufferMain temp_stage_buf_main = {};
+    BufferCold temp_stage_buf_cold = {};
+    if (!Buffer_Init(*api_, temp_stage_buf_main, temp_stage_buf_cold, String{"Temp probe upload buf"}, eBufType::Upload,
+                     data_len, log)) {
+        assert(false);
+    }
+
     {
-        uint8_t *stage_data = temp_stage_buf.Map();
+        uint8_t *stage_data = Buffer_Map(*api_, temp_stage_buf_main, temp_stage_buf_cold);
         memcpy(stage_data, data, data_len);
-        temp_stage_buf.Unmap();
+        Buffer_Unmap(*api_, temp_stage_buf_main, temp_stage_buf_cold);
     }
 
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
@@ -261,15 +271,15 @@ bool Ren::ProbeStorage::SetPixelData(const int level, const int layer, const int
     { // src buffer barrier
         auto &new_barrier = buf_barriers.emplace_back();
         new_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        new_barrier.srcAccessMask = VKAccessFlagsForState(temp_stage_buf.resource_state);
+        new_barrier.srcAccessMask = VKAccessFlagsForState(temp_stage_buf_main.resource_state);
         new_barrier.dstAccessMask = VKAccessFlagsForState(eResState::CopySrc);
         new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        new_barrier.buffer = temp_stage_buf.vk_handle();
+        new_barrier.buffer = temp_stage_buf_main.buf;
         new_barrier.offset = VkDeviceSize(0);
-        new_barrier.size = VkDeviceSize(temp_stage_buf.size());
+        new_barrier.size = VK_WHOLE_SIZE;
 
-        src_stages |= VKPipelineStagesForState(temp_stage_buf.resource_state);
+        src_stages |= VKPipelineStagesForState(temp_stage_buf_main.resource_state);
         dst_stages |= VKPipelineStagesForState(eResState::CopySrc);
     }
 
@@ -294,16 +304,16 @@ bool Ren::ProbeStorage::SetPixelData(const int level, const int layer, const int
         dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
     }
 
-    src_stages &= api_ctx_->supported_stages_mask;
-    dst_stages &= api_ctx_->supported_stages_mask;
+    src_stages &= api_->supported_stages_mask;
+    dst_stages &= api_->supported_stages_mask;
 
-    VkCommandBuffer cmd_buf = api_ctx_->BegSingleTimeCommands();
+    VkCommandBuffer cmd_buf = api_->BegSingleTimeCommands();
 
-    api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
-                                   0, nullptr, uint32_t(buf_barriers.size()), buf_barriers.cdata(),
-                                   uint32_t(img_barriers.size()), img_barriers.cdata());
+    api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0, 0,
+                               nullptr, uint32_t(buf_barriers.size()), buf_barriers.cdata(),
+                               uint32_t(img_barriers.size()), img_barriers.cdata());
 
-    temp_stage_buf.resource_state = eResState::CopySrc;
+    temp_stage_buf_main.resource_state = eResState::CopySrc;
     this->resource_state = eResState::CopyDst;
 
     VkBufferImageCopy region = {};
@@ -320,10 +330,10 @@ bool Ren::ProbeStorage::SetPixelData(const int level, const int layer, const int
     region.imageOffset = {0, 0, 0};
     region.imageExtent = {_res, _res, 1};
 
-    api_ctx_->vkCmdCopyBufferToImage(cmd_buf, temp_stage_buf.vk_handle(), handle_.img,
-                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    api_->vkCmdCopyBufferToImage(cmd_buf, temp_stage_buf_main.buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                                 &region);
 
-    api_ctx_->EndSingleTimeCommands(cmd_buf);
+    api_->EndSingleTimeCommands(cmd_buf);
 
     return true;
 }
@@ -350,12 +360,12 @@ void Ren::ProbeStorage::Destroy() {
     if (format_ != eFormat::Undefined) {
         for (VkImageView view : handle_.views) {
             if (view) {
-                api_ctx_->image_views_to_destroy[api_ctx_->backend_frame].push_back(view);
+                api_->image_views_to_destroy[api_->backend_frame].push_back(view);
             }
         }
-        api_ctx_->images_to_destroy[api_ctx_->backend_frame].push_back(handle_.img);
-        api_ctx_->samplers_to_destroy[api_ctx_->backend_frame].push_back(handle_.sampler);
-        api_ctx_->allocations_to_free[api_ctx_->backend_frame].emplace_back(std::move(alloc_));
+        api_->images_to_destroy[api_->backend_frame].push_back(handle_.img);
+        api_->samplers_to_destroy[api_->backend_frame].push_back(handle_.sampler);
+        api_->allocations_to_free[api_->backend_frame].emplace_back(std::move(alloc_));
 
         handle_ = {};
         format_ = eFormat::Undefined;
@@ -387,16 +397,16 @@ void Ren::ProbeStorage::Finalize() {
         dst_stages |= VKPipelineStagesForState(eResState::ShaderResource);
     }
 
-    src_stages &= api_ctx_->supported_stages_mask;
-    dst_stages &= api_ctx_->supported_stages_mask;
+    src_stages &= api_->supported_stages_mask;
+    dst_stages &= api_->supported_stages_mask;
 
     if (!img_barriers.empty()) {
-        VkCommandBuffer cmd_buf = api_ctx_->BegSingleTimeCommands();
+        VkCommandBuffer cmd_buf = api_->BegSingleTimeCommands();
 
-        api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
-                                       0, 0, nullptr, 0, nullptr, uint32_t(img_barriers.size()), img_barriers.cdata());
+        api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
+                                   0, nullptr, 0, nullptr, uint32_t(img_barriers.size()), img_barriers.cdata());
         this->resource_state = eResState::ShaderResource;
 
-        api_ctx_->EndSingleTimeCommands(cmd_buf);
+        api_->EndSingleTimeCommands(cmd_buf);
     }
 }

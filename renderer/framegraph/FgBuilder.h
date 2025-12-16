@@ -84,6 +84,7 @@ struct FgAllocRes {
         uint16_t _generation = 0;
     };
 
+    // TODO: Use Ren::String here
     std::string name;
     bool external = false;
     int alias_of = -1; // used in case of simple resource-to-resource aliasing
@@ -97,16 +98,35 @@ struct FgAllocRes {
     fg_node_range_t lifetime;
 };
 
-struct FgAllocBuf : public FgAllocRes {
-    FgBufDesc desc;
-    Ren::WeakBufRef ref;
-    Ren::BufRef strong_ref;
-};
-
 struct FgAllocImg : public FgAllocRes {
     FgImgDesc desc;
     Ren::WeakImgRef ref;
     Ren::ImgRef strong_ref;
+};
+
+struct FgAllocBufMain {
+    Ren::BufferHandle handle;
+};
+
+struct FgAllocBufCold : public FgAllocRes {
+    FgBufDesc desc;
+};
+
+struct FgBufHandle {
+    Ren::Handle<FgAllocBufMain> handle;
+    union {
+        struct {
+            uint8_t read_count;
+            uint8_t write_count;
+        };
+        uint16_t _generation = 0;
+    };
+
+    FgBufHandle() = default;
+    FgBufHandle(const Ren::Handle<FgAllocBufMain> _handle, const uint16_t __generation)
+        : handle(_handle), _generation(__generation) {}
+
+    operator bool() const { return bool(handle); }
 };
 
 enum class eFgQueueType : uint8_t { Graphics, Compute, Transfer };
@@ -118,10 +138,9 @@ class FgContext {
     Ren::Context &ctx_;
     ShaderLoader &sh_;
 
-    Ren::RastState rast_state_;
+    mutable Ren::RastState rast_state_;
 
-    Ren::SparseArray<FgAllocBuf> buffers_;
-    Ren::HashMap32<std::string, uint16_t> name_to_buffer_;
+    Ren::NamedDualStorage<FgAllocBufMain, FgAllocBufCold> buffers_;
 
     Ren::SparseArray<FgAllocImg> images_;
     Ren::HashMap32<std::string, uint16_t> name_to_image_;
@@ -129,28 +148,29 @@ class FgContext {
     FgContext(Ren::Context &ctx, ShaderLoader &sh) : ctx_(ctx), sh_(sh) {}
 
   public:
-    Ren::SmallVector<Ren::SamplerRef, 64> temp_samplers;
+    Ren::Context &ren_ctx() const { return ctx_; }
+    ShaderLoader &sh() const { return sh_; }
+    Ren::RastState &rast_state() const { return rast_state_; }
 
-    Ren::Context &ren_ctx() { return ctx_; }
-    ShaderLoader &sh() { return sh_; }
-    Ren::RastState &rast_state() { return rast_state_; }
+    const Ren::StoragesRef &storages() const;
+    const Ren::DualStorage<Ren::ProgramMain, Ren::ProgramCold> &programs() const;
+    const Ren::DualStorage<Ren::PipelineMain, Ren::PipelineCold> &pipelines() const;
 
-    Ren::CommandBuffer cmd_buf();
-    Ren::ILog *log();
-    Ren::DescrMultiPoolAlloc &descr_alloc();
+    Ren::CommandBuffer cmd_buf() const;
+    Ren::ILog *log() const;
+    Ren::DescrMultiPoolAlloc &descr_alloc() const;
 
     int backend_frame() const;
 
-    const Ren::Buffer &AccessROBuffer(FgResRef handle);
-    const Ren::Image &AccessROImage(FgResRef handle);
+    Ren::BufferHandle AccessROBuffer(FgBufHandle handle) const;
+    const Ren::Image &AccessROImage(FgResRef handle) const;
 
-    Ren::Buffer &AccessRWBuffer(FgResRef handle);
-    Ren::Image &AccessRWImage(FgResRef handle);
+    Ren::BufferHandle AccessRWBuffer(FgBufHandle handle) const;
+    const Ren::Image &AccessRWImage(FgResRef handle) const;
 
     // TODO: Get rid of these!
-    Ren::WeakBufRef AccessROBufferRef(FgResRef handle);
-    Ren::WeakImgRef AccessROImageRef(FgResRef handle);
-    Ren::WeakImgRef AccessRWImageRef(FgResRef handle);
+    Ren::WeakImgRef AccessROImageRef(FgResRef handle) const;
+    Ren::WeakImgRef AccessRWImageRef(FgResRef handle) const;
 };
 
 class FgBuilder : public FgContext {
@@ -162,8 +182,10 @@ class FgBuilder : public FgContext {
     void CheckResourceStates(FgNode &node);
 
     bool DependsOn_r(int16_t dst_node, int16_t src_node);
-    int16_t FindPreviousWrittenInNode(FgResRef handle);
-    void FindPreviousReadInNodes(FgResRef handle, Ren::SmallVectorImpl<int16_t> &out_nodes);
+    int16_t FindPreviousWrittenInNode(const FgResource &res);
+    int16_t FindPreviousWrittenInNode(FgResRef res);
+    int16_t FindPreviousWrittenInNode(FgBufHandle res);
+    void FindPreviousReadInNodes(const FgResource &res, Ren::SmallVectorImpl<int16_t> &out_nodes);
     void TraverseNodeDependencies_r(FgNode *node, int recursion_depth, std::vector<FgNode *> &out_node_stack);
 
     void PrepareAllocResources();
@@ -175,8 +197,8 @@ class FgBuilder : public FgContext {
     void ReleaseMemHeaps();
     void BuildResourceLinkedLists();
 
-    void ClearBuffer_AsTransfer(Ren::BufRef &buf, Ren::CommandBuffer cmd_buf);
-    void ClearBuffer_AsStorage(Ren::BufRef &buf, Ren::CommandBuffer cmd_buf);
+    void ClearBuffer_AsTransfer(Ren::BufferHandle buf, Ren::CommandBuffer cmd_buf);
+    void ClearBuffer_AsStorage(Ren::BufferHandle buf, Ren::CommandBuffer cmd_buf);
 
     void ClearImage_AsTransfer(Ren::ImgRef &img, Ren::CommandBuffer cmd_buf);
     void ClearImage_AsStorage(Ren::ImgRef &img, Ren::CommandBuffer cmd_buf);
@@ -195,11 +217,11 @@ class FgBuilder : public FgContext {
         // no deallocation is needed
     }
 
-    std::vector<Ren::SmallVector<int, 4>> img_alias_chains_, buf_alias_chains_;
+    std::vector<Ren::SmallVector<uint32_t, 4>> img_alias_chains_, buf_alias_chains_;
     std::vector<Ren::MemHeap> memory_heaps_;
 
-    Ren::PipelineRef pi_clear_image_[3][int(Ren::eFormat::_Count)];
-    Ren::PipelineRef pi_clear_buffer_;
+    Ren::PipelineHandle pi_clear_image_[3][int(Ren::eFormat::_Count)];
+    Ren::PipelineHandle pi_clear_buffer_;
 
   public:
     FgBuilder(Ren::Context &ctx, ShaderLoader &sh, PrimDraw &prim_draw);
@@ -212,10 +234,10 @@ class FgBuilder : public FgContext {
     FgNode *GetReorderedNode(const int i) { return reordered_nodes_[i]; }
 
     std::string GetResourceDebugInfo(const FgResource &res) const;
-    void GetResourceFrameLifetime(const FgAllocBuf &b, uint16_t out_lifetime[2][2]) const;
+    void GetResourceFrameLifetime(const FgAllocBufCold &b, uint16_t out_lifetime[2][2]) const;
     void GetResourceFrameLifetime(const FgAllocImg &t, uint16_t out_lifetime[2][2]) const;
 
-    const Ren::SparseArray<FgAllocBuf> &buffers() const { return buffers_; }
+    const Ren::NamedDualStorage<FgAllocBufMain, FgAllocBufCold> &buffers() const { return buffers_; }
     const Ren::SparseArray<FgAllocImg> &images() const { return images_; }
 
     template <typename T, class... Args> T *AllocNodeData(Args &&...args) {
@@ -226,9 +248,10 @@ class FgBuilder : public FgContext {
         return new_data;
     }
 
-    FgResRef ReadBuffer(FgResRef handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages, FgNode &node);
-    FgResRef ReadBuffer(const Ren::WeakBufRef &ref, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
-                        FgNode &node, int slot_index = -1);
+    FgBufHandle ReadBuffer(FgBufHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
+                           FgNode &node);
+    FgBufHandle ReadBuffer(Ren::BufferHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
+                           FgNode &node, int slot_index = -1);
 
     FgResRef ReadImage(FgResRef handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages, FgNode &node);
     FgResRef ReadImage(std::string_view name, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
@@ -241,11 +264,12 @@ class FgBuilder : public FgContext {
     FgResRef ReadHistoryImage(std::string_view name, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
                               FgNode &node);
 
-    FgResRef WriteBuffer(FgResRef handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages, FgNode &node);
-    FgResRef WriteBuffer(std::string_view name, const FgBufDesc &desc, Ren::eResState desired_state,
-                         Ren::Bitmask<Ren::eStage> stages, FgNode &node);
-    FgResRef WriteBuffer(const Ren::WeakBufRef &ref, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
-                         FgNode &node);
+    FgBufHandle WriteBuffer(FgBufHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
+                            FgNode &node);
+    FgBufHandle WriteBuffer(std::string_view name, const FgBufDesc &desc, Ren::eResState desired_state,
+                            Ren::Bitmask<Ren::eStage> stages, FgNode &node);
+    FgBufHandle WriteBuffer(Ren::BufferHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
+                            FgNode &node);
 
     FgResRef WriteImage(FgResRef handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages, FgNode &node);
     FgResRef WriteImage(std::string_view name, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
@@ -258,7 +282,7 @@ class FgBuilder : public FgContext {
     FgResRef ImportResource(const Ren::WeakImgRef &ref);
 
     void Reset();
-    void Compile(Ren::Span<const FgResRef> backbuffer_sources = {});
+    void Compile(Ren::Span<const std::variant<FgResRef, FgBufHandle>> backbuffer_sources = {});
     void Execute();
 
     struct node_timing_t {

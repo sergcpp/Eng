@@ -12,8 +12,8 @@ class ExOITScheduleRays final : public FgExecutor {
     bool initialized = false;
 
     // lazily initialized data
-    Ren::PipelineRef pi_simple_[3];
-    Ren::PipelineRef pi_vegetation_[2];
+    Ren::PipelineHandle pi_simple_[3];
+    Ren::PipelineHandle pi_vegetation_[2];
     Ren::Framebuffer main_draw_fb_[Ren::MaxFramesInFlight][2];
     int fb_to_use_ = 0;
 
@@ -23,34 +23,34 @@ class ExOITScheduleRays final : public FgExecutor {
 
     const DrawList **p_list_ = nullptr;
 
-    FgResRef vtx_buf1_;
-    FgResRef vtx_buf2_;
-    FgResRef ndx_buf_;
-    FgResRef instances_buf_;
-    FgResRef instance_indices_buf_;
-    FgResRef shared_data_buf_;
-    FgResRef materials_buf_;
+    FgBufHandle vtx_buf1_;
+    FgBufHandle vtx_buf2_;
+    FgBufHandle ndx_buf_;
+    FgBufHandle instances_buf_;
+    FgBufHandle instance_indices_buf_;
+    FgBufHandle shared_data_buf_;
+    FgBufHandle materials_buf_;
     FgResRef noise_tex_;
     FgResRef dummy_white_;
-    FgResRef oit_depth_buf_;
-    FgResRef ray_counter_;
-    FgResRef ray_list_;
-    FgResRef ray_bitmask_;
+    FgBufHandle oit_depth_buf_;
+    FgBufHandle ray_counter_;
+    FgBufHandle ray_list_;
+    FgBufHandle ray_bitmask_;
 
     FgResRef depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                  const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf, const Ren::WeakImgRef &depth_tex);
-    void DrawTransparent(FgContext &fg, const Ren::WeakImgRef &depth_tex);
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
+                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &depth_tex);
+    void DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &depth_tex);
 
   public:
-    ExOITScheduleRays(const DrawList **p_list, const view_state_t *view_state, const FgResRef vtx_buf1,
-                      const FgResRef vtx_buf2, const FgResRef ndx_buf, const FgResRef materials_buf,
-                      const BindlessTextureData *bindless_tex, const FgResRef noise_tex, const FgResRef dummy_white,
-                      const FgResRef instances_buf, const FgResRef instance_indices_buf, const FgResRef shared_data_buf,
-                      const FgResRef depth_tex, const FgResRef oit_depth_buf, const FgResRef ray_counter,
-                      const FgResRef ray_list, const FgResRef ray_bitmask);
+    ExOITScheduleRays(const DrawList **p_list, const view_state_t *view_state, FgBufHandle vtx_buf1,
+                      FgBufHandle vtx_buf2, FgBufHandle ndx_buf, FgBufHandle materials_buf,
+                      const BindlessTextureData *bindless_tex, FgResRef noise_tex, FgResRef dummy_white,
+                      FgBufHandle instances_buf, FgBufHandle instance_indices_buf, FgBufHandle shared_data_buf,
+                      FgResRef depth_tex, FgBufHandle oit_depth_buf, FgBufHandle ray_counter, FgBufHandle ray_list,
+                      FgBufHandle ray_bitmask);
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 };
 } // namespace Eng

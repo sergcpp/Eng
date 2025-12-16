@@ -15,8 +15,8 @@ void test_material() {
 
         auto on_pipelines_needed = [&](const uint32_t flags, std::string_view arg1, std::string_view arg2,
                                        std::string_view arg3, std::string_view arg4,
-                                       SmallVectorImpl<PipelineRef> &out_pipelines) {
-            out_pipelines.emplace_back(nullptr, 0);
+                                       SmallVectorImpl<PipelineHandle> &out_pipelines) {
+            out_pipelines.emplace_back();
         };
 
         auto on_texture_needed = [&test](std::string_view name, const uint8_t color[4],
@@ -30,9 +30,8 @@ void test_material() {
             return test.LoadImage(name, Span{color, color + 4}, p, test.default_mem_allocs(), &status);
         };
 
-        auto on_sampler_needed = [&test](SamplingParams params) {
-            eSamplerLoadStatus status;
-            return test.LoadSampler(params, &status);
+        auto on_sampler_needed = [&test](const SamplingParams params) -> SamplerHandle {
+            return test.FindOrCreateSampler(params);
         };
 
         const char mat_src[] = "pipelines:\n"

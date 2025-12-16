@@ -214,21 +214,25 @@ void pack_vertex_delta(const vtx_delta_t &in_v, packed_vertex_delta_t &out_v) {
 } // namespace Ren
 
 Ren::Mesh::Mesh(std::string_view name, const float *positions, const int vtx_count, const uint32_t *indices,
-                const int ndx_count, ApiContext *api_ctx, BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf,
+                const int ndx_count, const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
+                const BufferHandle vertex_buf1, const BufferHandle vertex_buf2, const BufferHandle index_buf,
                 eMeshLoadStatus *load_status, ILog *log) {
     name_ = String{name};
-    Init(positions, vtx_count, indices, ndx_count, api_ctx, vertex_buf1, vertex_buf2, index_buf, load_status, log);
+    Init(positions, vtx_count, indices, ndx_count, api, buffers, vertex_buf1, vertex_buf2, index_buf, load_status, log);
 }
 
 Ren::Mesh::Mesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
-                ApiContext *api_ctx, BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf,
-                BufRef &skin_vertex_buf, BufRef &delta_buf, eMeshLoadStatus *load_status, ILog *log) {
+                const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle vertex_buf1,
+                const BufferHandle vertex_buf2, const BufferHandle index_buf, const BufferHandle skin_vertex_buf,
+                const BufferHandle delta_buf, eMeshLoadStatus *load_status, ILog *log) {
     name_ = String{name};
-    Init(data, on_mat_load, api_ctx, vertex_buf1, vertex_buf2, index_buf, skin_vertex_buf, delta_buf, load_status, log);
+    Init(data, on_mat_load, api, buffers, vertex_buf1, vertex_buf2, index_buf, skin_vertex_buf, delta_buf, load_status,
+         log);
 }
 
 void Ren::Mesh::Init(const float *positions, const int vtx_count, const uint32_t *indices, const int ndx_count,
-                     ApiContext *api_ctx, BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf,
+                     const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
+                     const BufferHandle vertex_buf1, const BufferHandle vertex_buf2, const BufferHandle index_buf,
                      eMeshLoadStatus *load_status, ILog *log) {
 
     if (!positions) {
@@ -241,9 +245,16 @@ void Ren::Mesh::Init(const float *positions, const int vtx_count, const uint32_t
     indices_buf_.size = ndx_count * sizeof(uint32_t);
 
     const uint32_t total_mem_required = attribs_buf1_.size + indices_buf_.size;
-    auto stage_buf = Buffer{"Temp Stage Buf", api_ctx, eBufType::Upload, total_mem_required};
 
-    auto *_vtx_data1 = reinterpret_cast<packed_vertex_data1_t *>(stage_buf.Map());
+    Ren::BufferMain upload_buf_main = {};
+    Ren::BufferCold upload_buf_cold = {};
+    if (!Buffer_Init(api, upload_buf_main, upload_buf_cold, Ren::String{"Temp Upload Buf"}, eBufType::Upload,
+                     total_mem_required, log)) {
+        // TODO: Properly handle failure
+        assert(false);
+    }
+
+    auto *_vtx_data1 = reinterpret_cast<packed_vertex_data1_t *>(Buffer_Map(api, upload_buf_main, upload_buf_cold));
 
     bbox_min_ =
         Vec3f{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
@@ -268,35 +279,44 @@ void Ren::Mesh::Init(const float *positions, const int vtx_count, const uint32_t
     assert(uintptr_t(_ndx_data) % alignof(uint32_t) == 0);
     memcpy(_ndx_data, indices, indices_buf_.size);
 
-    stage_buf.Unmap();
+    Buffer_Unmap(api, upload_buf_main, upload_buf_cold);
 
     type_ = eMeshType::Simple;
     flags_ = {};
     ready_ = true;
 
-    CommandBuffer cmd_buf = api_ctx->BegSingleTimeCommands();
+    { // Copy buffer data
+        CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-    attribs_buf1_.sub = vertex_buf1->AllocSubRegion(attribs_buf1_.size, 16, name_, &stage_buf, cmd_buf);
-    attribs_buf1_.buf = vertex_buf1;
+        const auto &[vtx_buf1_main, vtx_buf1_cold] = buffers.Get(vertex_buf1);
+        attribs_buf1_.sub = Buffer_AllocSubRegion(api, vtx_buf1_main, vtx_buf1_cold, attribs_buf1_.size, 16, {}, log,
+                                                  &upload_buf_main, cmd_buf);
+        attribs_buf1_.buf = vertex_buf1;
 
-    // allocate empty data in buffer 2 (for index matching)
-    attribs_buf2_.sub = vertex_buf2->AllocSubRegion(attribs_buf2_.size, 16, name_, nullptr);
-    attribs_buf2_.buf = vertex_buf2;
+        // allocate empty data in buffer 2 (for index matching)
+        const auto &[vtx_buf2_main, vtx_buf2_cold] = buffers.Get(vertex_buf2);
+        attribs_buf2_.sub = Buffer_AllocSubRegion(api, vtx_buf2_main, vtx_buf2_cold, attribs_buf2_.size, 16, {}, log);
+        attribs_buf2_.buf = vertex_buf2;
 
-    assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
+        assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
 
-    indices_buf_.sub = index_buf->AllocSubRegion(indices_buf_.size, 4, name_, &stage_buf, cmd_buf, attribs_buf1_.size);
-    indices_buf_.buf = index_buf;
+        const auto &[index_buf_main, index_buf_cold] = buffers.Get(index_buf);
+        indices_buf_.sub = Buffer_AllocSubRegion(api, index_buf_main, index_buf_cold, indices_buf_.size, 4, {}, log,
+                                                 &upload_buf_main, cmd_buf);
+        indices_buf_.buf = index_buf;
 
-    api_ctx->EndSingleTimeCommands(cmd_buf);
-    stage_buf.FreeImmediate();
+        api.EndSingleTimeCommands(cmd_buf);
+    }
+
+    Buffer_DestroyImmediately(api, upload_buf_main, upload_buf_cold);
 
     (*load_status) = eMeshLoadStatus::CreatedFromData;
 }
 
-void Ren::Mesh::Init(std::istream *data, const material_load_callback &on_mat_load, ApiContext *api_ctx,
-                     BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, BufRef &skin_vertex_buf,
-                     BufRef &delta_buf, eMeshLoadStatus *load_status, ILog *log) {
+void Ren::Mesh::Init(std::istream *data, const material_load_callback &on_mat_load, const ApiContext &api,
+                     DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle vertex_buf1,
+                     const BufferHandle vertex_buf2, const BufferHandle index_buf, const BufferHandle skin_vertex_buf,
+                     const BufferHandle delta_buf, eMeshLoadStatus *load_status, ILog *log) {
 
     if (data) {
         char mesh_type_str[12];
@@ -305,11 +325,11 @@ void Ren::Mesh::Init(std::istream *data, const material_load_callback &on_mat_lo
         data->seekg(pos, std::ios::beg);
 
         if (strcmp(mesh_type_str, "STATIC_MESH\0") == 0) {
-            InitMeshSimple(*data, on_mat_load, api_ctx, vertex_buf1, vertex_buf2, index_buf, log);
+            InitMeshSimple(*data, on_mat_load, api, buffers, vertex_buf1, vertex_buf2, index_buf, log);
         } else if (strcmp(mesh_type_str, "COLORE_MESH\0") == 0) {
-            InitMeshColored(*data, on_mat_load, api_ctx, vertex_buf1, vertex_buf2, index_buf, log);
+            InitMeshColored(*data, on_mat_load, api, buffers, vertex_buf1, vertex_buf2, index_buf, log);
         } else if (strcmp(mesh_type_str, "SKELET_MESH\0") == 0 || strcmp(mesh_type_str, "SKECOL_MESH\0") == 0) {
-            InitMeshSkeletal(*data, on_mat_load, api_ctx, skin_vertex_buf, delta_buf, index_buf, log);
+            InitMeshSkeletal(*data, on_mat_load, api, buffers, skin_vertex_buf, delta_buf, index_buf, log);
         }
 
         (*load_status) = eMeshLoadStatus::CreatedFromData;
@@ -318,8 +338,9 @@ void Ren::Mesh::Init(std::istream *data, const material_load_callback &on_mat_lo
     }
 }
 
-void Ren::Mesh::InitMeshSimple(std::istream &data, const material_load_callback &on_mat_load, ApiContext *api_ctx,
-                               BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, ILog *log) {
+void Ren::Mesh::InitMeshSimple(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
+                               DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle vertex_buf1,
+                               const BufferHandle vertex_buf2, const BufferHandle index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
     assert(strcmp(mesh_type_str, "STATIC_MESH\0") == 0);
@@ -382,13 +403,14 @@ void Ren::Mesh::InitMeshSimple(std::istream &data, const material_load_callback 
         grp.vol_mat = std::move(mats[2]);
     }
 
-    InitBufferData(api_ctx, vertex_buf1, vertex_buf2, index_buf);
+    InitBufferData(api, buffers, vertex_buf1, vertex_buf2, index_buf, log);
 
     ready_ = true;
 }
 
-void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback &on_mat_load, ApiContext *api_ctx,
-                                BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf, ILog *log) {
+void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
+                                DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle vertex_buf1,
+                                const BufferHandle vertex_buf2, const BufferHandle index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
     assert(strcmp(mesh_type_str, "COLORE_MESH\0") == 0);
@@ -459,10 +481,18 @@ void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback
     indices_buf_.size = index_data_size;
 
     const uint32_t total_mem_required = attribs_buf1_.size + attribs_buf2_.size + indices_buf_.size;
-    auto stage_buf = Buffer{"Temp Stage Buf", api_ctx, eBufType::Upload, total_mem_required};
+
+    Ren::BufferMain upload_buf_main = {};
+    Ren::BufferCold upload_buf_cold = {};
+    if (!Buffer_Init(api, upload_buf_main, upload_buf_cold, Ren::String{"Temp Upload Buf"}, eBufType::Upload,
+                     total_mem_required, log)) {
+        // TODO: Properly handle failure
+        assert(false);
+    }
 
     { // Update staging buffer
-        auto *vertices_data1 = reinterpret_cast<packed_vertex_data1_t *>(stage_buf.Map());
+        auto *vertices_data1 =
+            reinterpret_cast<packed_vertex_data1_t *>(Buffer_Map(api, upload_buf_main, upload_buf_cold));
         auto *vertices_data2 = reinterpret_cast<packed_vertex_data2_t *>(vertices_data1 + vertex_count);
         assert(uintptr_t(vertices_data2) % alignof(packed_vertex_data2_t) == 0);
         auto *index_data = reinterpret_cast<uint32_t *>(vertices_data2 + vertex_count);
@@ -475,31 +505,40 @@ void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback
             pack_vertex_data2(orig_vertices[i], vertices_data2[i]);
         }
         memcpy(index_data, indices_.data(), indices_buf_.size);
-        stage_buf.Unmap();
+
+        Buffer_Unmap(api, upload_buf_main, upload_buf_cold);
     }
 
-    CommandBuffer cmd_buf = api_ctx->BegSingleTimeCommands();
+    { // Copy buffer data
+        CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-    attribs_buf1_.sub = vertex_buf1->AllocSubRegion(attribs_buf1_.size, 16, name_, &stage_buf, cmd_buf, 0 /* offset */);
-    attribs_buf1_.buf = vertex_buf1;
+        const auto &[vertex_buf1_main, vertex_buf1_cold] = buffers.Get(vertex_buf1);
+        attribs_buf1_.sub = Buffer_AllocSubRegion(api, vertex_buf1_main, vertex_buf1_cold, attribs_buf1_.size, 16,
+                                                  name_, log, &upload_buf_main, cmd_buf, 0 /* offset */);
+        attribs_buf1_.buf = vertex_buf1;
 
-    attribs_buf2_.sub =
-        vertex_buf2->AllocSubRegion(attribs_buf2_.size, 16, name_, &stage_buf, cmd_buf, attribs_buf1_.size);
-    attribs_buf2_.buf = vertex_buf2;
+        const auto &[vertex_buf2_main, vertex_buf2_cold] = buffers.Get(vertex_buf2);
+        attribs_buf2_.sub = Buffer_AllocSubRegion(api, vertex_buf2_main, vertex_buf2_cold, attribs_buf2_.size, 16,
+                                                  name_, log, &upload_buf_main, cmd_buf, attribs_buf1_.size);
+        attribs_buf2_.buf = vertex_buf2;
 
-    indices_buf_.sub = index_buf->AllocSubRegion(indices_buf_.size, 4, name_, &stage_buf, cmd_buf,
-                                                 attribs_buf1_.size + attribs_buf2_.size);
-    indices_buf_.buf = index_buf;
-    assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
+        const auto &[index_buf_main, index_buf_cold] = buffers.Get(index_buf);
+        indices_buf_.sub = Buffer_AllocSubRegion(api, index_buf_main, index_buf_cold, indices_buf_.size, 4, name_, log,
+                                                 &upload_buf_main, cmd_buf, attribs_buf1_.size + attribs_buf2_.size);
+        indices_buf_.buf = index_buf;
+        assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
 
-    api_ctx->EndSingleTimeCommands(cmd_buf);
-    stage_buf.FreeImmediate();
+        api.EndSingleTimeCommands(cmd_buf);
+    }
+
+    Buffer_DestroyImmediately(api, upload_buf_main, upload_buf_cold);
 
     ready_ = true;
 }
 
-void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callback &on_mat_load, ApiContext *api_ctx,
-                                 BufRef &skin_vertex_buf, BufRef &delta_buf, BufRef &index_buf, ILog *log) {
+void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
+                                 DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle skin_vertex_buf,
+                                 const BufferHandle delta_buf, const BufferHandle index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
     assert(strcmp(mesh_type_str, "SKELET_MESH\0") == 0 || strcmp(mesh_type_str, "SKECOL_MESH\0") == 0);
@@ -605,9 +644,16 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
     // TODO: This is incorrect!
     const uint32_t total_mem_required =
         attribs_buf1_.size + attribs_buf2_.size + indices_buf_.size + sk_attribs_buf_.size;
-    auto stage_buf = Buffer{"Temp Stage Buf", api_ctx, eBufType::Upload, total_mem_required};
 
-    uint8_t *stage_buf_ptr = stage_buf.Map();
+    Ren::BufferMain upload_buf_main = {};
+    Ren::BufferCold upload_buf_cold = {};
+    if (!Buffer_Init(api, upload_buf_main, upload_buf_cold, Ren::String{"Temp Upload Buf"}, eBufType::Upload,
+                     total_mem_required, log)) {
+        // TODO: Properly handle failure
+        assert(false);
+    }
+
+    uint8_t *stage_buf_ptr = Buffer_Map(api, upload_buf_main, upload_buf_cold);
     uint32_t stage_buf_off = 0;
 
     uint32_t delta_buf_off = 0;
@@ -638,7 +684,7 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
 
         sk_deltas_buf_.size = uint32_t(shapes_count * shape_keyed_vertices_count * sizeof(packed_vertex_delta_t));
 
-        assert(stage_buf.size() - stage_buf_off >= sk_deltas_buf_.size);
+        assert(upload_buf_cold.size - stage_buf_off >= sk_deltas_buf_.size);
         auto *packed_deltas = reinterpret_cast<packed_vertex_delta_t *>(stage_buf_ptr + stage_buf_off);
         delta_buf_off = stage_buf_off;
         stage_buf_off += sk_deltas_buf_.size;
@@ -648,7 +694,7 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
         }
     }
 
-    assert(stage_buf.size() - stage_buf_off >= sk_attribs_buf_.size);
+    assert(upload_buf_cold.size - stage_buf_off >= sk_attribs_buf_.size);
     auto *vertices = reinterpret_cast<packed_vertex_skinned_t *>(stage_buf_ptr + stage_buf_off);
     const uint32_t vertices_off = stage_buf_off;
     stage_buf_off += sk_attribs_buf_.size;
@@ -665,37 +711,46 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
         }
     }
 
-    assert(stage_buf.size() - stage_buf_off >= indices_buf_.size);
+    assert(upload_buf_cold.size - stage_buf_off >= indices_buf_.size);
     auto *index_data = reinterpret_cast<uint32_t *>(stage_buf_ptr + stage_buf_off);
     const uint32_t indices_off = stage_buf_off;
     stage_buf_off += indices_buf_.size;
     memcpy(index_data, indices_.data(), indices_buf_.size);
 
-    stage_buf.Unmap();
+    Buffer_Unmap(api, upload_buf_main, upload_buf_cold);
 
-    CommandBuffer cmd_buf = api_ctx->BegSingleTimeCommands();
+    { // Copy buffer data
+        CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-    if (shape_data_present) {
-        sk_deltas_buf_.sub =
-            delta_buf->AllocSubRegion(sk_deltas_buf_.size, 16, name_, &stage_buf, cmd_buf, delta_buf_off);
-        sk_deltas_buf_.buf = delta_buf;
+        if (shape_data_present) {
+            const auto &[delta_buf_main, delta_buf_cold] = buffers.Get(delta_buf);
+            sk_deltas_buf_.sub = Buffer_AllocSubRegion(api, delta_buf_main, delta_buf_cold, sk_deltas_buf_.size, 16,
+                                                       name_, log, &upload_buf_main, cmd_buf, delta_buf_off);
+            sk_deltas_buf_.buf = delta_buf;
+        }
+
+        // allocate untransformed vertices
+        const auto &[skin_buf_main, skin_buf_cold] = buffers.Get(skin_vertex_buf);
+        sk_attribs_buf_.sub = Buffer_AllocSubRegion(api, skin_buf_main, skin_buf_cold, sk_attribs_buf_.size, 16, name_,
+                                                    log, &upload_buf_main, cmd_buf, vertices_off);
+        sk_attribs_buf_.buf = skin_vertex_buf;
+
+        const auto &[index_buf_main, index_buf_cold] = buffers.Get(index_buf);
+        indices_buf_.sub = Ren::Buffer_AllocSubRegion(api, index_buf_main, index_buf_cold, indices_buf_.size, 4, name_,
+                                                      log, &upload_buf_main, cmd_buf, indices_off);
+        indices_buf_.buf = index_buf;
+
+        api.EndSingleTimeCommands(cmd_buf);
     }
 
-    // allocate untransformed vertices
-    sk_attribs_buf_.sub =
-        skin_vertex_buf->AllocSubRegion(sk_attribs_buf_.size, 16, name_, &stage_buf, cmd_buf, vertices_off);
-    sk_attribs_buf_.buf = skin_vertex_buf;
-
-    indices_buf_.sub = index_buf->AllocSubRegion(indices_buf_.size, 4, name_, &stage_buf, cmd_buf, indices_off);
-    indices_buf_.buf = index_buf;
-
-    api_ctx->EndSingleTimeCommands(cmd_buf);
-    stage_buf.FreeImmediate();
+    Buffer_DestroyImmediately(api, upload_buf_main, upload_buf_cold);
 
     ready_ = true;
 }
 
-void Ren::Mesh::InitBufferData(ApiContext *api_ctx, BufRef &vertex_buf1, BufRef &vertex_buf2, BufRef &index_buf) {
+void Ren::Mesh::InitBufferData(const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
+                               const BufferHandle vertex_buf1, const BufferHandle vertex_buf2,
+                               const BufferHandle index_buf, ILog *log) {
     const uint32_t vertex_count = uint32_t(attribs_.size() * sizeof(float)) / sizeof(orig_vertex_t);
 
     attribs_buf1_.size = vertex_count * sizeof(packed_vertex_data1_t);
@@ -703,10 +758,18 @@ void Ren::Mesh::InitBufferData(ApiContext *api_ctx, BufRef &vertex_buf1, BufRef 
     indices_buf_.size = uint32_t(indices_.size() * sizeof(uint32_t));
 
     const uint32_t total_mem_required = attribs_buf1_.size + attribs_buf2_.size + indices_buf_.size;
-    auto stage_buf = Buffer{"Temp Stage Buf", api_ctx, eBufType::Upload, total_mem_required};
+
+    BufferMain upload_buf_main = {};
+    BufferCold upload_buf_cold = {};
+    if (!Buffer_Init(api, upload_buf_main, upload_buf_cold, String{"Temp Upload Buf"}, eBufType::Upload,
+                     total_mem_required, log)) {
+        // TODO: Properly handle failure
+        assert(false);
+    }
 
     { // Update staging buffer
-        auto *vertices_data1 = reinterpret_cast<packed_vertex_data1_t *>(stage_buf.Map());
+        auto *vertices_data1 =
+            reinterpret_cast<packed_vertex_data1_t *>(Buffer_Map(api, upload_buf_main, upload_buf_cold));
         auto *vertices_data2 = reinterpret_cast<packed_vertex_data2_t *>(vertices_data1 + vertex_count);
         assert(uintptr_t(vertices_data2) % alignof(packed_vertex_data2_t) == 0);
         auto *index_data = reinterpret_cast<uint32_t *>(vertices_data2 + vertex_count);
@@ -718,28 +781,34 @@ void Ren::Mesh::InitBufferData(ApiContext *api_ctx, BufRef &vertex_buf1, BufRef 
             pack_vertex_data2(orig_vertices[i], vertices_data2[i]);
         }
         memcpy(index_data, indices_.data(), indices_buf_.size);
-        stage_buf.Unmap();
+
+        Buffer_Unmap(api, upload_buf_main, upload_buf_cold);
     }
 
     { // Copy buffer data
-        CommandBuffer cmd_buf = api_ctx->BegSingleTimeCommands();
+        CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-        attribs_buf1_.sub =
-            vertex_buf1->AllocSubRegion(attribs_buf1_.size, 16, name_, &stage_buf, cmd_buf, 0 /* offset */);
+        const auto &[vertex_buf1_main, vertex_buf1_cold] = buffers.Get(vertex_buf1);
+        attribs_buf1_.sub = Buffer_AllocSubRegion(api, vertex_buf1_main, vertex_buf1_cold, attribs_buf1_.size, 16,
+                                                  name_, log, &upload_buf_main, cmd_buf, 0 /* offset */);
         attribs_buf1_.buf = vertex_buf1;
 
-        attribs_buf2_.sub =
-            vertex_buf2->AllocSubRegion(attribs_buf2_.size, 16, name_, &stage_buf, cmd_buf, attribs_buf1_.size);
+        const auto &[vertex_buf2_main, vertex_buf2_cold] = buffers.Get(vertex_buf2);
+        attribs_buf2_.sub = Buffer_AllocSubRegion(api, vertex_buf2_main, vertex_buf2_cold, attribs_buf2_.size, 16,
+                                                  name_, log, &upload_buf_main, cmd_buf, attribs_buf1_.size);
         attribs_buf2_.buf = vertex_buf2;
 
-        indices_buf_.sub = index_buf->AllocSubRegion(indices_buf_.size, 4, name_, &stage_buf, cmd_buf,
-                                                     attribs_buf1_.size + attribs_buf2_.size);
+        const auto &[index_buf_main, index_buf_cold] = buffers.Get(index_buf);
+        indices_buf_.sub =
+            Ren::Buffer_AllocSubRegion(api, index_buf_main, index_buf_cold, indices_buf_.size, 4, name_, log,
+                                       &upload_buf_main, cmd_buf, attribs_buf1_.size + attribs_buf2_.size);
         indices_buf_.buf = index_buf;
         assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
 
-        api_ctx->EndSingleTimeCommands(cmd_buf);
-        stage_buf.FreeImmediate();
+        api.EndSingleTimeCommands(cmd_buf);
     }
+
+    Buffer_DestroyImmediately(api, upload_buf_main, upload_buf_cold);
 }
 
 void Ren::Mesh::ReleaseBufferData() {

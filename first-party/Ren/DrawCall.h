@@ -8,10 +8,8 @@
 
 namespace Ren {
 struct ApiContext;
-class Buffer;
 class DescrMultiPoolAlloc;
 class ILog;
-class Pipeline;
 class Image;
 struct BindlessDescriptors;
 
@@ -40,25 +38,28 @@ extern int g_param_buf_binding;
 struct OpaqueHandle {
     union {
         const Image *img;
-        const Buffer *buf;
+        const BufferHandle buf;
         const BindlessDescriptors *bindless;
 #if defined(REN_VK_BACKEND)
         const AccStructureVK *acc_struct;
 #endif
         void *ptr;
     };
-    const Sampler *sampler = nullptr;
+    union {
+
+        const Handle<void> handle;
+    };
+    const SamplerHandle sampler = {};
     int view_index = 0;
 
-    OpaqueHandle() = default;
-    OpaqueHandle(const Image &_img, int _view_index = 0) : img(&_img), view_index(_view_index) {}
-    OpaqueHandle(const Image &_img, const Sampler &_sampler, int _view_index = 0)
-        : img(&_img), sampler(&_sampler), view_index(_view_index) {}
-    OpaqueHandle(const Buffer &_buf, int _view_index = 0) : buf(&_buf), view_index(_view_index) {}
-    OpaqueHandle(const Sampler &_sampler) : ptr(nullptr), sampler(&_sampler) {}
-    OpaqueHandle(const BindlessDescriptors &_bindless) : bindless(&_bindless) {}
+    OpaqueHandle(const Image &_img, int _view_index = 0) : img(&_img), handle(), view_index(_view_index) {}
+    OpaqueHandle(const Image &_img, const SamplerHandle _sampler, int _view_index = 0)
+        : img(&_img), handle({}), sampler(_sampler), view_index(_view_index) {}
+    OpaqueHandle(const BufferHandle _buf, int _view_index = 0) : buf(_buf), handle(), view_index(_view_index) {}
+    OpaqueHandle(const SamplerHandle _sampler) : ptr(nullptr), handle(), sampler(_sampler) {}
+    OpaqueHandle(const BindlessDescriptors &_bindless) : bindless(&_bindless), handle() {}
 #if defined(REN_VK_BACKEND)
-    OpaqueHandle(const AccStructureVK &_acc_struct) : acc_struct(&_acc_struct) {}
+    OpaqueHandle(const AccStructureVK &_acc_struct) : acc_struct(&_acc_struct), handle() {}
 #endif
 };
 
@@ -69,31 +70,29 @@ struct Binding {
     uint16_t size = 0;
     OpaqueHandle handle;
 
-    Binding() = default;
-    Binding(eBindTarget _trg, int _loc, OpaqueHandle _handle) : trg(_trg), loc(_loc), handle(_handle) {}
-    Binding(eBindTarget _trg, int _loc, size_t _offset, OpaqueHandle _handle)
+    Binding(const eBindTarget _trg, const int _loc, OpaqueHandle _handle) : trg(_trg), loc(_loc), handle(_handle) {}
+    Binding(const eBindTarget _trg, const int _loc, const size_t _offset, OpaqueHandle _handle)
         : trg(_trg), loc(_loc), offset(uint16_t(_offset)), handle(_handle) {}
-    Binding(eBindTarget _trg, int _loc, size_t _offset, size_t _size, OpaqueHandle _handle)
+    Binding(const eBindTarget _trg, const int _loc, const size_t _offset, const size_t _size, OpaqueHandle _handle)
         : trg(_trg), loc(_loc), offset(uint16_t(_offset)), size(uint16_t(_size)), handle(_handle) {}
 };
-static_assert(sizeof(Binding) == sizeof(void *) + 8 + 8 + sizeof(void *));
+static_assert(sizeof(Binding) == sizeof(void *) + sizeof(void *) + 8 + 8 + 8);
 
 #if defined(REN_VK_BACKEND)
-[[nodiscard]] VkDescriptorSet PrepareDescriptorSet(ApiContext *api_ctx, VkDescriptorSetLayout layout,
-                                                   Span<const Binding> bindings, DescrMultiPoolAlloc &descr_alloc,
-                                                   ILog *log);
+[[nodiscard]] VkDescriptorSet PrepareDescriptorSet(const ApiContext &api, const StoragesRef *storages,
+                                                   VkDescriptorSetLayout layout, Span<const Binding> bindings,
+                                                   DescrMultiPoolAlloc &descr_alloc, ILog *log);
 #endif
 
-void DispatchCompute(CommandBuffer cmd_buf, const Pipeline &comp_pipeline, Vec3u grp_count,
+void DispatchCompute(CommandBuffer cmd_buf, PipelineHandle pipeline, const StoragesRef &storages, Vec3u grp_count,
                      Span<const Binding> bindings, const void *uniform_data, int uniform_data_len,
                      DescrMultiPoolAlloc &descr_alloc, ILog *log);
-void DispatchCompute(const Pipeline &comp_pipeline, Vec3u grp_count, Span<const Binding> bindings,
-                     const void *uniform_data, int uniform_data_len, DescrMultiPoolAlloc &descr_alloc, ILog *log);
+void DispatchCompute(PipelineHandle pipeline, const StoragesRef &storages, Vec3u grp_count,
+                     Span<const Binding> bindings, const void *uniform_data, int uniform_data_len,
+                     DescrMultiPoolAlloc &descr_alloc, ILog *log);
 
-void DispatchComputeIndirect(CommandBuffer cmd_buf, const Pipeline &comp_pipeline, const Buffer &indir_buf,
-                             uint32_t indir_buf_offset, Span<const Binding> bindings, const void *uniform_data,
-                             int uniform_data_len, DescrMultiPoolAlloc &descr_alloc, ILog *log);
-void DispatchComputeIndirect(const Pipeline &comp_pipeline, const Buffer &indir_buf, uint32_t indir_buf_offset,
-                             Span<const Binding> bindings, const void *uniform_data, int uniform_data_len,
-                             DescrMultiPoolAlloc &descr_alloc, ILog *log);
+void DispatchComputeIndirect(CommandBuffer cmd_buf, PipelineHandle pipeline, const StoragesRef &storages,
+                             BufferHandle indir_buf, uint32_t indir_buf_offset, Span<const Binding> bindings,
+                             const void *uniform_data, int uniform_data_len, DescrMultiPoolAlloc &descr_alloc,
+                             ILog *log);
 } // namespace Ren

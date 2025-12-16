@@ -5,6 +5,7 @@
 #include <Ren/Context.h>
 #include <Ren/Utils.h>
 #include <Sys/MonoAlloc.h>
+#include <Sys/ScopeExit.h>
 #include <Sys/ThreadPool.h>
 #include <Sys/Time_.h>
 
@@ -169,7 +170,7 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
 
         Ren::eImgLoadStatus status;
         rand2d_8x8_ = ctx_.LoadImage("rand2d_8x8", {(const uint8_t *)&PMJSamples64[0][0], sizeof(PMJSamples64)}, p,
-                                       ctx_.default_mem_allocs(), &status);
+                                     ctx_.default_mem_allocs(), &status);
         assert(status == Ren::eImgLoadStatus::CreatedFromData);
     }
 
@@ -180,8 +181,8 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         p.usage = Ren::Bitmask(Ren::eImgUsage::Transfer) | Ren::eImgUsage::Sampled;
 
         Ren::eImgLoadStatus status;
-        rand2d_dirs_4x4_ = ctx_.LoadImage("rand2d_dirs_4x4", {(const uint8_t *)&__rand_dirs[0], sizeof(__rand_dirs)},
-                                            p, ctx_.default_mem_allocs(), &status);
+        rand2d_dirs_4x4_ = ctx_.LoadImage("rand2d_dirs_4x4", {(const uint8_t *)&__rand_dirs[0], sizeof(__rand_dirs)}, p,
+                                          ctx_.default_mem_allocs(), &status);
         assert(status == Ren::eImgLoadStatus::CreatedFromData);
     }
 
@@ -209,8 +210,8 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         p.sampling.wrap = Ren::eWrap::ClampToEdge;
 
         Ren::eImgLoadStatus status;
-        cone_rt_lut_ = ctx_.LoadImage("cone_rt_lut", {&__cone_rt_lut[0], 4 * __cone_rt_lut_res * __cone_rt_lut_res},
-                                        p, ctx_.default_mem_allocs(), &status);
+        cone_rt_lut_ = ctx_.LoadImage("cone_rt_lut", {&__cone_rt_lut[0], 4 * __cone_rt_lut_res * __cone_rt_lut_res}, p,
+                                      ctx_.default_mem_allocs(), &status);
 
         // cone_rt_lut_ =
         //    ctx_.LoadImage("cone_rt_lut", &occ_data[0], 4 * resx * resy, p,
@@ -231,7 +232,7 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
 
         Ren::eImgLoadStatus status;
         brdf_lut_ = ctx_.LoadImage("brdf_lut", {(const uint8_t *)&__brdf_lut[0], sizeof(__brdf_lut)}, p,
-                                     ctx_.default_mem_allocs(), &status);
+                                   ctx_.default_mem_allocs(), &status);
         assert(status == Ren::eImgLoadStatus::CreatedFromData);
     }
 
@@ -266,9 +267,8 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         p.sampling.wrap = Ren::eWrap::ClampToEdge;
 
         Ren::eImgLoadStatus status;
-        ltc_luts_ =
-            ctx_.LoadImage("LTC LUTs", {(const uint8_t *)combined_data.get(), 8 * 4 * 64 * 64 * sizeof(float)}, p,
-                             ctx_.default_mem_allocs(), &status);
+        ltc_luts_ = ctx_.LoadImage("LTC LUTs", {(const uint8_t *)combined_data.get(), 8 * 4 * 64 * 64 * sizeof(float)},
+                                   p, ctx_.default_mem_allocs(), &status);
         assert(status == Ren::eImgLoadStatus::CreatedFromData);
     }
 
@@ -287,7 +287,7 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
 
         Ren::eImgLoadStatus status;
         noise_tex_ = ctx_.LoadImage("noise", {(const uint8_t *)&__noise[0], __noise_res * __noise_res * 4}, p,
-                                      ctx_.default_mem_allocs(), &status);
+                                    ctx_.default_mem_allocs(), &status);
         assert(status == Ren::eImgLoadStatus::CreatedFromData);
     }
 
@@ -327,13 +327,11 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         Ren::eImgLoadStatus status;
         stbn_1D_64spp_ =
             ctx_.LoadImage("STBN 1D 64spp", {(const uint8_t *)&stbn_1D_64spp::stbn_samples[0], p.w * p.h * p.d}, p,
-                             ctx_.default_mem_allocs(), &status);
+                           ctx_.default_mem_allocs(), &status);
         assert(status == Ren::eImgLoadStatus::CreatedFromData);
     }
 
     { // PMJ 2D blue-noise sampler
-        Ren::CommandBuffer cmd_buf = ctx_.BegTempSingleTimeCommands();
-
         static const int SampleSizePerDimPair = 2 * 64 * sizeof(uint32_t);
         static const int ScramblingSizePerDimPair = 2 * 128 * 128 * sizeof(uint32_t);
         static const int SortingSizePerDimPair = 128 * 128 * sizeof(uint32_t);
@@ -365,15 +363,23 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         static_assert(SortingSizePerDimPair == sizeof(bn_2D_64spp_6::bn_pmj_sorting));
         static_assert(SortingSizePerDimPair == sizeof(bn_2D_64spp_7::bn_pmj_sorting));
 
-        bn_pmj_2D_64spp_seq_buf_ =
-            ctx_.LoadBuffer("BN_PMJ_2D_64SPP", Ren::eBufType::Texture,
-                            8 * (SampleSizePerDimPair + ScramblingSizePerDimPair + SortingSizePerDimPair));
-        bn_pmj_2D_64spp_seq_buf_->AddView(Ren::eFormat::R32UI);
-        Ren::Buffer bn_pmj_2D_64spp_seq_buf_stage("BN_PMJ_2D_64SPP_Stage", ctx_.api_ctx(), Ren::eBufType::Upload,
-                                                  bn_pmj_2D_64spp_seq_buf_->size());
+        const uint32_t buf_size = 8 * (SampleSizePerDimPair + ScramblingSizePerDimPair + SortingSizePerDimPair);
+        bn_pmj_2D_64spp_seq_buf_ = ctx_.FindOrCreateBuffer("BN_PMJ_2D_64SPP", Ren::eBufType::Texture, buf_size);
+        { // Add view
+            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(bn_pmj_2D_64spp_seq_buf_);
+            Ren::Buffer_AddView(ctx_.api(), buf_main, buf_cold, Ren::eFormat::R32UI);
+        }
+
+        Ren::BufferMain stage_buf_main = {};
+        Ren::BufferCold stage_buf_cold = {};
+        if (!Ren::Buffer_Init(ctx_.api(), stage_buf_main, stage_buf_cold, Ren::String{"BN_PMJ_2D_64SPP_Stage"},
+                              Ren::eBufType::Upload, buf_size, ctx_.log())) {
+            // TODO: Properly handle failure
+            assert(false);
+        }
 
         { // init stage buf
-            uint8_t *mapped_ptr = bn_pmj_2D_64spp_seq_buf_stage.Map();
+            uint8_t *mapped_ptr = Buffer_Map(ctx_.api(), stage_buf_main, stage_buf_cold);
 
             // sample data
             memcpy(mapped_ptr, bn_2D_64spp_0::bn_pmj_samples, SampleSizePerDimPair);
@@ -429,43 +435,58 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
             memcpy(mapped_ptr, bn_2D_64spp_7::bn_pmj_sorting, SortingSizePerDimPair);
             mapped_ptr += SortingSizePerDimPair;
 
-            bn_pmj_2D_64spp_seq_buf_stage.Unmap();
+            Buffer_Unmap(ctx_.api(), stage_buf_main, stage_buf_cold);
         }
 
-        CopyBufferToBuffer(bn_pmj_2D_64spp_seq_buf_stage, 0, *bn_pmj_2D_64spp_seq_buf_, 0,
+        Ren::CommandBuffer cmd_buf = ctx_.BegTempSingleTimeCommands();
+
+        const auto &[dst_buf_main, dst_buf_cold] = ctx_.buffers().Get(bn_pmj_2D_64spp_seq_buf_);
+        CopyBufferToBuffer(ctx_.api(), stage_buf_main, 0, dst_buf_main, 0,
                            8 * (SampleSizePerDimPair + ScramblingSizePerDimPair + SortingSizePerDimPair), cmd_buf);
 
         ctx_.EndTempSingleTimeCommands(cmd_buf);
 
-        bn_pmj_2D_64spp_seq_buf_stage.FreeImmediate();
+        Buffer_DestroyImmediately(ctx_.api(), stage_buf_main, stage_buf_cold);
     }
 
     { // PMJ samples
-        pmj_samples_buf_ = ctx_.LoadBuffer("PMJSamples", Ren::eBufType::Texture,
-                                           __pmj02_sample_count * __pmj02_dims_count * sizeof(uint32_t));
-        pmj_samples_buf_->AddView(Ren::eFormat::R32UI);
+        const uint32_t buf_size = __pmj02_sample_count * __pmj02_dims_count * sizeof(uint32_t);
+        pmj_samples_buf_ = ctx_.FindOrCreateBuffer("PMJSamples", Ren::eBufType::Texture, buf_size);
+        { // Add view
+            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(pmj_samples_buf_);
+            Buffer_AddView(ctx_.api(), buf_main, buf_cold, Ren::eFormat::R32UI);
+        }
 
-        Ren::Buffer pmj_samples_stage("PMJSamplesStage", ctx_.api_ctx(), Ren::eBufType::Upload,
-                                      pmj_samples_buf_->size());
+        Ren::BufferMain stage_buf_main = {};
+        Ren::BufferCold stage_buf_cold = {};
+        if (!Ren::Buffer_Init(ctx_.api(), stage_buf_main, stage_buf_cold, Ren::String{"PMJSamplesStage"},
+                              Ren::eBufType::Upload, buf_size, ctx_.log())) {
+            // TODO: Properly handle failure
+            assert(false);
+        }
+
         { // init stage buf
-            uint8_t *mapped_ptr = pmj_samples_stage.Map();
+            uint8_t *mapped_ptr = Buffer_Map(ctx_.api(), stage_buf_main, stage_buf_cold);
             memcpy(mapped_ptr, __pmj02_samples, __pmj02_sample_count * __pmj02_dims_count * sizeof(uint32_t));
-            pmj_samples_stage.Unmap();
+            Buffer_Unmap(ctx_.api(), stage_buf_main, stage_buf_cold);
         }
 
         Ren::CommandBuffer cmd_buf = ctx_.BegTempSingleTimeCommands();
-        CopyBufferToBuffer(pmj_samples_stage, 0, *pmj_samples_buf_, 0,
+
+        const auto &[buf_main, buf_cold] = ctx_.buffers().Get(pmj_samples_buf_);
+        CopyBufferToBuffer(ctx_.api(), stage_buf_main, 0, buf_main, 0,
                            __pmj02_sample_count * __pmj02_dims_count * sizeof(uint32_t), cmd_buf);
+
         ctx_.EndTempSingleTimeCommands(cmd_buf);
 
-        pmj_samples_stage.FreeImmediate();
+        Buffer_DestroyImmediately(ctx_.api(), stage_buf_main, stage_buf_cold);
     }
 
-    auto vtx_buf1 = ctx_.default_vertex_buf1();
-    auto vtx_buf2 = ctx_.default_vertex_buf2();
-    auto ndx_buf = ctx_.default_indices_buf();
+    const Ren::BufferHandle vtx_buf1 = ctx_.default_vertex_buf1();
+    const Ren::BufferHandle vtx_buf2 = ctx_.default_vertex_buf2();
+    const Ren::BufferHandle ndx_buf = ctx_.default_indices_buf();
 
-    const int buf1_stride = 16;
+    static const int buf1_stride = 16;
 
     { // VertexInput for main drawing (uses all attributes)
         const Ren::VtxAttribDesc attribs[] = {
@@ -476,7 +497,7 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
             {vtx_buf2, VTX_NOR_LOC, 4, Ren::eType::Int16_snorm, buf1_stride, 0},
             {vtx_buf2, VTX_TAN_LOC, 2, Ren::eType::Int16_snorm, buf1_stride, 4 * sizeof(uint16_t)},
             {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf1_stride, 6 * sizeof(uint16_t)}};
-        draw_pass_vi_ = ctx_.LoadVertexInput(attribs, ndx_buf);
+        draw_pass_vi_ = ctx_.FindOrCreateVertexInput(attribs, ndx_buf);
     }
 
     { // RenderPass for main drawing (compatible one)
@@ -490,8 +511,8 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
             {Ren::eFormat::RGBA8, 1 /* samples */, Ren::eImageLayout::ColorAttachmentOptimal, Ren::eLoadOp::Load,
              Ren::eStoreOp::Store},
 #endif
-            {Ren::eFormat::RGBA8_srgb, 1 /* samples */, Ren::eImageLayout::ColorAttachmentOptimal,
-             Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
+            {Ren::eFormat::RGBA8_srgb, 1 /* samples */, Ren::eImageLayout::ColorAttachmentOptimal, Ren::eLoadOp::Load,
+             Ren::eStoreOp::Store}};
 
         // color_rts[2].flags = Ren::eImgFlags::SRGB;
 
@@ -558,17 +579,22 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
         Ren::SamplingParams sampler_params;
         sampler_params.wrap = Ren::eWrap::ClampToEdge;
 
-        Ren::eSamplerLoadStatus status;
-        nearest_sampler_ = ctx_.LoadSampler(sampler_params, &status);
+        nearest_sampler_ = ctx_.FindOrCreateSampler(sampler_params);
 
         sampler_params.filter = Ren::eFilter::Bilinear;
-        linear_sampler_ = ctx_.LoadSampler(sampler_params, &status);
+        linear_sampler_ = ctx_.FindOrCreateSampler(sampler_params);
     }
 
     { // Allocate buffer for skinned vertices
         // TODO: fix this. do not allocate twice more memory in buf2
-        skinned_buf1_vtx_ = vtx_buf1->AllocSubRegion(MAX_SKIN_VERTICES_TOTAL * 16 * 2, 16, "skinned");
-        skinned_buf2_vtx_ = vtx_buf2->AllocSubRegion(MAX_SKIN_VERTICES_TOTAL * 16 * 2, 16, "skinned");
+        const auto &[skinned_buf1_main, skinned_buf1_cold] = ctx_.buffers().Get(vtx_buf1);
+        skinned_buf1_vtx_ = Buffer_AllocSubRegion(ctx_.api(), skinned_buf1_main, skinned_buf1_cold,
+                                                  MAX_SKIN_VERTICES_TOTAL * 16 * 2, 16, "skinned", ctx_.log());
+
+        const auto &[skinned_buf2_main, skinned_buf2_cold] = ctx_.buffers().Get(vtx_buf2);
+        skinned_buf2_vtx_ = Buffer_AllocSubRegion(ctx_.api(), skinned_buf2_main, skinned_buf2_cold,
+                                                  MAX_SKIN_VERTICES_TOTAL * 16 * 2, 16, "skinned", ctx_.log());
+
         assert(skinned_buf1_vtx_.offset == skinned_buf2_vtx_.offset && "Offsets do not match!");
     }
 
@@ -585,10 +611,20 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
 }
 
 Eng::Renderer::~Renderer() {
-    auto vtx_buf1 = ctx_.default_vertex_buf1();
-    vtx_buf1->FreeSubRegion(skinned_buf1_vtx_);
-    auto vtx_buf2 = ctx_.default_vertex_buf2();
-    vtx_buf2->FreeSubRegion(skinned_buf2_vtx_);
+    if (bn_pmj_2D_64spp_seq_buf_) {
+        ctx_.ReleaseBuffer(bn_pmj_2D_64spp_seq_buf_);
+    }
+    if (pmj_samples_buf_) {
+        ctx_.ReleaseBuffer(pmj_samples_buf_);
+    }
+
+    const Ren::BufferHandle vtx_buf1 = ctx_.default_vertex_buf1();
+    const auto &[vtx_buf1_main, vtx_buf1_cold] = ctx_.buffers().Get(vtx_buf1);
+    Buffer_FreeSubRegion(vtx_buf1_cold, skinned_buf1_vtx_);
+
+    const Ren::BufferHandle vtx_buf2 = ctx_.default_vertex_buf2();
+    const auto &[vtx_buf2_main, vtx_buf2_cold] = ctx_.buffers().Get(vtx_buf2);
+    Buffer_FreeSubRegion(vtx_buf2_cold, skinned_buf2_vtx_);
 
     swCullCtxDestroy(&cull_ctx_);
 }
@@ -723,10 +759,12 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
     view_state_.volume_to_update = list.volume_to_update;
     view_state_.stochastic_lights_count = view_state_.stochastic_lights_count_cache = 0;
     if (persistent_data.stoch_lights_buf) {
-        view_state_.stochastic_lights_count_cache = persistent_data.stoch_lights_buf->size() / sizeof(light_item_t);
+        const auto &[lights_buf_main, lights_buf_cold] = ctx_.buffers().Get(persistent_data.stoch_lights_buf);
+        view_state_.stochastic_lights_count_cache = lights_buf_cold.size / sizeof(light_item_t);
     }
     if (persistent_data.stoch_lights_buf && list.render_settings.gi_quality > eGIQuality::Medium) {
-        view_state_.stochastic_lights_count = persistent_data.stoch_lights_buf->size() / sizeof(light_item_t);
+        const auto &[lights_buf_main, lights_buf_cold] = ctx_.buffers().Get(persistent_data.stoch_lights_buf);
+        view_state_.stochastic_lights_count = lights_buf_cold.size / sizeof(light_item_t);
     }
 
     view_state_.env_generation = list.env.generation;
@@ -826,17 +864,19 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         { // Skinning
             auto &skinning = fg_builder_.AddNode("SKINNING");
 
-            FgResRef skin_vtx_res =
+            const FgBufHandle skin_vtx_res =
                 skinning.AddStorageReadonlyInput(persistent_data.skin_vertex_buf, Ren::eStage::ComputeShader);
-            FgResRef in_skin_transforms_res =
+            const FgBufHandle in_skin_transforms_res =
                 skinning.AddStorageReadonlyInput(common_buffers.skin_transforms, Ren::eStage::ComputeShader);
-            FgResRef in_shape_keys_res =
+            const FgBufHandle in_shape_keys_res =
                 skinning.AddStorageReadonlyInput(common_buffers.shape_keys, Ren::eStage::ComputeShader);
-            FgResRef delta_buf_res =
+            const FgBufHandle delta_buf_res =
                 skinning.AddStorageReadonlyInput(persistent_data.delta_buf, Ren::eStage::ComputeShader);
 
-            FgResRef vtx_buf1_res = skinning.AddStorageOutput(persistent_data.vertex_buf1, Ren::eStage::ComputeShader);
-            FgResRef vtx_buf2_res = skinning.AddStorageOutput(persistent_data.vertex_buf2, Ren::eStage::ComputeShader);
+            const FgBufHandle vtx_buf1_res =
+                skinning.AddStorageOutput(persistent_data.vertex_buf1, Ren::eStage::ComputeShader);
+            const FgBufHandle vtx_buf2_res =
+                skinning.AddStorageOutput(persistent_data.vertex_buf2, Ren::eStage::ComputeShader);
 
             skinning.make_executor<ExSkinning>(p_list_, skin_vtx_res, in_skin_transforms_res, in_shape_keys_res,
                                                delta_buf_res, vtx_buf1_res, vtx_buf2_res);
@@ -854,7 +894,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         }
         acc_struct_data.hwrt.rt_tlas_build_scratch_size = persistent_data.hwrt.rt_tlas_build_scratch_size;
 
-        FgResRef rt_geo_instances_res[int(eTLASIndex::_Count)], rt_obj_instances_res[int(eTLASIndex::_Count)];
+        FgBufHandle rt_geo_instances_res[int(eTLASIndex::_Count)], rt_obj_instances_res[int(eTLASIndex::_Count)];
 
         if (ctx_.capabilities.hwrt) {
             auto &update_rt_bufs = fg_builder_.AddNode("UPDATE ACC BUFS");
@@ -885,10 +925,10 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             rt_obj_instances_res[int(eTLASIndex::Main)] =
                 build_acc_structs.AddASBuildReadonlyInput(rt_obj_instances_res[int(eTLASIndex::Main)]);
-            FgResRef rt_tlas_res =
+            FgBufHandle rt_tlas_res =
                 build_acc_structs.AddASBuildOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Main)]);
 
-            FgResRef rt_tlas_build_scratch_res;
+            FgBufHandle rt_tlas_build_scratch_res;
 
             { // scratch buffer
                 FgBufDesc desc;
@@ -914,8 +954,8 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                     update_rt_bufs.AddTransferOutput("RT Geo Instances", desc);
             }
 
-            update_rt_bufs.make_executor<ExUpdateAccBuffers>(p_list_, int(eTLASIndex::Main),
-                                                             rt_geo_instances_res[int(eTLASIndex::Main)], FgResRef{});
+            update_rt_bufs.make_executor<ExUpdateAccBuffers>(
+                p_list_, int(eTLASIndex::Main), rt_geo_instances_res[int(eTLASIndex::Main)], FgBufHandle{});
 
             auto &build_acc_structs = fg_builder_.AddNode("BUILD ACC STRUCTS");
 
@@ -929,14 +969,14 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                     build_acc_structs.AddTransferOutput("RT Obj Instances", desc);
             }
 
-            FgResRef rt_tlas_res =
+            const FgBufHandle rt_tlas_res =
                 build_acc_structs.AddTransferOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Main)]);
 
             build_acc_structs.make_executor<ExBuildAccStructures>(
                 p_list_, 0, rt_obj_instances_res[int(eTLASIndex::Main)], &acc_struct_data,
                 Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                         persistent_data.swrt.rt_meshes.capacity()},
-                rt_tlas_res, FgResRef{});
+                rt_tlas_res, FgBufHandle{});
         }
 
         if (deferred_shading && list.render_settings.shadows_quality == eShadowsQuality::Raytraced) {
@@ -970,10 +1010,10 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 auto &build_acc_structs = fg_builder_.AddNode("SH ACC STRUCTS");
                 rt_obj_instances_res[int(eTLASIndex::Shadow)] =
                     build_acc_structs.AddASBuildReadonlyInput(rt_obj_instances_res[int(eTLASIndex::Shadow)]);
-                FgResRef rt_sh_tlas_res =
+                const FgBufHandle rt_sh_tlas_res =
                     build_acc_structs.AddASBuildOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Shadow)]);
 
-                FgResRef rt_sh_tlas_build_scratch_res;
+                FgBufHandle rt_sh_tlas_build_scratch_res;
 
                 { // scratch buffer
                     FgBufDesc desc;
@@ -1000,7 +1040,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 }
 
                 update_rt_bufs.make_executor<ExUpdateAccBuffers>(
-                    p_list_, 1, rt_geo_instances_res[int(eTLASIndex::Shadow)], FgResRef{});
+                    p_list_, 1, rt_geo_instances_res[int(eTLASIndex::Shadow)], FgBufHandle{});
 
                 auto &build_acc_structs = fg_builder_.AddNode("BUILD SH ACC STRUCTS");
 
@@ -1014,14 +1054,14 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                         build_acc_structs.AddTransferOutput("RT SH Obj Instances", desc);
                 }
 
-                FgResRef rt_sh_tlas_res =
+                const FgBufHandle rt_sh_tlas_res =
                     build_acc_structs.AddTransferOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Shadow)]);
 
                 build_acc_structs.make_executor<ExBuildAccStructures>(
                     p_list_, int(eTLASIndex::Shadow), rt_obj_instances_res[int(eTLASIndex::Shadow)], &acc_struct_data,
                     Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                             persistent_data.swrt.rt_meshes.capacity()},
-                    rt_sh_tlas_res, FgResRef{});
+                    rt_sh_tlas_res, FgBufHandle{});
             }
         }
 
@@ -1056,11 +1096,10 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 auto &build_acc_structs = fg_builder_.AddNode("VOL ACC STRUCTS");
                 rt_obj_instances_res[int(eTLASIndex::Volume)] =
                     build_acc_structs.AddASBuildReadonlyInput(rt_obj_instances_res[int(eTLASIndex::Volume)]);
-                FgResRef rt_vol_tlas_res =
+                const FgBufHandle rt_vol_tlas_res =
                     build_acc_structs.AddASBuildOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Volume)]);
 
-                FgResRef rt_vol_tlas_build_scratch_res;
-
+                FgBufHandle rt_vol_tlas_build_scratch_res;
                 { // scratch buffer
                     FgBufDesc desc;
                     desc.type = Ren::eBufType::Storage;
@@ -1086,7 +1125,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 }
 
                 update_rt_bufs.make_executor<ExUpdateAccBuffers>(
-                    p_list_, int(eTLASIndex::Volume), rt_geo_instances_res[int(eTLASIndex::Volume)], FgResRef{});
+                    p_list_, int(eTLASIndex::Volume), rt_geo_instances_res[int(eTLASIndex::Volume)], FgBufHandle{});
 
                 auto &build_acc_structs = fg_builder_.AddNode("BUILD VOL ACC STRUCTS");
 
@@ -1100,14 +1139,14 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                         build_acc_structs.AddTransferOutput("RT VOL Obj Instances", desc);
                 }
 
-                FgResRef rt_vol_tlas_res =
+                const FgBufHandle rt_vol_tlas_res =
                     build_acc_structs.AddTransferOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Volume)]);
 
                 build_acc_structs.make_executor<ExBuildAccStructures>(
                     p_list_, int(eTLASIndex::Volume), rt_obj_instances_res[int(eTLASIndex::Volume)], &acc_struct_data,
                     Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                             persistent_data.swrt.rt_meshes.capacity()},
-                    rt_vol_tlas_res, FgResRef{});
+                    rt_vol_tlas_res, FgBufHandle{});
             }
         }
 
@@ -1115,50 +1154,50 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
         { // Shadow depth
             auto &shadow_depth = fg_builder_.AddNode("SHADOW DEPTH");
-            FgResRef vtx_buf1_res = shadow_depth.AddVertexBufferInput(persistent_data.vertex_buf1);
-            FgResRef vtx_buf2_res = shadow_depth.AddVertexBufferInput(persistent_data.vertex_buf2);
-            FgResRef ndx_buf_res = shadow_depth.AddIndexBufferInput(persistent_data.indices_buf);
+            const FgBufHandle vtx_buf1_res = shadow_depth.AddVertexBufferInput(persistent_data.vertex_buf1);
+            const FgBufHandle vtx_buf2_res = shadow_depth.AddVertexBufferInput(persistent_data.vertex_buf2);
+            const FgBufHandle ndx_buf_res = shadow_depth.AddIndexBufferInput(persistent_data.indices_buf);
 
-            FgResRef shared_data_res = shadow_depth.AddUniformBufferInput(
+            const FgBufHandle shared_data_res = shadow_depth.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
-            FgResRef instances_res =
+            const FgBufHandle instances_res =
                 shadow_depth.AddStorageReadonlyInput(persistent_data.instance_buf, Ren::eStage::VertexShader);
-            FgResRef instance_indices_res =
+            const FgBufHandle instance_indices_res =
                 shadow_depth.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
-            FgResRef materials_buf_res =
+            const FgBufHandle materials_buf =
                 shadow_depth.AddStorageReadonlyInput(persistent_data.materials_buf, Ren::eStage::VertexShader);
-            FgResRef noise_tex_res = shadow_depth.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
+            const FgResRef noise_tex_res = shadow_depth.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
 
             frame_textures.shadow_depth = shadow_depth.AddDepthOutput(shadow_depth_tex_);
 
             shadow_depth.make_executor<ExShadowDepth>(SHADOWMAP_WIDTH, SHADOWMAP_HEIGHT, &p_list_, vtx_buf1_res,
-                                                      vtx_buf2_res, ndx_buf_res, materials_buf_res, &bindless_tex,
+                                                      vtx_buf2_res, ndx_buf_res, materials_buf, &bindless_tex,
                                                       instances_res, instance_indices_res, shared_data_res,
                                                       noise_tex_res, frame_textures.shadow_depth);
         }
         { // Shadow color
             auto &shadow_color = fg_builder_.AddNode("SHADOW COLOR");
-            FgResRef vtx_buf1_res = shadow_color.AddVertexBufferInput(persistent_data.vertex_buf1);
-            FgResRef vtx_buf2_res = shadow_color.AddVertexBufferInput(persistent_data.vertex_buf2);
-            FgResRef ndx_buf_res = shadow_color.AddIndexBufferInput(persistent_data.indices_buf);
+            const FgBufHandle vtx_buf1_res = shadow_color.AddVertexBufferInput(persistent_data.vertex_buf1);
+            const FgBufHandle vtx_buf2_res = shadow_color.AddVertexBufferInput(persistent_data.vertex_buf2);
+            const FgBufHandle ndx_buf_res = shadow_color.AddIndexBufferInput(persistent_data.indices_buf);
 
-            FgResRef shared_data_res = shadow_color.AddUniformBufferInput(
+            const FgBufHandle shared_data_res = shadow_color.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
-            FgResRef instances_res =
+            const FgBufHandle instances_res =
                 shadow_color.AddStorageReadonlyInput(persistent_data.instance_buf, Ren::eStage::VertexShader);
-            FgResRef instance_indices_res =
+            const FgBufHandle instance_indices_res =
                 shadow_color.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
-            FgResRef materials_buf_res =
+            const FgBufHandle materials_buf =
                 shadow_color.AddStorageReadonlyInput(persistent_data.materials_buf, Ren::eStage::VertexShader);
-            FgResRef noise_tex_res = shadow_color.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
+            const FgResRef noise_tex_res = shadow_color.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
 
             frame_textures.shadow_depth = shadow_color.AddDepthOutput(shadow_depth_tex_);
             frame_textures.shadow_color = shadow_color.AddColorOutput(shadow_color_tex_);
 
             shadow_color.make_executor<ExShadowColor>(
-                SHADOWMAP_WIDTH, SHADOWMAP_HEIGHT, &p_list_, vtx_buf1_res, vtx_buf2_res, ndx_buf_res, materials_buf_res,
+                SHADOWMAP_WIDTH, SHADOWMAP_HEIGHT, &p_list_, vtx_buf1_res, vtx_buf2_res, ndx_buf_res, materials_buf,
                 &bindless_tex, instances_res, instance_indices_res, shared_data_res, noise_tex_res,
                 frame_textures.shadow_depth, frame_textures.shadow_color);
         }
@@ -1217,20 +1256,20 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         if (!list.render_settings.debug_culling) {
             auto &depth_fill = fg_builder_.AddNode("DEPTH FILL");
 
-            FgResRef vtx_buf1 = depth_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
-            FgResRef vtx_buf2 = depth_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
-            FgResRef ndx_buf = depth_fill.AddIndexBufferInput(persistent_data.indices_buf);
+            const FgBufHandle vtx_buf1 = depth_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
+            const FgBufHandle vtx_buf2 = depth_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
+            const FgBufHandle ndx_buf = depth_fill.AddIndexBufferInput(persistent_data.indices_buf);
 
-            FgResRef shared_data_res = depth_fill.AddUniformBufferInput(
+            const FgBufHandle shared_data_res = depth_fill.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
-            FgResRef instances_res =
+            const FgBufHandle instances_res =
                 depth_fill.AddStorageReadonlyInput(persistent_data.instance_buf, Ren::eStage::VertexShader);
-            FgResRef instance_indices_res =
+            const FgBufHandle instance_indices_res =
                 depth_fill.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
-            FgResRef materials_buf_res =
+            const FgBufHandle materials_buf =
                 depth_fill.AddStorageReadonlyInput(persistent_data.materials_buf, Ren::eStage::VertexShader);
-            FgResRef noise_tex_res = depth_fill.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
+            const FgResRef noise_tex_res = depth_fill.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
 
             frame_textures.depth = depth_fill.AddDepthOutput(MAIN_DEPTH_TEX, frame_textures.depth_desc);
 
@@ -1245,7 +1284,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             }
 
             depth_fill.make_executor<ExDepthFill>(&p_list_, &view_state_, deferred_shading /* clear_depth */, vtx_buf1,
-                                                  vtx_buf2, ndx_buf, materials_buf_res, &bindless_tex, instances_res,
+                                                  vtx_buf2, ndx_buf, materials_buf, &bindless_tex, instances_res,
                                                   instance_indices_res, shared_data_res, noise_tex_res,
                                                   frame_textures.depth, frame_textures.velocity);
         }
@@ -1264,7 +1303,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             auto &depth_hierarchy = fg_builder_.AddNode("DEPTH HIERARCHY");
             const FgResRef depth_tex =
                 depth_hierarchy.AddTextureInput(frame_textures.depth, Ren::eStage::ComputeShader);
-            const FgResRef atomic_buf =
+            const FgBufHandle atomic_buf =
                 depth_hierarchy.AddStorageOutput(common_buffers.atomic_cnt, Ren::eStage::ComputeShader);
 
             { // 32-bit float depth hierarchy
@@ -1287,7 +1326,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                     depth_hierarchy.AddStorageImageOutput("Depth Hierarchy", desc, Ren::eStage::ComputeShader);
             }
 
-            depth_hierarchy.make_executor<ExDepthHierarchy>(fg_builder_, &view_state_, depth_tex, atomic_buf,
+            depth_hierarchy.make_executor<ExDepthHierarchy>(sh_, &view_state_, depth_tex, atomic_buf,
                                                             depth_hierarchy_tex);
         }
 
@@ -1407,7 +1446,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             frame_textures.depth = data->depth_tex = debug_probes.AddDepthOutput(frame_textures.depth);
             frame_textures.color = data->output_tex = debug_probes.AddColorOutput(frame_textures.color);
 
-            debug_probes.make_executor<ExDebugProbes>(prim_draw_, fg_builder_, list, &view_state_, data);
+            debug_probes.make_executor<ExDebugProbes>(prim_draw_, sh_, list, &view_state_, data);
         }
 
         if (list.render_settings.debug_oit_layer != -1) {
@@ -1420,7 +1459,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             frame_textures.color = data->output_tex =
                 debug_oit.AddStorageImageOutput(frame_textures.color, Ren::eStage::ComputeShader);
 
-            debug_oit.make_executor<ExDebugOIT>(fg_builder_, &view_state_, data);
+            debug_oit.make_executor<ExDebugOIT>(sh_, &view_state_, data);
         }
 
         if (list.render_settings.debug_rt != eDebugRT::Off && (ctx_.capabilities.hwrt || ctx_.capabilities.swrt)) {
@@ -1465,7 +1504,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             frame_textures.color = data->output_tex = debug_rt.AddStorageImageOutput(frame_textures.color, stage);
 
-            debug_rt.make_executor<ExDebugRT>(fg_builder_, &view_state_, &bindless_tex, data);
+            debug_rt.make_executor<ExDebugRT>(sh_, &view_state_, &bindless_tex, data);
         }
 
         FgResRef resolved_color;
@@ -1740,31 +1779,41 @@ void Eng::Renderer::SetTonemapLUT(const int res, const Ren::eFormat format, Ren:
         tonemap_lut_ = ctx_.LoadImage("Tonemap LUT", params, ctx_.default_mem_allocs(), &status);
     }
 
-    Ren::CommandBuffer cmd_buf = ctx_.BegTempSingleTimeCommands();
-
     const uint32_t data_len = res * res * res * sizeof(uint32_t);
-    Ren::Buffer temp_upload_buf{"Temp tonemap LUT upload", ctx_.api_ctx(), Ren::eBufType::Upload, data_len};
+
+    Ren::BufferMain temp_upload_buf_main = {};
+    Ren::BufferCold temp_upload_buf_cold = {};
+    if (!Buffer_Init(ctx_.api(), temp_upload_buf_main, temp_upload_buf_cold, Ren::String{"Temp tonemap LUT upload"},
+                     Ren::eBufType::Upload, data_len, ctx_.log())) {
+        ctx_.log()->Error("Failed to initialize upload buffer for tonemap LUT");
+        return;
+    }
+
     { // update stage buffer
-        uint32_t *mapped_ptr = reinterpret_cast<uint32_t *>(temp_upload_buf.Map());
+        uint32_t *mapped_ptr =
+            reinterpret_cast<uint32_t *>(Buffer_Map(ctx_.api(), temp_upload_buf_main, temp_upload_buf_cold));
         memcpy(mapped_ptr, data.data(), data_len);
-        temp_upload_buf.Unmap();
+        Buffer_Unmap(ctx_.api(), temp_upload_buf_main, temp_upload_buf_cold);
     }
 
     { // update texture
-        const Ren::TransitionInfo res_transitions1[] = {{&temp_upload_buf, Ren::eResState::CopySrc},
-                                                        {tonemap_lut_.get(), Ren::eResState::CopyDst}};
-        TransitionResourceStates(ctx_.api_ctx(), cmd_buf, Ren::AllStages, Ren::AllStages, res_transitions1);
+        Ren::CommandBuffer cmd_buf = ctx_.BegTempSingleTimeCommands();
 
-        tonemap_lut_->SetSubImage(0, 0, 0, res, res, res, Ren::eFormat::RGB10_A2, temp_upload_buf, cmd_buf, 0,
+        const Ren::TransitionInfo res_transitions1[] = {{tonemap_lut_.get(), Ren::eResState::CopyDst}};
+        TransitionResourceStates(ctx_.api(), ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages,
+                                 res_transitions1);
+
+        tonemap_lut_->SetSubImage(0, 0, 0, res, res, res, Ren::eFormat::RGB10_A2, temp_upload_buf_main, cmd_buf, 0,
                                   data_len);
 
         const Ren::TransitionInfo res_transitions2[] = {{tonemap_lut_.get(), Ren::eResState::ShaderResource}};
-        TransitionResourceStates(ctx_.api_ctx(), cmd_buf, Ren::AllStages, Ren::AllStages, res_transitions2);
+        TransitionResourceStates(ctx_.api(), ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages,
+                                 res_transitions2);
 
         ctx_.EndTempSingleTimeCommands(cmd_buf);
     }
 
-    temp_upload_buf.FreeImmediate();
+    Buffer_DestroyImmediately(ctx_.api(), temp_upload_buf_main, temp_upload_buf_cold);
 }
 
 void Eng::Renderer::UpdatePixelFilterTable(const ePixelFilter filter, float filter_width) {
@@ -1825,19 +1874,24 @@ void Eng::Renderer::InitBackendInfo() {
 
     if (settings.debug_frame == eDebugFrame::Full) {
         const auto &fg_buffers = fg_builder_.buffers();
-        Ren::SmallVector<int, 256> indices(fg_buffers.capacity(), -1);
+        Ren::SmallVector<int, 256> indices(fg_buffers.Capacity(), -1);
         uint32_t heap_size = 0; // dummy for the case when memory heaps are not available
-        for (auto it = fg_buffers.cbegin(); it != fg_buffers.cend(); ++it) {
-            if (it->external || !it->strong_ref || it->alias_of != -1 || !it->lifetime.is_used() ||
-                it->strong_ref->type() == Ren::eBufType::Upload || it->strong_ref->type() == Ren::eBufType::Readback) {
+        const auto &all_buffers = fg_buffers.items_by_name();
+        for (auto it = std::cbegin(all_buffers); it != std::cend(all_buffers); ++it) {
+            const auto &[fgbuf_main, fgbuf_cold] = fg_buffers.Get(it->val);
+            if (fgbuf_cold.external || !fgbuf_main.handle || fgbuf_cold.alias_of != -1 ||
+                !fgbuf_cold.lifetime.is_used() || fgbuf_cold.desc.type == Ren::eBufType::Upload ||
+                fgbuf_cold.desc.type == Ren::eBufType::Readback) {
                 continue;
             }
 
             resource_info_t &info = backend_info_.resources_info.emplace_back();
-            info.name = "[Buf] " + it->name;
-            fg_builder_.GetResourceFrameLifetime(*it, info.lifetime);
+            info.name = "[Buf] " + fgbuf_cold.name;
+            fg_builder_.GetResourceFrameLifetime(fgbuf_cold, info.lifetime);
 
-            const Ren::MemAllocation &alloc = it->strong_ref->mem_alloc();
+            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+
+            const Ren::MemAllocation &alloc = buf_cold.alloc;
             if (alloc.pool != 0xffff && alloc.owner == nullptr) {
                 info.heap = alloc.pool;
                 info.offset = alloc.offset;
@@ -1845,31 +1899,35 @@ void Eng::Renderer::InitBackendInfo() {
             } else {
                 info.heap = 0;
                 info.offset = heap_size;
-                info.size = it->desc.size;
-                heap_size += it->desc.size;
+                info.size = buf_cold.size;
+                heap_size += buf_cold.size;
             }
 
-            indices[it.index()] = int(backend_info_.resources_info.size() - 1);
+            indices[it->val.index] = int(backend_info_.resources_info.size() - 1);
         }
-        for (auto it = fg_buffers.cbegin(); it != fg_buffers.cend(); ++it) {
-            if (it->external || !it->strong_ref || it->alias_of == -1 || !it->lifetime.is_used() ||
-                it->strong_ref->type() == Ren::eBufType::Upload || it->strong_ref->type() == Ren::eBufType::Readback) {
+        for (auto it = std::cbegin(all_buffers); it != std::cend(all_buffers); ++it) {
+            const auto &[fgbuf_main, fgbuf_cold] = fg_buffers.Get(it->val);
+            if (fgbuf_cold.external || !fgbuf_main.handle || fgbuf_cold.alias_of == -1 ||
+                !fgbuf_cold.lifetime.is_used() || fgbuf_cold.desc.type == Ren::eBufType::Upload ||
+                fgbuf_cold.desc.type == Ren::eBufType::Readback) {
                 continue;
             }
 
             resource_info_t &info = backend_info_.resources_info.emplace_back();
-            info.name = "[Buf] " + it->name;
-            fg_builder_.GetResourceFrameLifetime(*it, info.lifetime);
+            info.name = "[Buf] " + fgbuf_cold.name;
+            fg_builder_.GetResourceFrameLifetime(fgbuf_cold, info.lifetime);
 
-            const Ren::MemAllocation &alloc = it->strong_ref->mem_alloc();
+            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
+
+            const Ren::MemAllocation &alloc = buf_cold.alloc;
             if (alloc.pool != 0xffff && alloc.owner == nullptr) {
                 info.heap = alloc.pool;
                 info.offset = alloc.offset;
                 info.size = alloc.block;
             } else {
                 info.heap = 0;
-                info.offset = backend_info_.resources_info[indices[it->alias_of]].offset;
-                info.size = it->desc.size;
+                info.offset = backend_info_.resources_info[indices[fgbuf_cold.alias_of]].offset;
+                info.size = buf_cold.size;
             }
         }
 
@@ -1933,10 +1991,9 @@ void Eng::Renderer::InitBackendInfo() {
     }
 }
 
-void Eng::Renderer::InitPipelinesForProgram(const Ren::ProgramRef &prog, const Ren::Bitmask<Ren::eMatFlags> mat_flags,
-                                            Ren::PipelineStorage &storage,
-                                            Ren::SmallVectorImpl<Ren::PipelineRef> &out_pipelines) const {
-    for (int i = 0; i < int(eFwdPipeline::_Count); ++i) {
+void Eng::Renderer::InitPipelinesForProgram(const Ren::ProgramHandle prog, const Ren::Bitmask<Ren::eMatFlags> mat_flags,
+                                            Ren::SmallVectorImpl<Ren::PipelineHandle> &out_pipelines) const {
+    /*for (int i = 0; i < int(eFwdPipeline::_Count); ++i) {
         Ren::RastState rast_state = rast_states_[i];
 
         if (mat_flags & Ren::eMatFlags::TwoSided) {
@@ -1965,14 +2022,14 @@ void Eng::Renderer::InitPipelinesForProgram(const Ren::ProgramRef &prog, const R
             Ren::Pipeline &new_pipeline = storage.at(new_index);
 
             const bool res =
-                new_pipeline.Init(ctx_.api_ctx(), rast_state, prog, draw_pass_vi_, rp_main_draw_, 0, ctx_.log());
+                new_pipeline.Init(ctx_.api(), rast_state, prog, draw_pass_vi_, rp_main_draw_, 0, ctx_.log());
             if (!res) {
                 ctx_.log()->Error("Failed to initialize pipeline!");
             }
         }
 
         out_pipelines.emplace_back(&storage, new_index);
-    }
+    }*/
 }
 
 void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const int h, const int stride,
@@ -2008,8 +2065,11 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
 
     assert(format == Ren::eFormat::RGBA32F);
 
-    Ren::BufRef temp_upload_buf = ctx_.LoadBuffer("Image upload buf", Ren::eBufType::Upload, 4 * w * h * sizeof(float));
-    uint8_t *stage_data = temp_upload_buf->Map();
+    const Ren::BufferHandle temp_upload_buf =
+        ctx_.FindOrCreateBuffer("Image upload buf", Ren::eBufType::Upload, 4 * w * h * sizeof(float));
+
+    const auto &[temp_upload_buf_main, temp_upload_buf_cold] = ctx_.buffers().Get(temp_upload_buf);
+    uint8_t *stage_data = Buffer_Map(ctx_.api(), temp_upload_buf_main, temp_upload_buf_cold);
     for (int y = 0; y < h; ++y) {
 #if defined(REN_GL_BACKEND)
         memcpy(&stage_data[(h - y - 1) * 4 * w * sizeof(float)], &px_data[y * 4 * stride * sizeof(float)],
@@ -2018,7 +2078,9 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
         memcpy(&stage_data[y * 4 * w * sizeof(float)], &px_data[y * 4 * stride * sizeof(float)], 4 * w * sizeof(float));
 #endif
     }
-    temp_upload_buf->Unmap();
+    Buffer_Unmap(ctx_.api(), temp_upload_buf_main, temp_upload_buf_cold);
+
+    SCOPE_EXIT({ ctx_.ReleaseBuffer(temp_upload_buf); })
 
     if (rebuild_renderpasses) {
         const uint64_t rp_setup_beg_us = Sys::GetTimeUs();
@@ -2030,7 +2092,7 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
         { // Upload image data
             auto &update_image = fg_builder_.AddNode("UPDATE IMAGE");
 
-            FgResRef stage_buf_res = update_image.AddTransferInput(temp_upload_buf);
+            FgBufHandle stage_buf_res = update_image.AddTransferInput(temp_upload_buf);
 
             { // output image
                 FgImgDesc desc;
@@ -2042,15 +2104,16 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
                 output_tex_res = update_image.AddTransferImageOutput("Temp Image", desc);
             }
 
-            update_image.set_execute_cb([stage_buf_res, output_tex_res](FgContext &fg) {
-                const Ren::Buffer &stage_buf = fg.AccessROBuffer(stage_buf_res);
-                Ren::Image &output_image = fg.AccessRWImage(output_tex_res);
+            update_image.set_execute_cb([stage_buf_res, output_tex_res](const FgContext &fg) {
+                const Ren::BufferHandle stage_buf = fg.AccessROBuffer(stage_buf_res);
+                const Ren::Image &output_image = fg.AccessRWImage(output_tex_res);
 
                 const int w = output_image.params.w;
                 const int h = output_image.params.h;
 
-                output_image.SetSubImage(0, 0, w, h, Ren::eFormat::RGBA32F, stage_buf, fg.cmd_buf(), 0,
-                                         stage_buf.size());
+                const auto &[stage_buf_main, stage_buf_cold] = fg.storages().buffers.Get(stage_buf);
+                output_image.SetSubImage(0, 0, w, h, Ren::eFormat::RGBA32F, stage_buf_main, fg.cmd_buf(), 0,
+                                         stage_buf_cold.size);
             });
         }
 

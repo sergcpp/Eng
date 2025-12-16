@@ -1,26 +1,29 @@
 #include "Pipeline.h"
 
-Ren::Pipeline::~Pipeline() = default;
+bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+                        const DualStorage<ProgramMain, ProgramCold> &programs,
+                        NamedDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
+                        PipelineCold &pipeline_cold, const ProgramHandle prog, ILog *log, const int) {
+    pipeline_main.prog = prog;
+    pipeline_cold.type = ePipelineType::Compute;
 
-Ren::Pipeline &Ren::Pipeline::operator=(Pipeline &&rhs) noexcept = default;
-
-void Ren::Pipeline::Destroy() {}
-
-bool Ren::Pipeline::Init(ApiContext *api_ctx, const RastState &rast_state, ProgramRef prog, VertexInputRef vtx_input,
-                         RenderPassRef render_pass, const uint32_t, ILog *log) {
-    type_ = ePipelineType::Graphics;
-    rast_state_ = rast_state;
-    render_pass_ = std::move(render_pass);
-    prog_ = std::move(prog);
-    vtx_input_ = std::move(vtx_input);
     return true;
 }
 
-bool Ren::Pipeline::Init(ApiContext *api_ctx, ProgramRef prog, ILog *log, const int) {
-    Destroy();
-
-    type_ = ePipelineType::Compute;
-    prog_ = std::move(prog);
+bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, PipelineMain &pipeline_main,
+                        PipelineCold &pipeline_cold, const RastState &rast_state, const ProgramHandle prog,
+                        const VertexInputHandle vtx_input, const RenderPassHandle render_pass,
+                        const uint32_t subpass_index, ILog *log) {
+    pipeline_main.rast_state = rast_state;
+    pipeline_main.render_pass = render_pass;
+    pipeline_main.prog = prog;
+    pipeline_main.vtx_input = vtx_input;
+    pipeline_cold.type = ePipelineType::Graphics;
 
     return true;
+}
+
+void Ren::Pipeline_Destroy(const ApiContext &api, PipelineMain &pipeline_main, PipelineCold &pipeline_cold) {
+    pipeline_main = {};
+    pipeline_cold = {};
 }

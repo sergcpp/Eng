@@ -6,7 +6,7 @@
 #include "../../utils/ShaderLoader.h"
 #include "../shaders/sample_lights_interface.h"
 
-void Eng::ExSampleLights::Execute(FgContext &fg) {
+void Eng::ExSampleLights::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
     if (fg.ren_ctx().capabilities.hwrt) {
         Execute_HWRT(fg);
@@ -32,34 +32,34 @@ void Eng::ExSampleLights::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     }
 }
 
-void Eng::ExSampleLights::Execute_SWRT(FgContext &fg) {
-    const Ren::Buffer &unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Buffer &random_seq_buf = fg.AccessROBuffer(args_->random_seq);
+void Eng::ExSampleLights::Execute_SWRT(const FgContext &fg) {
+    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferHandle random_seq_buf = fg.AccessROBuffer(args_->random_seq);
 
-    const Ren::Buffer &geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::Buffer &vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::Buffer &ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::Buffer &rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
+    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
 
-    const Ren::Buffer &rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::Buffer &prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::Buffer &mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
+    const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
 
     const Ren::Image &albedo_tex = fg.AccessROImage(args_->albedo_tex);
     const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
     const Ren::Image &norm_tex = fg.AccessROImage(args_->norm_tex);
     const Ren::Image &spec_tex = fg.AccessROImage(args_->spec_tex);
 
-    Ren::Image &out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
-    Ren::Image &out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
+    const Ren::Image &out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
+    const Ren::Image &out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
 
     if (!args_->lights_buf) {
         return;
     }
 
-    const Ren::Buffer &lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::Buffer &nodes_buf = fg.AccessROBuffer(args_->nodes_buf);
+    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::BufferHandle nodes_buf = fg.AccessROBuffer(args_->nodes_buf);
 
     const Ren::Binding bindings[] = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
@@ -86,15 +86,18 @@ void Eng::ExSampleLights::Execute_SWRT(FgContext &fg) {
         Ren::Vec3u{(view_state_->ren_res[0] + SampleLights::GRP_SIZE_X - 1u) / SampleLights::GRP_SIZE_X,
                    (view_state_->ren_res[1] + SampleLights::GRP_SIZE_Y - 1u) / SampleLights::GRP_SIZE_Y, 1u};
 
+    // TODO: Avoid accessing cold data
+    const Ren::BufferCold &lights_buf_cold = fg.storages().buffers.Get(lights_buf).second;
+
     SampleLights::Params uniform_params;
     uniform_params.img_size = Ren::Vec2u{view_state_->ren_res};
-    uniform_params.lights_count = uint32_t(lights_buf.size() / sizeof(light_item_t));
+    uniform_params.lights_count = uint32_t(lights_buf_cold.size / sizeof(light_item_t));
     uniform_params.frame_index = view_state_->frame_index;
 
-    DispatchCompute(*pi_sample_lights_, grp_count, bindings, &uniform_params, sizeof(uniform_params), fg.descr_alloc(),
-                    fg.log());
+    DispatchCompute(fg.cmd_buf(), pi_sample_lights_, fg.storages(), grp_count, bindings, &uniform_params,
+                    sizeof(uniform_params), fg.descr_alloc(), fg.log());
 }
 
 #if defined(REN_GL_BACKEND)
-void Eng::ExSampleLights::Execute_HWRT(FgContext &fg) { assert(false && "Not implemented!"); }
+void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) { assert(false && "Not implemented!"); }
 #endif

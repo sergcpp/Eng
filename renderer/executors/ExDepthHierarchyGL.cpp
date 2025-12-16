@@ -3,17 +3,21 @@
 #include <Ren/Context.h>
 #include <Ren/GL.h>
 #include <Ren/Program.h>
+#include <Sys/ScopeExit.h>
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
 
 #include "../shaders/depth_hierarchy_interface.h"
 
-void Eng::ExDepthHierarchy::Execute(FgContext &fg) {
+void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
     const Ren::Image &depth_tex = fg.AccessROImage(depth_tex_);
-    Ren::Image &output_tex = fg.AccessRWImage(output_tex_);
+    const Ren::Image &output_tex = fg.AccessRWImage(output_tex_);
 
-    glUseProgram(pi_depth_hierarchy_->prog()->id());
+    const Ren::PipelineMain &pi = fg.pipelines().Get(pi_depth_hierarchy_).first;
+    const Ren::ProgramMain &pr = fg.programs().Get(pi.prog).first;
+
+    glUseProgram(pr.id);
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, DepthHierarchy::DEPTH_TEX_SLOT, depth_tex.id());
 
     int i = 0;
@@ -27,21 +31,37 @@ void Eng::ExDepthHierarchy::Execute(FgContext &fg) {
     const int grp_x = (output_tex.params.w + DepthHierarchy::GRP_SIZE_X - 1) / DepthHierarchy::GRP_SIZE_X;
     const int grp_y = (output_tex.params.h + DepthHierarchy::GRP_SIZE_Y - 1) / DepthHierarchy::GRP_SIZE_Y;
 
-    Ren::Buffer temp_unif_buffer =
-        Ren::Buffer("Temp uniform buf", nullptr, Ren::eBufType::Uniform, sizeof(DepthHierarchy::Params));
-    Ren::Buffer temp_stage_buffer =
-        Ren::Buffer("Temp upload buf", nullptr, Ren::eBufType::Upload, sizeof(DepthHierarchy::Params));
-    {
-        DepthHierarchy::Params *stage_data = reinterpret_cast<DepthHierarchy::Params *>(temp_stage_buffer.Map());
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+
+    Ren::BufferMain temp_unif_buffer_main = {};
+    Ren::BufferCold temp_unif_buffer_cold = {};
+    if (!Buffer_Init(api, temp_unif_buffer_main, temp_unif_buffer_cold, Ren::String{"Temp uniform buf"},
+                     Ren::eBufType::Uniform, sizeof(DepthHierarchy::Params), fg.log())) {
+        fg.log()->Error("Failed to initialize temp uniform buffer");
+        return;
+    }
+    SCOPE_EXIT({ Buffer_Destroy(api, temp_unif_buffer_main, temp_unif_buffer_cold); })
+
+    Ren::BufferMain temp_stage_buffer_main = {};
+    Ren::BufferCold temp_stage_buffer_cold = {};
+    if (!Buffer_Init(api, temp_stage_buffer_main, temp_stage_buffer_cold, Ren::String{"Temp upload buf"},
+                     Ren::eBufType::Upload, sizeof(DepthHierarchy::Params), fg.log())) {
+        fg.log()->Error("Failed to initialize temp upload buffer");
+        return;
+    }
+    SCOPE_EXIT({ Buffer_Destroy(api, temp_stage_buffer_main, temp_stage_buffer_cold); }) {
+        DepthHierarchy::Params *stage_data =
+            reinterpret_cast<DepthHierarchy::Params *>(Buffer_Map(api, temp_stage_buffer_main, temp_stage_buffer_cold));
         stage_data->depth_size =
             Ren::Vec4i{view_state_->ren_res[0], view_state_->ren_res[1], output_tex.params.mip_count, grp_x * grp_y};
         stage_data->clip_info = view_state_->clip_info;
 
-        temp_stage_buffer.Unmap();
+        Buffer_Unmap(api, temp_stage_buffer_main, temp_stage_buffer_cold);
     }
-    CopyBufferToBuffer(temp_stage_buffer, 0, temp_unif_buffer, 0, sizeof(DepthHierarchy::Params), nullptr);
+    CopyBufferToBuffer(api, temp_stage_buffer_main, 0, temp_unif_buffer_main, 0, sizeof(DepthHierarchy::Params),
+                       nullptr);
 
-    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_PUSH_CONSTANT_BUF, temp_unif_buffer.id());
+    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_PUSH_CONSTANT_BUF, temp_unif_buffer_main.buf);
 
     glDispatchCompute(grp_x, grp_y, 1);
 }

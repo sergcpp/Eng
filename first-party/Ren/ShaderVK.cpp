@@ -29,85 +29,44 @@ static_assert(int(eShaderType::ClosestHit) < int(eShaderType::AnyHit));
 static_assert(int(eShaderType::AnyHit) < int(eShaderType::Intersection));
 } // namespace Ren
 
-Ren::Shader::Shader(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> shader_code, const eShaderType type,
-                    ILog *log) {
-    name_ = String{name};
-    api_ctx_ = api_ctx;
-    Init(shader_code, type, log);
-}
-
-Ren::Shader::~Shader() {
-    if (module_) {
-        api_ctx_->vkDestroyShaderModule(api_ctx_->device, module_, nullptr);
-    }
-}
-
-Ren::Shader &Ren::Shader::operator=(Shader &&rhs) noexcept {
-    RefCounter::operator=(static_cast<RefCounter &&>(rhs));
-
-    if (module_) {
-        api_ctx_->vkDestroyShaderModule(api_ctx_->device, module_, nullptr);
-    }
-
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
-    module_ = std::exchange(rhs.module_, VkShaderModule(VK_NULL_HANDLE));
-    type_ = rhs.type_;
-    name_ = std::move(rhs.name_);
-
-    attr_bindings = std::move(rhs.attr_bindings);
-    unif_bindings = std::move(rhs.unif_bindings);
-    pc_ranges = std::move(rhs.pc_ranges);
-
-    return (*this);
-}
-
-void Ren::Shader::Init(Span<const uint8_t> shader_code, const eShaderType type, ILog *log) {
-    InitFromSPIRV(shader_code, type, log);
-#ifdef ENABLE_GPU_DEBUG
-    if (module_ != VkShaderModule{}) {
-        VkDebugUtilsObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
-        name_info.objectType = VK_OBJECT_TYPE_SHADER_MODULE;
-        name_info.objectHandle = uint64_t(module_);
-        name_info.pObjectName = name_.c_str();
-        api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
-    }
-#endif
-}
-
-void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_code, const eShaderType type, ILog *log) {
+bool Ren::Shader_Init(const ApiContext &api, ShaderMain &shader_main, ShaderCold &shader_cold,
+                      Span<const uint8_t> shader_code, const String &name, const eShaderType type, ILog *log) {
     if (shader_code.empty()) {
-        return;
+        return false;
     }
 
-    type_ = type;
+    assert(shader_main.vk_module == VK_NULL_HANDLE);
+
+    shader_cold.name = name;
+    shader_cold.type = type;
 
     { // init module
         VkShaderModuleCreateInfo create_info = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
         create_info.codeSize = shader_code.size();
         create_info.pCode = reinterpret_cast<const uint32_t *>(shader_code.data());
 
-        const VkResult res = api_ctx_->vkCreateShaderModule(api_ctx_->device, &create_info, nullptr, &module_);
+        const VkResult res = api.vkCreateShaderModule(api.device, &create_info, nullptr, &shader_main.vk_module);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create shader module!");
-            return;
+            return false;
         }
     }
 
-    SpvReflectShaderModule module = {};
-    const SpvReflectResult res = spvReflectCreateShaderModule(shader_code.size(), shader_code.data(), &module);
+    SpvReflectShaderModule spv_module = {};
+    const SpvReflectResult res = spvReflectCreateShaderModule(shader_code.size(), shader_code.data(), &spv_module);
     if (res != SPV_REFLECT_RESULT_SUCCESS) {
         log->Error("Failed to reflect shader module!");
-        return;
+        return false;
     }
 
-    attr_bindings.clear();
-    unif_bindings.clear();
-    pc_ranges.clear();
+    assert(shader_cold.attr_bindings.empty());
+    assert(shader_cold.unif_bindings.empty());
+    assert(shader_cold.pc_ranges.empty());
 
-    for (uint32_t i = 0; i < module.input_variable_count; i++) {
-        const auto *var = module.input_variables[i];
+    for (uint32_t i = 0; i < spv_module.input_variable_count; i++) {
+        const auto *var = spv_module.input_variables[i];
         if (var->built_in == SpvBuiltIn(-1)) {
-            Descr &new_item = attr_bindings.emplace_back();
+            Descr &new_item = shader_cold.attr_bindings.emplace_back();
             if (var->name) {
                 new_item.name = String{var->name};
             }
@@ -116,9 +75,9 @@ void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_code, const eShaderTy
         }
     }
 
-    for (uint32_t i = 0; i < module.descriptor_binding_count; i++) {
-        const auto &desc = module.descriptor_bindings[i];
-        Descr &new_item = unif_bindings.emplace_back();
+    for (uint32_t i = 0; i < spv_module.descriptor_binding_count; i++) {
+        const auto &desc = spv_module.descriptor_bindings[i];
+        Descr &new_item = shader_cold.unif_bindings.emplace_back();
         if (desc.name) {
             new_item.name = String{desc.name};
         }
@@ -135,17 +94,28 @@ void Ren::Shader::InitFromSPIRV(Span<const uint8_t> shader_code, const eShaderTy
         }
     }
 
-    std::sort(std::begin(unif_bindings), std::end(unif_bindings), [](const Descr &lhs, const Descr &rhs) {
-        if (lhs.set == rhs.set) {
-            return (lhs.loc < rhs.loc);
-        }
-        return (lhs.set < rhs.set);
-    });
+    std::sort(std::begin(shader_cold.unif_bindings), std::end(shader_cold.unif_bindings),
+              [](const Descr &lhs, const Descr &rhs) {
+                  if (lhs.set == rhs.set) {
+                      return (lhs.loc < rhs.loc);
+                  }
+                  return (lhs.set < rhs.set);
+              });
 
-    for (uint32_t i = 0; i < module.push_constant_block_count; ++i) {
-        const auto &blck = module.push_constant_blocks[i];
-        pc_ranges.push_back({uint16_t(blck.offset), uint16_t(blck.size)});
+    for (uint32_t i = 0; i < spv_module.push_constant_block_count; ++i) {
+        const auto &blck = spv_module.push_constant_blocks[i];
+        shader_cold.pc_ranges.push_back({uint16_t(blck.offset), uint16_t(blck.size)});
     }
 
-    spvReflectDestroyShaderModule(&module);
+    spvReflectDestroyShaderModule(&spv_module);
+
+    return true;
+}
+
+void Ren::Shader_Destroy(const ApiContext &api, ShaderMain &shader_main, ShaderCold &shader_cold) {
+    if (shader_main.vk_module) {
+        api.vkDestroyShaderModule(api.device, shader_main.vk_module, nullptr);
+    }
+    shader_main = {};
+    shader_cold = {};
 }

@@ -458,3 +458,260 @@ template <typename T, typename StorageType> class WeakRef {
 };
 
 } // namespace Ren
+
+////
+
+namespace Ren {
+template <typename T> struct Handle {
+    uint32_t index = 0xffffffff;
+    uint32_t generation = 0;
+
+    Handle() = default;
+    Handle(const uint32_t _index, const uint32_t _generation) : index(_index), generation(_generation) {}
+    explicit Handle(const uint64_t _opaque)
+        : index(uint32_t(_opaque >> 32)), generation(uint32_t(_opaque & 0xffffffff)) {}
+
+    explicit operator bool() const { return index != 0xffffffff; }
+    explicit operator uint64_t() const { return (uint64_t(index) << 32) | generation; }
+
+    bool operator==(const Handle &rhs) const { return index == rhs.index && generation == rhs.generation; }
+    bool operator!=(const Handle &rhs) const { return index != rhs.index || generation != rhs.generation; }
+    bool operator<(const Handle &rhs) const {
+        if (index < rhs.index) {
+            return true;
+        } else if (index == rhs.index) {
+            return generation < rhs.generation;
+        }
+        return false;
+    }
+};
+
+static const uint64_t InvalidHandle = 0xffffffff00000000u;
+
+// TODO: Optimize the storage (copy SparseArray)
+template <typename T, typename U> class DualStorage {
+  protected:
+    std::vector<T> data_main_;
+    std::vector<U> data_cold_;
+    std::vector<uint32_t> generation_;
+
+    std::vector<uint32_t> free_indices_;
+
+    static_assert(std::is_default_constructible_v<T> && std::is_default_constructible_v<U>,
+                  "DualStorage<T, U> requires T, U to be default constructible");
+
+  public:
+    DualStorage() = default;
+    DualStorage(DualStorage &rhs) = delete;
+
+    DualStorage &operator=(DualStorage &rhs) = delete;
+
+    const T *data_main() const { return data_main_.data(); }
+    const U *data_cold() const { return data_cold_.data(); }
+
+    ~DualStorage() {
+        assert(free_indices_.size() == data_main_.size());
+        assert(free_indices_.size() == data_cold_.size());
+        assert(generation_.size() == data_cold_.size());
+    }
+
+    void reserve(const size_t size) {
+        data_main_.reserve(size);
+        data_cold_.reserve(size);
+        generation_.reserve(size);
+    }
+
+    Handle<T> Emplace() {
+        if (free_indices_.empty()) {
+            const uint32_t index = uint32_t(generation_.size());
+            data_main_.emplace_back();
+            data_cold_.emplace_back();
+            generation_.push_back(0);
+            return Handle<T>{index, 0};
+        }
+
+        const uint32_t index = free_indices_.back();
+        free_indices_.pop_back();
+
+        return Handle<T>{index, generation_[index]};
+    }
+
+    void Free(const Handle<T> handle) {
+        assert(handle.generation == generation_[handle.index]);
+        data_main_[handle.index] = {};
+        data_cold_[handle.index] = {};
+        ++generation_[handle.index];
+        free_indices_.push_back(handle.index);
+    }
+
+    std::pair<const T &, const U &> Get(const Handle<T> handle) const {
+        assert(handle.generation == generation_[handle.index]);
+        return {data_main_[handle.index], data_cold_[handle.index]};
+    }
+
+    std::pair<T &, U &> Get(const Handle<T> handle) {
+        assert(handle.generation == generation_[handle.index]);
+        return {data_main_[handle.index], data_cold_[handle.index]};
+    }
+
+    std::pair<const T &, const U &> Get(const uint64_t opaque_handle) const {
+        const Handle<T> handle{opaque_handle};
+        assert(handle.generation == generation_[handle.index]);
+        return {data_main_[handle.index], data_cold_[handle.index]};
+    }
+
+    std::pair<T &, U &> Get(const uint64_t opaque_handle) {
+        const Handle<T> handle{opaque_handle};
+        assert(handle.generation == generation_[handle.index]);
+        return {data_main_[handle.index], data_cold_[handle.index]};
+    }
+
+    std::pair<const T &, const U &> GetUnsafe(const uint32_t index) const {
+        return {data_main_[index], data_cold_[index]};
+    }
+
+    std::pair<T &, U &> GetUnsafe(const uint32_t index) { return {data_main_[index], data_cold_[index]}; }
+
+    std::pair<T *, U *> TryGet(const Handle<T> handle) {
+        if (handle.generation == generation_[handle.index]) {
+            return {&data_main_[handle.index], &data_cold_[handle.index]};
+        }
+        return {nullptr, nullptr};
+    }
+
+    uint32_t Size() const { return uint32_t(generation_.size() - free_indices_.size()); }
+    uint32_t Capacity() const { return uint32_t(generation_.capacity()); }
+    bool Empty() const { return free_indices_.size() == generation_.size(); }
+};
+
+template <typename T, typename U> class NamedDualStorage : public DualStorage<T, U> {
+  protected:
+    HashMap32<String, Handle<T>> items_by_name_;
+
+  public:
+    const HashMap32<String, Handle<T>> &items_by_name() const { return items_by_name_; }
+    HashMap32<String, Handle<T>> &items_by_name() { return items_by_name_; }
+
+    Handle<T> Emplace(const String &name) {
+        const Handle<T> ret = DualStorage<T, U>::Emplace();
+        items_by_name_.Set(name, ret);
+        return ret;
+    }
+
+    Handle<T> Find(const std::string_view name) {
+        Handle<T> *p_handle = items_by_name_.Find(name);
+        if (p_handle) {
+            return *p_handle;
+        } else {
+            return {};
+        }
+    }
+
+    void Free(const Handle<T> handle) { DualStorage<T, U>::Free(handle); }
+
+    typename HashMap32<String, Handle<T>>::iterator Free(typename HashMap32<String, Handle<T>>::iterator it) {
+        DualStorage<T, U>::Free(it->val);
+        return items_by_name_.erase(it);
+    }
+
+    void Release(const std::string_view name) {
+        Handle<T> *p_handle = items_by_name_.Find(name);
+        if (p_handle) {
+            DualStorage<T, U>::Free(*p_handle);
+            items_by_name_.Erase(name);
+        }
+    }
+
+    int ReleaseUnusedStrings() {
+        int count = 0;
+        for (auto it = items_by_name_.begin(); it != items_by_name_.end();) {
+            if (!DualStorage<T, U>::TryGet(it->val).first) {
+                it = items_by_name_.erase(it);
+                ++count;
+            } else {
+                ++it;
+            }
+        }
+        return count;
+    }
+};
+
+template <typename T, typename U> class SortedDualStorage : public DualStorage<T, U> {
+  protected:
+    std::vector<Handle<T>> sorted_items_;
+
+  public:
+    Span<const Handle<T>> sorted_items() const { return sorted_items_; }
+
+    Handle<T> Insert(T &&data_main, U &&data_cold) {
+        const Handle<T> ret = DualStorage<T, U>::Emplace();
+
+        this->data_main_[ret.index] = std::move(data_main);
+        this->data_cold_[ret.index] = std::move(data_cold);
+
+        const auto it =
+            lower_bound(std::begin(sorted_items_), std::end(sorted_items_), ret,
+                        [this](const Handle<T> lhs_handle, const Handle<T> rhs_handle) {
+                            return DualStorage<T, U>::Get(lhs_handle).first < DualStorage<T, U>::Get(rhs_handle).first;
+                        });
+        assert(it == std::end(sorted_items_) ||
+               (DualStorage<T, U>::Get(ret).first < DualStorage<T, U>::Get(*it).first));
+        sorted_items_.insert(it, ret);
+
+        return ret;
+    }
+
+    void Free(const Handle<T> handle) {
+        const auto it =
+            lower_bound(std::begin(sorted_items_), std::end(sorted_items_), handle,
+                        [this](const Handle<T> lhs_handle, const Handle<T> rhs_handle) {
+                            return DualStorage<T, U>::Get(lhs_handle).first < DualStorage<T, U>::Get(rhs_handle).first;
+                        });
+        assert(it != std::end(sorted_items_) && handle == *it);
+        sorted_items_.erase(it);
+
+        DualStorage<T, U>::Free(handle);
+    }
+
+    void PopBack() {
+        const Handle<T> to_remove = sorted_items_.back();
+        sorted_items_.pop_back();
+        DualStorage<T, U>::Free(to_remove);
+    }
+
+    template <typename F> Handle<T> LowerBound(F &&f) {
+        auto first = std::begin(sorted_items_), last = std::end(sorted_items_);
+
+        int count = int(std::distance(first, last));
+        while (count > 0) {
+            auto it = first;
+            const int step = count / 2;
+            std::advance(it, step);
+
+            if (f(DualStorage<T, U>::Get(*it).first)) {
+                first = ++it;
+                count -= step + 1;
+            } else {
+                count = step;
+            }
+        }
+
+        if (first == std::end(sorted_items_)) {
+            return {};
+        }
+
+        return *first;
+    }
+
+    bool CheckUnique() const {
+        bool unique = true;
+        for (auto it1 = std::begin(sorted_items_); it1 != std::end(sorted_items_) && unique; ++it1) {
+            auto it2 = std::next(it1);
+            if (it2 != std::end(sorted_items_)) {
+                unique &= DualStorage<T, U>::Get(*it1).first < DualStorage<T, U>::Get(*it2).first;
+            }
+        }
+        return unique;
+    }
+};
+} // namespace Ren

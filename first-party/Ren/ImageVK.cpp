@@ -68,20 +68,20 @@ extern const VkCompareOp g_compare_ops_vk[];
 extern const float AnisotropyLevel;
 } // namespace Ren
 
-Ren::Image::Image(std::string_view name, ApiContext *api_ctx, const ImgParams &p, MemAllocators *mem_allocs, ILog *log)
-    : api_ctx_(api_ctx), name_(name) {
+Ren::Image::Image(std::string_view name, ApiContext *api, const ImgParams &p, MemAllocators *mem_allocs, ILog *log)
+    : api_(api), name_(name) {
     Init(p, mem_allocs, log);
 }
 
-Ren::Image::Image(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> data, const ImgParams &p,
+Ren::Image::Image(std::string_view name, ApiContext *api, Span<const uint8_t> data, const ImgParams &p,
                   MemAllocators *mem_allocs, eImgLoadStatus *load_status, ILog *log)
-    : api_ctx_(api_ctx), name_(name) {
+    : api_(api), name_(name) {
     Init(data, p, mem_allocs, load_status, log);
 }
 
-Ren::Image::Image(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> data[6], const ImgParams &p,
+Ren::Image::Image(std::string_view name, ApiContext *api, Span<const uint8_t> data[6], const ImgParams &p,
                   MemAllocators *mem_allocs, eImgLoadStatus *load_status, ILog *log)
-    : api_ctx_(api_ctx), name_(name) {
+    : api_(api), name_(name) {
     Init(data, p, mem_allocs, load_status, log);
 }
 
@@ -96,7 +96,7 @@ Ren::Image &Ren::Image::operator=(Image &&rhs) noexcept {
 
     Free();
 
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
+    api_ = std::exchange(rhs.api_, nullptr);
     handle_ = std::exchange(rhs.handle_, {});
     alloc_ = std::exchange(rhs.alloc_, {});
     params = std::exchange(rhs.params, {});
@@ -108,7 +108,7 @@ Ren::Image &Ren::Image::operator=(Image &&rhs) noexcept {
 }
 
 void Ren::Image::Init(const ImgParams &p, MemAllocators *mem_allocs, ILog *log) {
-    InitFromRAWData(nullptr, 0, nullptr, mem_allocs, p, log);
+    InitFromRAWData(nullptr, nullptr, 0, nullptr, mem_allocs, p, log);
 }
 
 void Ren::Image::Init(const ImgHandle &handle, const ImgParams &_params, MemAllocation &&alloc, ILog *log) {
@@ -136,7 +136,7 @@ void Ren::Image::Init(const ImgHandle &handle, const ImgParams &_params, MemAllo
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
-        const VkResult res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &handle_.views[0]);
+        const VkResult res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &handle_.views[0]);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image view!");
             return;
@@ -146,7 +146,7 @@ void Ren::Image::Init(const ImgHandle &handle, const ImgParams &_params, MemAllo
             // create additional depth-only image view
             view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
             VkImageView depth_only_view;
-            const VkResult _res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &depth_only_view);
+            const VkResult _res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &depth_only_view);
             if (_res != VK_SUCCESS) {
                 log->Error("Failed to create image view!");
                 return;
@@ -160,7 +160,7 @@ void Ren::Image::Init(const ImgHandle &handle, const ImgParams &_params, MemAllo
             name_info.objectType = VK_OBJECT_TYPE_IMAGE_VIEW;
             name_info.objectHandle = uint64_t(view);
             name_info.pObjectName = name_.c_str();
-            api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+            api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
         }
 #endif
     }
@@ -174,16 +174,23 @@ void Ren::Image::Init(Span<const uint8_t> data, const ImgParams &p, MemAllocator
                       eImgLoadStatus *load_status, ILog *log) {
     assert(!data.empty());
 
-    auto sbuf = Buffer{"Temp Stage Buf", api_ctx_, eBufType::Upload, uint32_t(data.size())};
-    { // Update staging buffer
-        uint8_t *stage_data = sbuf.Map();
-        memcpy(stage_data, data.data(), data.size());
-        sbuf.Unmap();
+    BufferMain sbuf_main = {};
+    BufferCold sbuf_cold = {};
+    if (!Buffer_Init(*api_, sbuf_main, sbuf_cold, String{"Temp Stage Buf"}, eBufType::Upload, uint32_t(data.size()),
+                     log)) {
+        assert(false);
     }
-    CommandBuffer cmd_buf = api_ctx_->BegSingleTimeCommands();
-    InitFromRAWData(&sbuf, 0, cmd_buf, mem_allocs, p, log);
-    api_ctx_->EndSingleTimeCommands(cmd_buf);
-    sbuf.FreeImmediate();
+
+    { // Update staging buffer
+        uint8_t *stage_data = Buffer_Map(*api_, sbuf_main, sbuf_cold);
+        memcpy(stage_data, data.data(), data.size());
+        Buffer_Unmap(*api_, sbuf_main, sbuf_cold);
+    }
+    CommandBuffer cmd_buf = api_->BegSingleTimeCommands();
+    InitFromRAWData(&sbuf_main, &sbuf_cold, 0, cmd_buf, mem_allocs, p, log);
+    api_->EndSingleTimeCommands(cmd_buf);
+
+    Buffer_DestroyImmediately(*api_, sbuf_main, sbuf_cold);
 
     (*load_status) = eImgLoadStatus::CreatedFromData;
 }
@@ -192,14 +199,19 @@ void Ren::Image::Init(Span<const uint8_t> data[6], const ImgParams &p, MemAlloca
                       eImgLoadStatus *load_status, ILog *log) {
     assert(data);
 
-    auto sbuf = Buffer{
-        "Temp Stage Buf", api_ctx_, eBufType::Upload,
-        uint32_t(data[0].size() + data[1].size() + data[2].size() + data[3].size() + data[4].size() + data[5].size())};
+    BufferMain sbuf_main = {};
+    BufferCold sbuf_cold = {};
+    if (!Buffer_Init(*api_, sbuf_main, sbuf_cold, String{"Temp Stage Buf"}, eBufType::Upload,
+                     uint32_t(data[0].size() + data[1].size() + data[2].size() + data[3].size() + data[4].size() +
+                              data[5].size()),
+                     log)) {
+        assert(false);
+    }
+
     int data_off[6];
     { // Update staging buffer
-        uint8_t *stage_data = sbuf.Map();
+        uint8_t *stage_data = Buffer_Map(*api_, sbuf_main, sbuf_cold);
         uint32_t stage_off = 0;
-
         for (int i = 0; i < 6; i++) {
             if (!data[i].empty()) {
                 memcpy(&stage_data[stage_off], data[i].data(), data[i].size());
@@ -209,12 +221,13 @@ void Ren::Image::Init(Span<const uint8_t> data[6], const ImgParams &p, MemAlloca
                 data_off[i] = -1;
             }
         }
-        sbuf.Unmap();
+        Buffer_Unmap(*api_, sbuf_main, sbuf_cold);
     }
-    CommandBuffer cmd_buf = api_ctx_->BegSingleTimeCommands();
-    InitFromRAWData(sbuf, data_off, cmd_buf, mem_allocs, p, log);
-    api_ctx_->EndSingleTimeCommands(cmd_buf);
-    sbuf.FreeImmediate();
+    CommandBuffer cmd_buf = api_->BegSingleTimeCommands();
+    InitFromRAWData(&sbuf_main, &sbuf_cold, data_off, cmd_buf, mem_allocs, p, log);
+    api_->EndSingleTimeCommands(cmd_buf);
+
+    Buffer_DestroyImmediately(*api_, sbuf_main, sbuf_cold);
 
     (*load_status) = eImgLoadStatus::CreatedFromData;
 }
@@ -223,12 +236,12 @@ void Ren::Image::Free() {
     if (params.format != eFormat::Undefined && !(Bitmask<eImgFlags>{params.flags} & eImgFlags::NoOwnership)) {
         for (VkImageView view : handle_.views) {
             if (view) {
-                api_ctx_->image_views_to_destroy[api_ctx_->backend_frame].push_back(view);
+                api_->image_views_to_destroy[api_->backend_frame].push_back(view);
             }
         }
-        api_ctx_->images_to_destroy[api_ctx_->backend_frame].push_back(handle_.img);
-        api_ctx_->samplers_to_destroy[api_ctx_->backend_frame].push_back(handle_.sampler);
-        api_ctx_->allocations_to_free[api_ctx_->backend_frame].emplace_back(std::move(alloc_));
+        api_->images_to_destroy[api_->backend_frame].push_back(handle_.img);
+        api_->samplers_to_destroy[api_->backend_frame].push_back(handle_.sampler);
+        api_->allocations_to_free[api_->backend_frame].emplace_back(std::move(alloc_));
 
         handle_ = {};
         params.format = eFormat::Undefined;
@@ -239,11 +252,11 @@ void Ren::Image::FreeImmediate() {
     if (params.format != eFormat::Undefined && !(Bitmask<eImgFlags>{params.flags} & eImgFlags::NoOwnership)) {
         for (VkImageView view : handle_.views) {
             if (view) {
-                api_ctx_->vkDestroyImageView(api_ctx_->device, view, nullptr);
+                api_->vkDestroyImageView(api_->device, view, nullptr);
             }
         }
-        api_ctx_->vkDestroyImage(api_ctx_->device, handle_.img, nullptr);
-        api_ctx_->vkDestroySampler(api_ctx_->device, handle_.sampler, nullptr);
+        api_->vkDestroyImage(api_->device, handle_.img, nullptr);
+        api_->vkDestroySampler(api_->device, handle_.sampler, nullptr);
         alloc_.Release();
 
         handle_ = {};
@@ -280,7 +293,7 @@ bool Ren::Image::Realloc(const int w, const int h, int mip_count, const int samp
         img_info.samples = VkSampleCountFlagBits(samples);
         img_info.flags = 0;
 
-        VkResult res = api_ctx_->vkCreateImage(api_ctx_->device, &img_info, nullptr, &new_image);
+        VkResult res = api_->vkCreateImage(api_->device, &img_info, nullptr, &new_image);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image!");
             return false;
@@ -291,11 +304,11 @@ bool Ren::Image::Realloc(const int w, const int h, int mip_count, const int samp
         name_info.objectType = VK_OBJECT_TYPE_IMAGE;
         name_info.objectHandle = uint64_t(new_image);
         name_info.pObjectName = name_.c_str();
-        api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+        api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
 #endif
 
         VkMemoryRequirements tex_mem_req;
-        api_ctx_->vkGetImageMemoryRequirements(api_ctx_->device, new_image, &tex_mem_req);
+        api_->vkGetImageMemoryRequirements(api_->device, new_image, &tex_mem_req);
 
         VkMemoryPropertyFlags img_tex_desired_mem_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         new_alloc = mem_allocs->Allocate(tex_mem_req, img_tex_desired_mem_flags);
@@ -305,8 +318,7 @@ bool Ren::Image::Realloc(const int w, const int h, int mip_count, const int samp
             new_alloc = mem_allocs->Allocate(tex_mem_req, img_tex_desired_mem_flags);
         }
 
-        res = api_ctx_->vkBindImageMemory(api_ctx_->device, new_image, new_alloc.owner->mem(new_alloc.pool),
-                                          new_alloc.offset);
+        res = api_->vkBindImageMemory(api_->device, new_image, new_alloc.owner->mem(new_alloc.pool), new_alloc.offset);
         if (res != VK_SUCCESS) {
             log->Error("Failed to bind memory!");
             return false;
@@ -324,7 +336,7 @@ bool Ren::Image::Realloc(const int w, const int h, int mip_count, const int samp
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
-        const VkResult res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &new_image_view);
+        const VkResult res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &new_image_view);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image view!");
             return false;
@@ -335,7 +347,7 @@ bool Ren::Image::Realloc(const int w, const int h, int mip_count, const int samp
         name_info.objectType = VK_OBJECT_TYPE_IMAGE_VIEW;
         name_info.objectHandle = uint64_t(new_image_view);
         name_info.pObjectName = name_.c_str();
-        api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+        api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
 #endif
     }
 
@@ -433,20 +445,20 @@ bool Ren::Image::Realloc(const int w, const int h, int mip_count, const int samp
                 dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
             }
 
-            src_stages &= api_ctx_->supported_stages_mask;
-            dst_stages &= api_ctx_->supported_stages_mask;
+            src_stages &= api_->supported_stages_mask;
+            dst_stages &= api_->supported_stages_mask;
 
             if (!barriers.empty()) {
-                api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                               dst_stages, 0, 0, nullptr, 0, nullptr, uint32_t(barriers.size()),
-                                               barriers.cdata());
+                api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                           dst_stages, 0, 0, nullptr, 0, nullptr, uint32_t(barriers.size()),
+                                           barriers.cdata());
             }
 
             this->resource_state = eResState::CopySrc;
             new_resource_state = eResState::CopyDst;
 
-            api_ctx_->vkCmdCopyImage(cmd_buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, new_image,
-                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copy_regions_count, copy_regions);
+            api_->vkCmdCopyImage(cmd_buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, new_image,
+                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copy_regions_count, copy_regions);
         }
     }
     Free();
@@ -464,8 +476,8 @@ bool Ren::Image::Realloc(const int w, const int h, int mip_count, const int samp
     return true;
 }
 
-void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_buf, MemAllocators *mem_allocs,
-                                 const ImgParams &p, ILog *log) {
+void Ren::Image::InitFromRAWData(const BufferMain *sbuf_main, const BufferCold *sbuf_cold, int data_off,
+                                 CommandBuffer cmd_buf, MemAllocators *mem_allocs, const ImgParams &p, ILog *log) {
     Free();
 
     handle_.generation = ImageHandleCounter++;
@@ -495,7 +507,7 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
         img_info.samples = VkSampleCountFlagBits(p.samples);
         img_info.flags = 0;
 
-        VkResult res = api_ctx_->vkCreateImage(api_ctx_->device, &img_info, nullptr, &handle_.img);
+        VkResult res = api_->vkCreateImage(api_->device, &img_info, nullptr, &handle_.img);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image!");
             return;
@@ -506,11 +518,11 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
         name_info.objectType = VK_OBJECT_TYPE_IMAGE;
         name_info.objectHandle = uint64_t(handle_.img);
         name_info.pObjectName = name_.c_str();
-        api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+        api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
 #endif
 
         VkMemoryRequirements tex_mem_req;
-        api_ctx_->vkGetImageMemoryRequirements(api_ctx_->device, handle_.img, &tex_mem_req);
+        api_->vkGetImageMemoryRequirements(api_->device, handle_.img, &tex_mem_req);
 
         VkMemoryPropertyFlags img_tex_desired_mem_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         alloc_ = mem_allocs->Allocate(tex_mem_req, img_tex_desired_mem_flags);
@@ -525,7 +537,7 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
             return;
         }
 
-        res = api_ctx_->vkBindImageMemory(api_ctx_->device, handle_.img, alloc_.owner->mem(alloc_.pool), alloc_.offset);
+        res = api_->vkBindImageMemory(api_->device, handle_.img, alloc_.owner->mem(alloc_.pool), alloc_.offset);
         if (res != VK_SUCCESS) {
             log->Error("Failed to bind memory!");
             return;
@@ -550,7 +562,7 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
-        const VkResult res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &handle_.views[0]);
+        const VkResult res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &handle_.views[0]);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image view!");
             return;
@@ -560,7 +572,7 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
             // create additional depth-only image view
             view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
             VkImageView depth_only_view;
-            const VkResult _res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &depth_only_view);
+            const VkResult _res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &depth_only_view);
             if (_res != VK_SUCCESS) {
                 log->Error("Failed to create image view!");
                 return;
@@ -574,33 +586,33 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
             name_info.objectType = VK_OBJECT_TYPE_IMAGE_VIEW;
             name_info.objectHandle = uint64_t(view);
             name_info.pObjectName = name_.c_str();
-            api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+            api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
         }
 #endif
     }
 
     this->resource_state = eResState::Undefined;
 
-    if (sbuf) {
+    if (sbuf_main) {
         assert(p.samples == 1);
-        assert(sbuf && sbuf->type() == eBufType::Upload);
+        assert(sbuf_cold && sbuf_cold->type == eBufType::Upload);
 
         VkPipelineStageFlags src_stages = 0, dst_stages = 0;
         SmallVector<VkBufferMemoryBarrier, 1> buf_barriers;
         SmallVector<VkImageMemoryBarrier, 1> img_barriers;
 
-        if (sbuf->resource_state != eResState::Undefined && sbuf->resource_state != eResState::CopySrc) {
+        if (sbuf_main->resource_state != eResState::Undefined && sbuf_main->resource_state != eResState::CopySrc) {
             auto &new_barrier = buf_barriers.emplace_back();
             new_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-            new_barrier.srcAccessMask = VKAccessFlagsForState(sbuf->resource_state);
+            new_barrier.srcAccessMask = VKAccessFlagsForState(sbuf_main->resource_state);
             new_barrier.dstAccessMask = VKAccessFlagsForState(eResState::CopySrc);
             new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            new_barrier.buffer = sbuf->vk_handle();
+            new_barrier.buffer = sbuf_main->buf;
             new_barrier.offset = VkDeviceSize(data_off);
-            new_barrier.size = VkDeviceSize(sbuf->size() - data_off);
+            new_barrier.size = VK_WHOLE_SIZE;
 
-            src_stages |= VKPipelineStagesForState(sbuf->resource_state);
+            src_stages |= VKPipelineStagesForState(sbuf_main->resource_state);
             dst_stages |= VKPipelineStagesForState(eResState::CopySrc);
         }
 
@@ -624,20 +636,20 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
             dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
         }
 
-        src_stages &= api_ctx_->supported_stages_mask;
-        dst_stages &= api_ctx_->supported_stages_mask;
+        src_stages &= api_->supported_stages_mask;
+        dst_stages &= api_->supported_stages_mask;
 
         if (!buf_barriers.empty() || !img_barriers.empty()) {
-            api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                           dst_stages, 0, 0, nullptr, uint32_t(buf_barriers.size()),
-                                           buf_barriers.cdata(), uint32_t(img_barriers.size()), img_barriers.cdata());
+            api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
+                                       0, 0, nullptr, uint32_t(buf_barriers.size()), buf_barriers.cdata(),
+                                       uint32_t(img_barriers.size()), img_barriers.cdata());
         }
 
-        sbuf->resource_state = eResState::CopySrc;
+        sbuf_main->resource_state = eResState::CopySrc;
         this->resource_state = eResState::CopyDst;
 
         int w = p.w, h = p.h, d = p.d;
-        int bytes_left = sbuf->size() - data_off;
+        int bytes_left = sbuf_cold->size - data_off;
         for (int i = 0; i < mip_count; ++i) {
             const int len = GetDataLenBytes(w, h, d, p.format);
             if (len > bytes_left) {
@@ -659,8 +671,8 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
             region.imageExtent = {uint32_t(w), uint32_t(h),
                                   uint32_t((p.flags & eImgFlags::Array) ? 1 : std::max(d, 1))};
 
-            api_ctx_->vkCmdCopyBufferToImage(cmd_buf, sbuf->vk_handle(), handle_.img,
-                                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+            api_->vkCmdCopyBufferToImage(cmd_buf, sbuf_main->buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                                         &region);
 
             data_off += len;
             bytes_left -= len;
@@ -688,15 +700,15 @@ void Ren::Image::InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_b
         sampler_info.minLod = 0.0f;
         sampler_info.maxLod = VK_LOD_CLAMP_NONE;
 
-        const VkResult res = api_ctx_->vkCreateSampler(api_ctx_->device, &sampler_info, nullptr, &handle_.sampler);
+        const VkResult res = api_->vkCreateSampler(api_->device, &sampler_info, nullptr, &handle_.sampler);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create sampler!");
         }
     }
 }
 
-void Ren::Image::InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cmd_buf, MemAllocators *mem_allocs,
-                                 const ImgParams &p, ILog *log) {
+void Ren::Image::InitFromRAWData(const BufferMain *sbuf_main, const BufferCold *sbuf_cold, int data_off[6],
+                                 CommandBuffer cmd_buf, MemAllocators *mem_allocs, const ImgParams &p, ILog *log) {
     assert(p.w > 0 && p.h > 0);
     Free();
 
@@ -723,7 +735,7 @@ void Ren::Image::InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cm
         img_info.samples = VkSampleCountFlagBits(p.samples);
         img_info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 
-        VkResult res = api_ctx_->vkCreateImage(api_ctx_->device, &img_info, nullptr, &handle_.img);
+        VkResult res = api_->vkCreateImage(api_->device, &img_info, nullptr, &handle_.img);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image!");
             return;
@@ -734,11 +746,11 @@ void Ren::Image::InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cm
         name_info.objectType = VK_OBJECT_TYPE_IMAGE;
         name_info.objectHandle = uint64_t(handle_.img);
         name_info.pObjectName = name_.c_str();
-        api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+        api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
 #endif
 
         VkMemoryRequirements tex_mem_req;
-        api_ctx_->vkGetImageMemoryRequirements(api_ctx_->device, handle_.img, &tex_mem_req);
+        api_->vkGetImageMemoryRequirements(api_->device, handle_.img, &tex_mem_req);
 
         VkMemoryPropertyFlags img_tex_desired_mem_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         alloc_ = mem_allocs->Allocate(tex_mem_req, img_tex_desired_mem_flags);
@@ -748,7 +760,7 @@ void Ren::Image::InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cm
             alloc_ = mem_allocs->Allocate(tex_mem_req, img_tex_desired_mem_flags);
         }
 
-        res = api_ctx_->vkBindImageMemory(api_ctx_->device, handle_.img, alloc_.owner->mem(alloc_.pool), alloc_.offset);
+        res = api_->vkBindImageMemory(api_->device, handle_.img, alloc_.owner->mem(alloc_.pool), alloc_.offset);
         if (res != VK_SUCCESS) {
             log->Error("Failed to bind memory!");
             return;
@@ -766,7 +778,7 @@ void Ren::Image::InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cm
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
-        const VkResult res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &handle_.views[0]);
+        const VkResult res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &handle_.views[0]);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create image view!");
             return;
@@ -777,29 +789,29 @@ void Ren::Image::InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cm
         name_info.objectType = VK_OBJECT_TYPE_IMAGE_VIEW;
         name_info.objectHandle = uint64_t(handle_.views[0]);
         name_info.pObjectName = name_.c_str();
-        api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+        api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
 #endif
     }
 
     assert(p.samples == 1);
-    assert(sbuf.type() == eBufType::Upload);
+    assert(sbuf_cold->type == eBufType::Upload);
 
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 1> buf_barriers;
     SmallVector<VkImageMemoryBarrier, 1> img_barriers;
 
-    if (sbuf.resource_state != eResState::Undefined && sbuf.resource_state != eResState::CopySrc) {
+    if (sbuf_main->resource_state != eResState::Undefined && sbuf_main->resource_state != eResState::CopySrc) {
         auto &new_barrier = buf_barriers.emplace_back();
         new_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        new_barrier.srcAccessMask = VKAccessFlagsForState(sbuf.resource_state);
+        new_barrier.srcAccessMask = VKAccessFlagsForState(sbuf_main->resource_state);
         new_barrier.dstAccessMask = VKAccessFlagsForState(eResState::CopySrc);
         new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        new_barrier.buffer = sbuf.vk_handle();
+        new_barrier.buffer = sbuf_main->buf;
         new_barrier.offset = VkDeviceSize(0);
-        new_barrier.size = VkDeviceSize(sbuf.size());
+        new_barrier.size = VK_WHOLE_SIZE;
 
-        src_stages |= VKPipelineStagesForState(sbuf.resource_state);
+        src_stages |= VKPipelineStagesForState(sbuf_main->resource_state);
         dst_stages |= VKPipelineStagesForState(eResState::CopySrc);
     }
 
@@ -823,16 +835,16 @@ void Ren::Image::InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cm
         dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
     }
 
-    src_stages &= api_ctx_->supported_stages_mask;
-    dst_stages &= api_ctx_->supported_stages_mask;
+    src_stages &= api_->supported_stages_mask;
+    dst_stages &= api_->supported_stages_mask;
 
     if (!buf_barriers.empty() || !img_barriers.empty()) {
-        api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
-                                       0, 0, nullptr, buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
-                                       img_barriers.cdata());
+        api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
+                                   0, nullptr, buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
+                                   img_barriers.cdata());
     }
 
-    sbuf.resource_state = eResState::CopySrc;
+    sbuf_main->resource_state = eResState::CopySrc;
     this->resource_state = eResState::CopyDst;
 
     SmallVector<VkBufferImageCopy, 16> regions;
@@ -857,8 +869,8 @@ void Ren::Image::InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cm
         }
     }
 
-    api_ctx_->vkCmdCopyBufferToImage(cmd_buf, sbuf.vk_handle(), handle_.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                     uint32_t(regions.size()), regions.data());
+    api_->vkCmdCopyBufferToImage(cmd_buf, sbuf_main->buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                 uint32_t(regions.size()), regions.data());
 
     ApplySampling(p.sampling, log);
 }
@@ -879,7 +891,7 @@ int Ren::Image::AddView(const eFormat format, const int mip_level, const int mip
     view_info.subresourceRange.layerCount = layer_count;
 
     handle_.views.emplace_back(VK_NULL_HANDLE);
-    const VkResult res = api_ctx_->vkCreateImageView(api_ctx_->device, &view_info, nullptr, &handle_.views.back());
+    const VkResult res = api_->vkCreateImageView(api_->device, &view_info, nullptr, &handle_.views.back());
     if (res != VK_SUCCESS) {
         return -1;
     }
@@ -889,7 +901,7 @@ int Ren::Image::AddView(const eFormat format, const int mip_level, const int mip
     name_info.objectType = VK_OBJECT_TYPE_IMAGE_VIEW;
     name_info.objectHandle = uint64_t(handle_.views.back());
     name_info.pObjectName = name_.c_str();
-    api_ctx_->vkSetDebugUtilsObjectNameEXT(api_ctx_->device, &name_info);
+    api_->vkSetDebugUtilsObjectNameEXT(api_->device, &name_info);
 #endif
 
     return int(handle_.views.size()) - 1;
@@ -897,30 +909,31 @@ int Ren::Image::AddView(const eFormat format, const int mip_level, const int mip
 
 void Ren::Image::SetSubImage(const int layer, const int level, const int offsetx, const int offsety, const int offsetz,
                              const int sizex, const int sizey, const int sizez, const eFormat format,
-                             const Buffer &sbuf, CommandBuffer cmd_buf, const int data_off, const int data_len) {
+                             const BufferMain &sbuf_main, CommandBuffer cmd_buf, const int data_off,
+                             const int data_len) const {
     assert(format == params.format);
     assert(params.samples == 1);
     assert(offsetx >= 0 && offsetx + sizex <= std::max(params.w >> level, 1));
     assert(offsety >= 0 && offsety + sizey <= std::max(params.h >> level, 1));
     assert(offsetz >= 0 && offsetz + sizez <= std::max(params.d >> level, 1));
-    assert(sbuf.type() == eBufType::Upload);
+    // assert(sbuf_cold.type == eBufType::Upload);
 
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 1> buf_barriers;
     SmallVector<VkImageMemoryBarrier, 1> img_barriers;
 
-    if (sbuf.resource_state != eResState::Undefined && sbuf.resource_state != eResState::CopySrc) {
+    if (sbuf_main.resource_state != eResState::Undefined && sbuf_main.resource_state != eResState::CopySrc) {
         auto &new_barrier = buf_barriers.emplace_back();
         new_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        new_barrier.srcAccessMask = VKAccessFlagsForState(sbuf.resource_state);
+        new_barrier.srcAccessMask = VKAccessFlagsForState(sbuf_main.resource_state);
         new_barrier.dstAccessMask = VKAccessFlagsForState(eResState::CopySrc);
         new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        new_barrier.buffer = sbuf.vk_handle();
+        new_barrier.buffer = sbuf_main.buf;
         new_barrier.offset = VkDeviceSize(0);
-        new_barrier.size = VkDeviceSize(sbuf.size());
+        new_barrier.size = VK_WHOLE_SIZE;
 
-        src_stages |= VKPipelineStagesForState(sbuf.resource_state);
+        src_stages |= VKPipelineStagesForState(sbuf_main.resource_state);
         dst_stages |= VKPipelineStagesForState(eResState::CopySrc);
     }
 
@@ -944,16 +957,16 @@ void Ren::Image::SetSubImage(const int layer, const int level, const int offsetx
         dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
     }
 
-    src_stages &= api_ctx_->supported_stages_mask;
-    dst_stages &= api_ctx_->supported_stages_mask;
+    src_stages &= api_->supported_stages_mask;
+    dst_stages &= api_->supported_stages_mask;
 
     if (!buf_barriers.empty() || !img_barriers.empty()) {
-        api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
-                                       0, 0, nullptr, buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
-                                       img_barriers.cdata());
+        api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
+                                   0, nullptr, buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
+                                   img_barriers.cdata());
     }
 
-    sbuf.resource_state = eResState::CopySrc;
+    sbuf_main.resource_state = eResState::CopySrc;
     this->resource_state = eResState::CopyDst;
 
     VkBufferImageCopy region = {};
@@ -970,12 +983,11 @@ void Ren::Image::SetSubImage(const int layer, const int level, const int offsetx
     region.imageOffset = {int32_t(offsetx), int32_t(offsety), int32_t(offsetz)};
     region.imageExtent = {uint32_t(sizex), uint32_t(sizey), uint32_t(sizez)};
 
-    api_ctx_->vkCmdCopyBufferToImage(cmd_buf, sbuf.vk_handle(), handle_.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
-                                     &region);
+    api_->vkCmdCopyBufferToImage(cmd_buf, sbuf_main.buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
-void Ren::Image::CopyTextureData(const Buffer &sbuf, CommandBuffer cmd_buf, const int data_off,
-                                 const int data_len) const {
+void Ren::Image::CopyTextureData(const BufferMain &sbuf_main, const BufferCold &sbuf_cold, CommandBuffer cmd_buf,
+                                 const int data_off, const int data_len) const {
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 1> buf_barriers;
     SmallVector<VkImageMemoryBarrier, 1> img_barriers;
@@ -1000,32 +1012,32 @@ void Ren::Image::CopyTextureData(const Buffer &sbuf, CommandBuffer cmd_buf, cons
         dst_stages |= VKPipelineStagesForState(eResState::CopySrc);
     }
 
-    if (sbuf.resource_state != eResState::Undefined && sbuf.resource_state != eResState::CopyDst) {
+    if (sbuf_main.resource_state != eResState::Undefined && sbuf_main.resource_state != eResState::CopyDst) {
         auto &new_barrier = buf_barriers.emplace_back();
         new_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        new_barrier.srcAccessMask = VKAccessFlagsForState(sbuf.resource_state);
+        new_barrier.srcAccessMask = VKAccessFlagsForState(sbuf_main.resource_state);
         new_barrier.dstAccessMask = VKAccessFlagsForState(eResState::CopyDst);
         new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        new_barrier.buffer = sbuf.vk_handle();
+        new_barrier.buffer = sbuf_main.buf;
         new_barrier.offset = VkDeviceSize(0);
-        new_barrier.size = VkDeviceSize(sbuf.size());
+        new_barrier.size = VkDeviceSize(sbuf_cold.size);
 
-        src_stages |= VKPipelineStagesForState(sbuf.resource_state);
+        src_stages |= VKPipelineStagesForState(sbuf_main.resource_state);
         dst_stages |= VKPipelineStagesForState(eResState::CopyDst);
     }
 
-    src_stages &= api_ctx_->supported_stages_mask;
-    dst_stages &= api_ctx_->supported_stages_mask;
+    src_stages &= api_->supported_stages_mask;
+    dst_stages &= api_->supported_stages_mask;
 
     if (!buf_barriers.empty() || !img_barriers.empty()) {
-        api_ctx_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
-                                       0, 0, nullptr, buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
-                                       img_barriers.cdata());
+        api_->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages, 0,
+                                   0, nullptr, buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
+                                   img_barriers.cdata());
     }
 
     this->resource_state = eResState::CopySrc;
-    sbuf.resource_state = eResState::CopyDst;
+    sbuf_main.resource_state = eResState::CopyDst;
 
     VkBufferImageCopy region = {};
 
@@ -1041,13 +1053,12 @@ void Ren::Image::CopyTextureData(const Buffer &sbuf, CommandBuffer cmd_buf, cons
     region.imageOffset = {int32_t(0), int32_t(0), 0};
     region.imageExtent = {uint32_t(params.w), uint32_t(params.h), 1};
 
-    api_ctx_->vkCmdCopyImageToBuffer(cmd_buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, sbuf.vk_handle(), 1,
-                                     &region);
+    api_->vkCmdCopyImageToBuffer(cmd_buf, handle_.img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, sbuf_main.buf, 1, &region);
 }
 
 void Ren::Image::SetSampling(const SamplingParams s) {
     if (handle_.sampler) {
-        api_ctx_->samplers_to_destroy[api_ctx_->backend_frame].emplace_back(handle_.sampler);
+        api_->samplers_to_destroy[api_->backend_frame].emplace_back(handle_.sampler);
     }
 
     VkSamplerCreateInfo sampler_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -1067,21 +1078,21 @@ void Ren::Image::SetSampling(const SamplingParams s) {
     sampler_info.minLod = 0.0f;
     sampler_info.maxLod = VK_LOD_CLAMP_NONE;
 
-    const VkResult res = api_ctx_->vkCreateSampler(api_ctx_->device, &sampler_info, nullptr, &handle_.sampler);
+    const VkResult res = api_->vkCreateSampler(api_->device, &sampler_info, nullptr, &handle_.sampler);
     assert(res == VK_SUCCESS && "Failed to create sampler!");
 
     params.sampling = s;
 }
 
-void Ren::CopyImageToImage(CommandBuffer cmd_buf, const Image &src_tex, const uint32_t src_level, const uint32_t src_x,
-                           const uint32_t src_y, const uint32_t src_z, Image &dst_tex, const uint32_t dst_level,
+void Ren::CopyImageToImage(CommandBuffer cmd_buf, const Image &src, const uint32_t src_level, const uint32_t src_x,
+                           const uint32_t src_y, const uint32_t src_z, const Image &dst, const uint32_t dst_level,
                            const uint32_t dst_x, const uint32_t dst_y, const uint32_t dst_z, const uint32_t dst_face,
                            const uint32_t w, const uint32_t h, const uint32_t d) {
-    assert(src_tex.resource_state == eResState::CopySrc);
-    assert(dst_tex.resource_state == eResState::CopyDst);
+    assert(src.resource_state == eResState::CopySrc);
+    assert(dst.resource_state == eResState::CopyDst);
 
     VkImageCopy reg;
-    if (IsDepthFormat(src_tex.params.format)) {
+    if (IsDepthFormat(src.params.format)) {
         reg.srcSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     } else {
         reg.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1090,7 +1101,7 @@ void Ren::CopyImageToImage(CommandBuffer cmd_buf, const Image &src_tex, const ui
     reg.srcSubresource.layerCount = 1;
     reg.srcSubresource.mipLevel = src_level;
     reg.srcOffset = {int32_t(src_x), int32_t(src_y), int32_t(src_z)};
-    if (IsDepthFormat(dst_tex.params.format)) {
+    if (IsDepthFormat(dst.params.format)) {
         reg.dstSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     } else {
         reg.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1101,12 +1112,12 @@ void Ren::CopyImageToImage(CommandBuffer cmd_buf, const Image &src_tex, const ui
     reg.dstOffset = {int32_t(dst_x), int32_t(dst_y), int32_t(dst_z)};
     reg.extent = {w, h, d};
 
-    src_tex.api_ctx()->vkCmdCopyImage(cmd_buf, src_tex.handle().img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                      dst_tex.handle().img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &reg);
+    src.api()->vkCmdCopyImage(cmd_buf, src.handle().img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.handle().img,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &reg);
 }
 
-void Ren::ClearImage(Image &tex, const ClearColor &col, CommandBuffer cmd_buf) {
-    assert(tex.resource_state == eResState::CopyDst);
+void Ren::ClearImage(const Image &img, const ClearColor &col, CommandBuffer cmd_buf) {
+    assert(img.resource_state == eResState::CopyDst);
 
     VkImageSubresourceRange clear_range = {};
     clear_range.baseMipLevel = 0;
@@ -1114,22 +1125,22 @@ void Ren::ClearImage(Image &tex, const ClearColor &col, CommandBuffer cmd_buf) {
     clear_range.baseArrayLayer = 0;
     clear_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
-    if (!IsDepthFormat(tex.params.format)) {
+    if (!IsDepthFormat(img.params.format)) {
         clear_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
         VkClearColorValue clear_val = {};
         memcpy(clear_val.uint32, col.uint32, 4 * sizeof(float));
 
-        tex.api_ctx()->vkCmdClearColorImage(cmd_buf, tex.handle().img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_val,
-                                            1, &clear_range);
+        img.api()->vkCmdClearColorImage(cmd_buf, img.handle().img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_val, 1,
+                                        &clear_range);
     } else {
         clear_range.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 
         VkClearDepthStencilValue clear_val = {};
         clear_val.depth = col.float32[0];
 
-        tex.api_ctx()->vkCmdClearDepthStencilImage(cmd_buf, tex.handle().img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                                   &clear_val, 1, &clear_range);
+        img.api()->vkCmdClearDepthStencilImage(cmd_buf, img.handle().img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                               &clear_val, 1, &clear_range);
     }
 }
 

@@ -4,17 +4,20 @@
 
 #include "../../utils/ShaderLoader.h"
 
-void Eng::ExReadExposure::Execute(FgContext &fg) {
+void Eng::ExReadExposure::Execute(const FgContext &fg) {
     const Ren::Image &input_tex = fg.AccessROImage(args_->input_tex);
-    Ren::Buffer &output_buf = fg.AccessRWBuffer(args_->output_buf);
+    const Ren::BufferHandle output_buf = fg.AccessRWBuffer(args_->output_buf);
+
+    const auto &[output_buf_main, output_buf_cold] = fg.storages().buffers.Get(output_buf);
 
     { // Retrieve result of readback from previous frame
-        const auto *mapped_ptr = (const float *)output_buf.Map();
+        const auto *mapped_ptr = (const float *)Ren::Buffer_Map(fg.ren_ctx().api(), output_buf_main, output_buf_cold);
         if (mapped_ptr) {
             exposure_ = mapped_ptr[fg.backend_frame()];
-            output_buf.Unmap();
+            Ren::Buffer_Unmap(fg.ren_ctx().api(), output_buf_main, output_buf_cold);
         }
     }
 
-    input_tex.CopyTextureData(output_buf, fg.cmd_buf(), sizeof(float) * fg.backend_frame(), sizeof(float));
+    input_tex.CopyTextureData(output_buf_main, output_buf_cold, fg.cmd_buf(), sizeof(float) * fg.backend_frame(),
+                              sizeof(float));
 }

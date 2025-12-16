@@ -8,14 +8,16 @@
 #include <Ren/RastState.h>
 #include <Ren/VKCtx.h>
 
-void Eng::ExTransparent::DrawTransparent_Simple(FgContext &fg, const Ren::Buffer &instances_buf,
-                                                const Ren::Buffer &instance_indices_buf,
-                                                const Ren::Buffer &unif_shared_data_buf,
-                                                const Ren::Buffer &materials_buf, const Ren::Buffer &cells_buf,
-                                                const Ren::Buffer &items_buf, const Ren::Buffer &lights_buf,
-                                                const Ren::Buffer &decals_buf, const Ren::Image &shad_tex,
-                                                const Ren::WeakImgRef &color_tex, const Ren::Image &ssao_tex) {
-    auto *api_ctx = fg.ren_ctx().api_ctx();
+void Eng::ExTransparent::DrawTransparent_Simple(const FgContext &fg, const Ren::BufferHandle instances_buf,
+                                                const Ren::BufferHandle instance_indices_buf,
+                                                const Ren::BufferHandle unif_shared_data_buf,
+                                                const Ren::BufferHandle materials_buf,
+                                                const Ren::BufferHandle cells_buf, const Ren::BufferHandle items_buf,
+                                                const Ren::BufferHandle lights_buf, const Ren::BufferHandle decals_buf,
+                                                const Ren::Image &shad_tex, const Ren::WeakImgRef &color_tex,
+                                                const Ren::Image &ssao_tex) {
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
 
     [[maybe_unused]] const Ren::Image &brdf_lut = fg.AccessROImage(brdf_lut_);
     const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
@@ -66,16 +68,20 @@ void Eng::ExTransparent::DrawTransparent_Simple(FgContext &fg, const Ren::Buffer
         // const VkDescriptorImageInfo cone_rt_info = cone_rt_lut.ref->vk_desc_image_info();
         // const VkDescriptorImageInfo brdf_info = brdf_lut.ref->vk_desc_image_info();
 
-        const VkBufferView lights_buf_view = lights_buf.view(0).second;
-        const VkBufferView decals_buf_view = decals_buf.view(0).second;
-        const VkBufferView cells_buf_view = cells_buf.view(0).second;
-        const VkBufferView items_buf_view = items_buf.view(0).second;
+        const VkBufferView lights_buf_view = storages.buffers.Get(lights_buf).first.views[0].second;
+        const VkBufferView decals_buf_view = storages.buffers.Get(decals_buf).first.views[0].second;
+        const VkBufferView cells_buf_view = storages.buffers.Get(cells_buf).first.views[0].second;
+        const VkBufferView items_buf_view = storages.buffers.Get(items_buf).first.views[0].second;
 
-        const VkDescriptorBufferInfo ubuf_info = {unif_shared_data_buf.vk_handle(), 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
+        const VkDescriptorBufferInfo ubuf_info = {unif_shared_data_buf_main.buf, 0, VK_WHOLE_SIZE};
 
-        const VkBufferView instances_buf_view = instances_buf.view(0).second;
-        const VkDescriptorBufferInfo instance_indices_buf_info = {instance_indices_buf.vk_handle(), 0, VK_WHOLE_SIZE};
-        const VkDescriptorBufferInfo mat_buf_info = {materials_buf.vk_handle(), 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
+        const VkBufferView instances_buf_view = instances_buf_main.views[0].second;
+        const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
+        const VkDescriptorBufferInfo instance_indices_buf_info = {instance_indices_buf_main.buf, 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
+        const VkDescriptorBufferInfo mat_buf_info = {materials_buf_main.buf, 0, VK_WHOLE_SIZE};
 
         Ren::SmallVector<VkWriteDescriptorSet, 16> descr_writes;
 
@@ -240,23 +246,23 @@ void Eng::ExTransparent::DrawTransparent_Simple(FgContext &fg, const Ren::Buffer
             descr_write.pBufferInfo = &mat_buf_info;
         }
 
-        api_ctx->vkUpdateDescriptorSets(api_ctx->device, descr_writes.size(), descr_writes.cdata(), 0, nullptr);
+        api.vkUpdateDescriptorSets(api.device, descr_writes.size(), descr_writes.cdata(), 0, nullptr);
     }
 
     const auto &texture_descr_sets = bindless_tex_->textures_descr_sets;
 
-    VkCommandBuffer cmd_buf = api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+    VkCommandBuffer cmd_buf = fg.cmd_buf();
 
     //
     // Setup viewport
     //
     const VkViewport viewport = {0.0f, 0.0f, float(view_state_->ren_res[0]), float(view_state_->ren_res[1]),
                                  0.0f, 1.0f};
-    api_ctx->vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+    api.vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
     const VkRect2D scissor = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
-    api_ctx->vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+    api.vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
-    const uint32_t materials_per_descriptor = api_ctx->max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
+    const uint32_t materials_per_descriptor = api.max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
 
     static backend_info_t backend_info;
 
@@ -265,13 +271,16 @@ void Eng::ExTransparent::DrawTransparent_Simple(FgContext &fg, const Ren::Buffer
         uint64_t cur_mat_id = 0xffffffffffffffff;
         uint32_t bound_descr_id = 0xffffffff;
 
+        const Ren::RenderPassMain &rp_transparent_main = storages.render_passes.Get(rp_transparent_).first;
+
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = rp_transparent_->vk_handle();
+        rp_begin_info.renderPass = rp_transparent_main.handle;
         rp_begin_info.framebuffer = transparent_draw_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
-        api_ctx->vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        draw_pass_vi_->BindBuffers(api_ctx, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        const Ren::VertexInputMain &vi_main = storages.vtx_inputs.Get(draw_pass_vi_).first;
+        VertexInput_BindBuffers(api, vi_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         for (int j = int((*p_list_)->custom_batch_indices.size()) - 1; j >= (*p_list_)->alpha_blend_start_index; j--) {
             const auto &batch = (*p_list_)->custom_batches[(*p_list_)->custom_batch_indices[j]];
@@ -285,12 +294,14 @@ void Eng::ExTransparent::DrawTransparent_Simple(FgContext &fg, const Ren::Buffer
 
             if (cur_mat_id != batch.mat_id) {
                 const uint32_t pipe_id =
-                    (*(*p_list_)->materials)[batch.mat_id].pipelines[int(eFwdPipeline::BackfaceDraw)].index();
+                    (*(*p_list_)->materials)[batch.mat_id].pipelines[int(eFwdPipeline::BackfaceDraw)].index;
 
                 if (cur_pipe_id != pipe_id) {
-                    api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[pipe_id].handle());
-                    api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                     pipelines_[pipe_id].layout(), 0, 1, &res_descr_set, 0, nullptr);
+                    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                          storages.pipelines.GetUnsafe(pipe_id).first.handle);
+                    api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                                storages.pipelines.GetUnsafe(pipe_id).first.layout, 0, 1,
+                                                &res_descr_set, 0, nullptr);
                     cur_pipe_id = pipe_id;
                     bound_descr_id = 0xffffffff;
                 }
@@ -300,17 +311,17 @@ void Eng::ExTransparent::DrawTransparent_Simple(FgContext &fg, const Ren::Buffer
 
             const uint32_t descr_id = batch.material_index / materials_per_descriptor;
             if (descr_id != bound_descr_id) {
-                api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                 pipelines_[batch.pipe_id].layout(), 1, 1,
-                                                 &texture_descr_sets[descr_id], 0, nullptr);
+                api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                            storages.pipelines.GetUnsafe(batch.pipe_id).first.layout, 1, 1,
+                                            &texture_descr_sets[descr_id], 0, nullptr);
                 bound_descr_id = descr_id;
             }
 
-            api_ctx->vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
-                                      batch.instance_count,         // instance count
-                                      batch.indices_offset,         // first index
-                                      batch.base_vertex,            // vertex offset
-                                      batch.instance_start);        // first instance
+            api.vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
+                                 batch.instance_count,         // instance count
+                                 batch.indices_offset,         // first index
+                                 batch.base_vertex,            // vertex offset
+                                 batch.instance_start);        // first instance
 
             backend_info.opaque_draw_calls_count += 2;
             backend_info.tris_rendered += (batch.indices_count / 3) * batch.instance_count;
@@ -326,12 +337,14 @@ void Eng::ExTransparent::DrawTransparent_Simple(FgContext &fg, const Ren::Buffer
 
             if (cur_mat_id != batch.mat_id) {
                 const uint32_t pipe_id =
-                    (*(*p_list_)->materials)[batch.mat_id].pipelines[int(eFwdPipeline::FrontfaceDraw)].index();
+                    (*(*p_list_)->materials)[batch.mat_id].pipelines[int(eFwdPipeline::FrontfaceDraw)].index;
 
                 if (cur_pipe_id != pipe_id) {
-                    api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[pipe_id].handle());
-                    api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                     pipelines_[pipe_id].layout(), 0, 1, &res_descr_set, 0, nullptr);
+                    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                          storages.pipelines.GetUnsafe(pipe_id).first.handle);
+                    api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                                storages.pipelines.GetUnsafe(pipe_id).first.layout, 0, 1,
+                                                &res_descr_set, 0, nullptr);
                     cur_pipe_id = pipe_id;
                     bound_descr_id = 0xffffffff;
                 }
@@ -341,29 +354,31 @@ void Eng::ExTransparent::DrawTransparent_Simple(FgContext &fg, const Ren::Buffer
 
             const uint32_t descr_id = batch.material_index / materials_per_descriptor;
             if (descr_id != bound_descr_id) {
-                api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                 pipelines_[batch.pipe_id].layout(), 1, 1,
-                                                 &texture_descr_sets[descr_id], 0, nullptr);
+                api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                            storages.pipelines.GetUnsafe(batch.pipe_id).first.layout, 1, 1,
+                                            &texture_descr_sets[descr_id], 0, nullptr);
                 bound_descr_id = descr_id;
             }
 
-            api_ctx->vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
-                                      batch.instance_count,         // instance count
-                                      batch.indices_offset,         // first index
-                                      batch.base_vertex,            // vertex offset
-                                      batch.instance_start);        // first instance
+            api.vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
+                                 batch.instance_count,         // instance count
+                                 batch.indices_offset,         // first index
+                                 batch.base_vertex,            // vertex offset
+                                 batch.instance_start);        // first instance
 
             backend_info.opaque_draw_calls_count += 2;
             backend_info.tris_rendered += (batch.indices_count / 3) * batch.instance_count;
         }
 
-        api_ctx->vkCmdEndRenderPass(cmd_buf);
+        api.vkCmdEndRenderPass(cmd_buf);
     }
 }
 
-void Eng::ExTransparent::DrawTransparent_OIT_MomentBased(FgContext &fg) { assert(false && "Not implemented!"); }
+void Eng::ExTransparent::DrawTransparent_OIT_MomentBased(const FgContext &fg) { assert(false && "Not implemented!"); }
 
-void Eng::ExTransparent::DrawTransparent_OIT_WeightedBlended(FgContext &fg) { assert(false && "Not implemented!"); }
+void Eng::ExTransparent::DrawTransparent_OIT_WeightedBlended(const FgContext &fg) {
+    assert(false && "Not implemented!");
+}
 
 void Eng::ExTransparent::InitDescrSetLayout() {
     VkDescriptorSetLayoutBinding bindings[] = {
@@ -393,13 +408,12 @@ void Eng::ExTransparent::InitDescrSetLayout() {
     layout_info.bindingCount = uint32_t(std::size(bindings));
     layout_info.pBindings = bindings;
 
-    const VkResult res =
-        api_ctx_->vkCreateDescriptorSetLayout(api_ctx_->device, &layout_info, nullptr, &descr_set_layout_);
+    const VkResult res = api_.vkCreateDescriptorSetLayout(api_.device, &layout_info, nullptr, &descr_set_layout_);
     assert(res == VK_SUCCESS);
 }
 
 Eng::ExTransparent::~ExTransparent() {
     if (descr_set_layout_) {
-        api_ctx_->vkDestroyDescriptorSetLayout(api_ctx_->device, descr_set_layout_, nullptr);
+        api_.vkDestroyDescriptorSetLayout(api_.device, descr_set_layout_, nullptr);
     }
 }

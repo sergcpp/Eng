@@ -11,108 +11,23 @@
 
 namespace Ren {
 extern const VkShaderStageFlagBits g_shader_stages_vk[];
-} // namespace Ren
 
-Ren::Program::Program(ApiContext *api_ctx, ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref,
-                      ShaderRef gs_ref, ILog *log) {
-    api_ctx_ = api_ctx;
-    Init(std::move(vs_ref), std::move(fs_ref), std::move(tcs_ref), std::move(tes_ref), std::move(gs_ref), log);
-}
-
-Ren::Program::Program(ApiContext *api_ctx, ShaderRef cs_ref, ILog *log) {
-    api_ctx_ = api_ctx;
-    Init(std::move(cs_ref), log);
-}
-
-Ren::Program::Program(ApiContext *api_ctx, ShaderRef raygen_ref, ShaderRef closesthit_ref, ShaderRef anyhit_ref,
-                      ShaderRef miss_ref, ShaderRef intersection_ref, ILog *log, int) {
-    api_ctx_ = api_ctx;
-    Init2(std::move(raygen_ref), std::move(closesthit_ref), std::move(anyhit_ref), std::move(miss_ref),
-          std::move(intersection_ref), log);
-}
-
-Ren::Program::~Program() { Destroy(); }
-
-Ren::Program &Ren::Program::operator=(Program &&rhs) noexcept {
-    Destroy();
-
-    shaders_ = std::move(rhs.shaders_);
-    attributes_ = std::move(rhs.attributes_);
-    uniforms_ = std::move(rhs.uniforms_);
-    pc_ranges_ = std::move(rhs.pc_ranges_);
-
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
-    descr_set_layouts_ = std::move(rhs.descr_set_layouts_);
-
-    RefCounter::operator=(std::move(rhs));
-
-    return *this;
-}
-
-void Ren::Program::Destroy() {
-    for (VkDescriptorSetLayout &l : descr_set_layouts_) {
-        if (l) {
-            api_ctx_->vkDestroyDescriptorSetLayout(api_ctx_->device, l, nullptr);
-        }
-    }
-    descr_set_layouts_.clear();
-}
-
-void Ren::Program::Init(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref, ShaderRef gs_ref,
-                        ILog *log) {
-    // store shaders
-    shaders_[int(eShaderType::Vertex)] = std::move(vs_ref);
-    shaders_[int(eShaderType::Fragment)] = std::move(fs_ref);
-    shaders_[int(eShaderType::TesselationControl)] = std::move(tcs_ref);
-    shaders_[int(eShaderType::TesselationEvaluation)] = std::move(tes_ref);
-    shaders_[int(eShaderType::Geometry)] = std::move(gs_ref);
-
-    if (!InitDescrSetLayouts(log)) {
-        log->Error("Failed to initialize descriptor set layouts!");
-    }
-    InitBindings(log);
-}
-
-void Ren::Program::Init(ShaderRef cs_ref, ILog *log) {
-    // store shader
-    shaders_[int(eShaderType::Compute)] = std::move(cs_ref);
-
-    if (!InitDescrSetLayouts(log)) {
-        log->Error("Failed to initialize descriptor set layouts!");
-    }
-    InitBindings(log);
-}
-
-void Ren::Program::Init2(ShaderRef raygen_ref, ShaderRef closesthit_ref, ShaderRef anyhit_ref, ShaderRef miss_ref,
-                         ShaderRef intersection_ref, ILog *log) {
-    // store shaders
-    shaders_[int(eShaderType::RayGen)] = std::move(raygen_ref);
-    shaders_[int(eShaderType::ClosestHit)] = std::move(closesthit_ref);
-    shaders_[int(eShaderType::AnyHit)] = std::move(anyhit_ref);
-    shaders_[int(eShaderType::Miss)] = std::move(miss_ref);
-    shaders_[int(eShaderType::Intersection)] = std::move(intersection_ref);
-
-    if (!InitDescrSetLayouts(log)) {
-        log->Error("Failed to initialize descriptor set layouts!");
-    }
-    InitBindings(log);
-}
-
-bool Ren::Program::InitDescrSetLayouts(ILog *log) {
+bool InitDescrSetLayouts(const ApiContext &api, ProgramMain &prog_main,
+                         const DualStorage<ShaderMain, ShaderCold> &shaders, ILog *log) {
     SmallVector<VkDescriptorSetLayoutBinding, 16> layout_bindings[4];
 
     for (int i = 0; i < int(eShaderType::_Count); ++i) {
-        const ShaderRef &sh_ref = shaders_[i];
-        if (!sh_ref) {
+        const ShaderHandle sh_handle = prog_main.shaders[i];
+        if (!sh_handle) {
             continue;
         }
 
-        const Shader &sh = (*sh_ref);
-        for (const Descr &u : sh.unif_bindings) {
+        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders.Get(sh_handle);
+        for (const Descr &u : sh.second.unif_bindings) {
             auto &bindings = layout_bindings[u.set];
 
             const auto it = std::find_if(std::begin(bindings), std::end(bindings),
-                                   [&u](const VkDescriptorSetLayoutBinding &b) { return u.loc == b.binding; });
+                                         [&u](const VkDescriptorSetLayoutBinding &b) { return u.loc == b.binding; });
             if (it == std::end(bindings)) {
                 auto &new_binding = bindings.emplace_back();
                 new_binding.binding = u.loc;
@@ -120,7 +35,7 @@ bool Ren::Program::InitDescrSetLayouts(ILog *log) {
 
                 if (bool(u.flags & eDescrFlags::UnboundedArray) && u.desc_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
                     assert(u.count == 1);
-                    new_binding.descriptorCount = api_ctx_->max_combined_image_samplers;
+                    new_binding.descriptorCount = api.max_combined_image_samplers;
                 } else {
                     new_binding.descriptorCount = u.count;
                 }
@@ -153,9 +68,9 @@ bool Ren::Program::InitDescrSetLayouts(ILog *log) {
             layout_info.pNext = &extended_info;
         }
 
-        descr_set_layouts_.emplace_back();
+        prog_main.descr_set_layouts.emplace_back();
         const VkResult res =
-            api_ctx_->vkCreateDescriptorSetLayout(api_ctx_->device, &layout_info, nullptr, &descr_set_layouts_.back());
+            api.vkCreateDescriptorSetLayout(api.device, &layout_info, nullptr, &prog_main.descr_set_layouts.back());
 
         if (res != VK_SUCCESS) {
             log->Error("Failed to create descriptor set layout!");
@@ -166,32 +81,29 @@ bool Ren::Program::InitDescrSetLayouts(ILog *log) {
     return true;
 }
 
-void Ren::Program::InitBindings(ILog *log) {
-    attributes_.clear();
-    uniforms_.clear();
-    pc_ranges_.clear();
-
+void InitBindings(const ApiContext &api, ProgramMain &prog_main, ProgramCold &prog_cold,
+                  const DualStorage<ShaderMain, ShaderCold> &shaders, ILog *log) {
     for (int i = 0; i < int(eShaderType::_Count); ++i) {
-        const ShaderRef &sh_ref = shaders_[i];
-        if (!sh_ref) {
+        const ShaderHandle sh_handle = prog_main.shaders[i];
+        if (!sh_handle) {
             continue;
         }
 
-        const Shader &sh = (*sh_ref);
-        for (const Descr &u : sh.unif_bindings) {
-            auto it = std::find(std::begin(uniforms_), std::end(uniforms_), u);
-            if (it == std::end(uniforms_)) {
-                uniforms_.emplace_back(u);
+        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders.Get(sh_handle);
+        for (const Descr &u : sh.second.unif_bindings) {
+            auto it = std::find(std::begin(prog_cold.uniforms), std::end(prog_cold.uniforms), u);
+            if (it == std::end(prog_cold.uniforms)) {
+                prog_cold.uniforms.emplace_back(u);
             }
         }
 
-        for (const Range r : sh.pc_ranges) {
-            auto it = std::find_if(std::begin(pc_ranges_), std::end(pc_ranges_), [&](const VkPushConstantRange &rng) {
-                return r.offset == rng.offset && r.size == rng.size;
-            });
+        for (const Range r : sh.second.pc_ranges) {
+            auto it = std::find_if(
+                std::begin(prog_main.pc_ranges), std::end(prog_main.pc_ranges),
+                [&](const VkPushConstantRange &rng) { return r.offset == rng.offset && r.size == rng.size; });
 
-            if (it == std::end(pc_ranges_)) {
-                VkPushConstantRange &new_rng = pc_ranges_.emplace_back();
+            if (it == std::end(prog_main.pc_ranges)) {
+                VkPushConstantRange &new_rng = prog_main.pc_ranges.emplace_back();
                 new_rng.stageFlags = g_shader_stages_vk[i];
                 new_rng.offset = r.offset;
                 new_rng.size = r.size;
@@ -201,40 +113,82 @@ void Ren::Program::InitBindings(ILog *log) {
         }
     }
 
-    if (shaders_[int(eShaderType::Vertex)]) {
-        for (const Descr &a : shaders_[int(eShaderType::Vertex)]->attr_bindings) {
-            attributes_.emplace_back(a);
+    if (const ShaderHandle sh_handle = prog_main.shaders[int(eShaderType::Vertex)]) {
+        const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders.Get(sh_handle);
+        for (const Descr &a : sh.second.attr_bindings) {
+            prog_cold.attributes.emplace_back(a);
         }
     }
 
-    std::sort(std::begin(uniforms_), std::end(uniforms_), [](const Descr &lhs, const Descr &rhs) {
+    std::sort(std::begin(prog_cold.uniforms), std::end(prog_cold.uniforms), [](const Descr &lhs, const Descr &rhs) {
         if (lhs.set == rhs.set) {
             return (lhs.loc < rhs.loc);
         }
         return (lhs.set < rhs.set);
     });
+}
+} // namespace Ren
 
-#if 0
-    log->Info("PROGRAM %s", name_.c_str());
+bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle vs, const ShaderHandle fs,
+                       const ShaderHandle tcs, const ShaderHandle tes, const ShaderHandle gs, ILog *log) {
+    // store shaders
+    prog_main.shaders[int(eShaderType::Vertex)] = vs;
+    prog_main.shaders[int(eShaderType::Fragment)] = fs;
+    prog_main.shaders[int(eShaderType::TesselationControl)] = tcs;
+    prog_main.shaders[int(eShaderType::TesselationEvaluation)] = tes;
+    prog_main.shaders[int(eShaderType::Geometry)] = gs;
 
-    // Print all attributes
-    log->Info("\tATTRIBUTES");
-    for (int i = 0; i < int(attributes_.size()); i++) {
-        if (attributes_[i].loc == -1) {
-            continue;
-        }
-        log->Info("\t\t%s : %i", attributes_[i].name.c_str(), attributes_[i].loc);
+    if (!InitDescrSetLayouts(api, prog_main, shaders, log)) {
+        log->Error("Failed to initialize descriptor set layouts!");
+        return false;
     }
+    InitBindings(api, prog_main, prog_cold, shaders, log);
 
-    // Print all uniforms
-    log->Info("\tUNIFORMS");
-    for (int i = 0; i < int(uniforms_.size()); i++) {
-        if (uniforms_[i].loc == -1) {
-            continue;
-        }
-        log->Info("\t\t%s : %i", uniforms_[i].name.c_str(), uniforms_[i].loc);
+    return true;
+}
+
+bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle cs, ILog *log) {
+    // store shader
+    prog_main.shaders[int(eShaderType::Compute)] = cs;
+
+    if (!InitDescrSetLayouts(api, prog_main, shaders, log)) {
+        log->Error("Failed to initialize descriptor set layouts!");
+        return false;
     }
-#endif
+    InitBindings(api, prog_main, prog_cold, shaders, log);
+
+    return true;
+}
+
+bool Ren::Program_Init2(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+                        ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle rgs, const ShaderHandle chs,
+                        const ShaderHandle ahs, const ShaderHandle ms, const ShaderHandle is, ILog *log) {
+    // store shaders
+    prog_main.shaders[int(eShaderType::RayGen)] = rgs;
+    prog_main.shaders[int(eShaderType::ClosestHit)] = chs;
+    prog_main.shaders[int(eShaderType::AnyHit)] = ahs;
+    prog_main.shaders[int(eShaderType::Miss)] = ms;
+    prog_main.shaders[int(eShaderType::Intersection)] = is;
+
+    if (!InitDescrSetLayouts(api, prog_main, shaders, log)) {
+        log->Error("Failed to initialize descriptor set layouts!");
+        return false;
+    }
+    InitBindings(api, prog_main, prog_cold, shaders, log);
+
+    return true;
+}
+
+void Ren::Program_Destroy(const ApiContext &api, ProgramMain &prog_main, ProgramCold &prog_cold) {
+    for (VkDescriptorSetLayout &l : prog_main.descr_set_layouts) {
+        if (l) {
+            api.vkDestroyDescriptorSetLayout(api.device, l, nullptr);
+        }
+    }
+    prog_main = {};
+    prog_cold = {};
 }
 
 #ifdef _MSC_VER

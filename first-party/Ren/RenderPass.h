@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Fwd.h"
-#include "Span.h"
 #include "Image.h"
+#include "Span.h"
 
 namespace Ren {
 struct ApiContext;
@@ -103,14 +103,6 @@ struct RenderTargetInfo {
     eStoreOp stencil_store = eStoreOp::DontCare;
 
     RenderTargetInfo() = default;
-    RenderTargetInfo(WeakImgRef _ref, eLoadOp _load, eStoreOp _store, eLoadOp _stencil_load = eLoadOp::DontCare,
-                     eStoreOp _stencil_store = eStoreOp::DontCare)
-        : format(_ref->params.format), samples(_ref->params.samples), flags(_ref->params.flags),
-#if defined(REN_VK_BACKEND)
-          layout(eImageLayout(VKImageLayoutForState(_ref->resource_state))),
-#endif
-          load(_load), store(_store), stencil_load(_stencil_load), stencil_store(_stencil_store) {
-    }
     RenderTargetInfo(const Image *tex, eLoadOp _load, eStoreOp _store, eLoadOp _stencil_load = eLoadOp::DontCare,
                      eStoreOp _stencil_store = eStoreOp::DontCare)
         : format(tex->params.format), samples(tex->params.samples), flags(tex->params.flags),
@@ -214,44 +206,25 @@ inline bool operator!=(const RenderTargetInfo &lhs, const eFormat rhs) { return 
 inline bool operator<(const eFormat lhs, const RenderTargetInfo &rhs) { return lhs < rhs.format; }
 inline bool operator<(const RenderTargetInfo &lhs, const eFormat rhs) { return lhs.format < rhs; }
 
-class RenderPass : public RefCounter {
-    ApiContext *api_ctx_ = nullptr;
+struct RenderPassMain {
 #if defined(REN_VK_BACKEND)
-    VkRenderPass handle_ = {};
+    VkRenderPass handle = {};
 #endif
-
-    bool Init(ApiContext *api_ctx, const RenderTargetInfo &depth_rt, Span<const RenderTargetInfo> rts, ILog *log);
-    void Destroy();
-
-  public:
     RenderTargetInfo depth_rt;
     SmallVector<RenderTargetInfo, 4> color_rts;
 
-    RenderPass() = default;
-    RenderPass(ApiContext *api_ctx, const RenderTargetInfo &depth_rt, Span<const RenderTargetInfo> rts, ILog *log) {
-        Init(api_ctx, depth_rt, rts, log);
-    }
-    RenderPass(const RenderPass &rhs) = delete;
-    RenderPass(RenderPass &&rhs) noexcept { (*this) = std::move(rhs); }
-    ~RenderPass() { Destroy(); }
-
-    RenderPass &operator=(const RenderPass &rhs) = delete;
-    RenderPass &operator=(RenderPass &&rhs) noexcept;
-
-    bool operator==(const RenderPass &rhs) const { return Equals(rhs.depth_rt, rhs.color_rts); }
-    bool operator!=(const RenderPass &rhs) const { return depth_rt != rhs.depth_rt || color_rts != rhs.color_rts; }
-    bool operator<(const RenderPass &rhs) const { return LessThan(rhs.depth_rt, rhs.color_rts); }
-
-#if defined(REN_VK_BACKEND)
-    [[nodiscard]] VkRenderPass vk_handle() const { return handle_; }
-#endif
+    bool operator==(const RenderPassMain &rhs) const { return Equals(rhs.depth_rt, rhs.color_rts); }
+    bool operator!=(const RenderPassMain &rhs) const { return depth_rt != rhs.depth_rt || color_rts != rhs.color_rts; }
+    bool operator<(const RenderPassMain &rhs) const { return LessThan(rhs.depth_rt, rhs.color_rts); }
 
     bool IsCompatibleWith(const RenderTarget &_depth_rt, Span<const RenderTarget> _color_rts) const {
         return depth_rt == _depth_rt && Span<const RenderTargetInfo>(color_rts) == _color_rts;
     }
+
     bool Equals(const RenderTargetInfo &_depth_rt, Span<const RenderTargetInfo> _color_rts) const {
         return depth_rt == _depth_rt && Span<const RenderTargetInfo>(color_rts) == _color_rts;
     }
+
     bool LessThan(const RenderTargetInfo &_depth_rt, Span<const RenderTargetInfo> _color_rts) const {
         if (depth_rt < _depth_rt) {
             return true;
@@ -260,12 +233,13 @@ class RenderPass : public RefCounter {
         }
         return false;
     }
-
-    bool Setup(ApiContext *api_ctx, const RenderTarget &depth_rt, Span<const RenderTarget> rts, ILog *log);
-    bool Setup(ApiContext *api_ctx, const RenderTargetInfo &depth_rt, Span<const RenderTargetInfo> rts, ILog *log);
 };
 
-using RenderPassRef = StrongRef<RenderPass, SortedStorage<RenderPass>>;
-using WeakRenderPassRef = WeakRef<RenderPass, SortedStorage<RenderPass>>;
-using RenderPassStorage = SortedStorage<RenderPass>;
+struct RenderPassCold {
+    // TODO:
+};
+
+bool RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const RenderTargetInfo &depth_rt,
+                     Span<const RenderTargetInfo> color_rts, ILog *log);
+void RenderPass_Destroy(const ApiContext &api, RenderPassMain &rp_main);
 } // namespace Ren

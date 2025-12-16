@@ -6,15 +6,15 @@
 #include "../../utils/ShaderLoader.h"
 #include "../shaders/oit_debug_interface.h"
 
-Eng::ExDebugOIT::ExDebugOIT(FgContext &fg, const view_state_t *view_state, const Args *pass_data) {
+Eng::ExDebugOIT::ExDebugOIT(ShaderLoader &sh, const view_state_t *view_state, const Args *pass_data) {
     view_state_ = view_state;
     args_ = pass_data;
-    pi_debug_oit_ = fg.sh().LoadPipeline("internal/oit_debug.comp.glsl");
+    pi_debug_oit_ = sh.LoadPipeline("internal/oit_debug.comp.glsl");
 }
 
-void Eng::ExDebugOIT::Execute(FgContext &fg) {
-    const Ren::Buffer &oit_depth_buf = fg.AccessROBuffer(args_->oit_depth_buf);
-    Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
+void Eng::ExDebugOIT::Execute(const FgContext &fg) {
+    const Ren::BufferHandle oit_depth_buf = fg.AccessROBuffer(args_->oit_depth_buf);
+    const Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
 
     const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, OITDebug::OIT_DEPTH_BUF_SLOT, oit_depth_buf},
                                      {Ren::eBindTarget::ImageRW, OITDebug::OUT_IMG_SLOT, output_tex}};
@@ -28,6 +28,6 @@ void Eng::ExDebugOIT::Execute(FgContext &fg) {
     uniform_params.img_size[1] = view_state_->ren_res[1];
     uniform_params.layer_index = args_->layer_index;
 
-    DispatchCompute(*pi_debug_oit_, grp_count, bindings, &uniform_params, sizeof(uniform_params), fg.descr_alloc(),
-                    fg.log());
+    DispatchCompute(fg.cmd_buf(), pi_debug_oit_, fg.storages(), grp_count, bindings, &uniform_params,
+                    sizeof(uniform_params), fg.descr_alloc(), fg.log());
 }

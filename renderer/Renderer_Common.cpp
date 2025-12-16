@@ -236,7 +236,7 @@ void Eng::Renderer::AddBuffersUpdatePass(CommonBuffers &common_buffers, const Pe
         desc.views.push_back(Ren::eFormat::RG32UI);
         common_buffers.instance_indices = update_bufs.AddTransferOutput("Instance Indices", desc);
     }
-    FgResRef shared_data_res;
+    FgBufHandle shared_data_res;
     { // create uniform buffer
         FgBufDesc desc = {};
         desc.type = Ren::eBufType::Uniform;
@@ -250,25 +250,28 @@ void Eng::Renderer::AddBuffersUpdatePass(CommonBuffers &common_buffers, const Pe
         common_buffers.atomic_cnt = update_bufs.AddTransferOutput("Atomic Counter", desc);
     }
 
-    update_bufs.set_execute_cb([this, &common_buffers, &persistent_data, shared_data_res](FgContext &fg) {
-        Ren::Buffer &skin_transforms_buf = fg.AccessRWBuffer(common_buffers.skin_transforms);
-        Ren::Buffer &shape_keys_buf = fg.AccessRWBuffer(common_buffers.shape_keys);
-        // Ren::Buffer &instances_buf = fg.AccessRWBuffer(common_buffers.instances_res);
-        Ren::Buffer &instance_indices_buf = fg.AccessRWBuffer(common_buffers.instance_indices);
-        Ren::Buffer &shared_data_buf = fg.AccessRWBuffer(shared_data_res);
-        Ren::Buffer &atomic_cnt_buf = fg.AccessRWBuffer(common_buffers.atomic_cnt);
+    update_bufs.set_execute_cb([this, &common_buffers, &persistent_data, shared_data_res](const FgContext &fg) {
+        const Ren::BufferHandle skin_transforms_buf = fg.AccessRWBuffer(common_buffers.skin_transforms);
+        const Ren::BufferHandle shape_keys_buf = fg.AccessRWBuffer(common_buffers.shape_keys);
+        // Ren::BufferHandle instances_buf = fg.AccessRWBuffer(common_buffers.instances_res);
+        const Ren::BufferHandle instance_indices_buf = fg.AccessRWBuffer(common_buffers.instance_indices);
+        const Ren::BufferHandle shared_data_buf = fg.AccessRWBuffer(shared_data_res);
+        const Ren::BufferHandle atomic_cnt_buf = fg.AccessRWBuffer(common_buffers.atomic_cnt);
 
-        Ren::UpdateBuffer(skin_transforms_buf, 0, uint32_t(p_list_->skin_transforms.size() * sizeof(skin_transform_t)),
-                          p_list_->skin_transforms.data(), *p_list_->skin_transforms_stage_buf,
-                          fg.backend_frame() * SkinTransformsBufChunkSize, SkinTransformsBufChunkSize, fg.cmd_buf());
+        UpdateBuffer(fg.ren_ctx().api(), fg.storages(), skin_transforms_buf, 0,
+                     uint32_t(p_list_->skin_transforms.size() * sizeof(skin_transform_t)),
+                     p_list_->skin_transforms.data(), p_list_->skin_transforms_stage_buf,
+                     fg.backend_frame() * SkinTransformsBufChunkSize, SkinTransformsBufChunkSize, fg.cmd_buf());
 
-        Ren::UpdateBuffer(shape_keys_buf, 0, p_list_->shape_keys_data.count * sizeof(shape_key_data_t),
-                          p_list_->shape_keys_data.data, *p_list_->shape_keys_stage_buf,
-                          fg.backend_frame() * ShapeKeysBufChunkSize, ShapeKeysBufChunkSize, fg.cmd_buf());
+        UpdateBuffer(fg.ren_ctx().api(), fg.storages(), shape_keys_buf, 0,
+                     p_list_->shape_keys_data.count * sizeof(shape_key_data_t), p_list_->shape_keys_data.data,
+                     p_list_->shape_keys_stage_buf, fg.backend_frame() * ShapeKeysBufChunkSize, ShapeKeysBufChunkSize,
+                     fg.cmd_buf());
 
-        Ren::UpdateBuffer(instance_indices_buf, 0, uint32_t(p_list_->instance_indices.size() * sizeof(Ren::Vec2i)),
-                          p_list_->instance_indices.data(), *p_list_->instance_indices_stage_buf,
-                          fg.backend_frame() * InstanceIndicesBufChunkSize, InstanceIndicesBufChunkSize, fg.cmd_buf());
+        UpdateBuffer(fg.ren_ctx().api(), fg.storages(), instance_indices_buf, 0,
+                     uint32_t(p_list_->instance_indices.size() * sizeof(Ren::Vec2i)), p_list_->instance_indices.data(),
+                     p_list_->instance_indices_stage_buf, fg.backend_frame() * InstanceIndicesBufChunkSize,
+                     InstanceIndicesBufChunkSize, fg.cmd_buf());
 
         { // Prepare data that is shared for all instances
             shared_data_t shrd_data;
@@ -481,11 +484,14 @@ void Eng::Renderer::AddBuffersUpdatePass(CommonBuffers &common_buffers, const Pe
             memcpy(&shrd_data.atmosphere, &p_list_->env.atmosphere, sizeof(atmosphere_params_t));
             static_assert(sizeof(Eng::atmosphere_params_t) == sizeof(Types::atmosphere_params_t));
 
-            Ren::UpdateBuffer(shared_data_buf, 0, sizeof(shared_data_t), &shrd_data, *p_list_->shared_data_stage_buf,
-                              fg.backend_frame() * SharedDataBlockSize, SharedDataBlockSize, fg.cmd_buf());
+            UpdateBuffer(fg.ren_ctx().api(), fg.storages(), shared_data_buf, 0, sizeof(shared_data_t), &shrd_data,
+                         p_list_->shared_data_stage_buf, fg.backend_frame() * SharedDataBlockSize, SharedDataBlockSize,
+                         fg.cmd_buf());
         }
 
-        atomic_cnt_buf.Fill(0, sizeof(uint32_t), 0, fg.cmd_buf());
+        const Ren::BufferMain &atomic_cnt_buf_main = fg.storages().buffers.Get(atomic_cnt_buf).first;
+        Ren::Buffer_Fill(fg.ren_ctx().api(), atomic_cnt_buf_main, 0, sizeof(uint32_t), 0, fg.cmd_buf());
+        // atomic_cnt_buf.Fill(0, sizeof(uint32_t), 0, fg.cmd_buf());
     });
 }
 
@@ -535,48 +541,53 @@ void Eng::Renderer::AddLightBuffersUpdatePass(CommonBuffers &common_buffers) {
         common_buffers.rt_items = update_light_bufs.AddTransferOutput("RT Items Buffer", desc);
     }
 
-    update_light_bufs.set_execute_cb([this, &common_buffers](FgContext &fg) {
-        Ren::Buffer &cells_buf = fg.AccessRWBuffer(common_buffers.cells);
-        Ren::Buffer &rt_cells_buf = fg.AccessRWBuffer(common_buffers.rt_cells);
-        Ren::Buffer &lights_buf = fg.AccessRWBuffer(common_buffers.lights);
-        Ren::Buffer &decals_buf = fg.AccessRWBuffer(common_buffers.decals);
-        Ren::Buffer &items_buf = fg.AccessRWBuffer(common_buffers.items);
-        Ren::Buffer &rt_items_buf = fg.AccessRWBuffer(common_buffers.rt_items);
+    update_light_bufs.set_execute_cb([this, &common_buffers](const FgContext &fg) {
+        const Ren::BufferHandle cells_buf = fg.AccessRWBuffer(common_buffers.cells);
+        const Ren::BufferHandle rt_cells_buf = fg.AccessRWBuffer(common_buffers.rt_cells);
+        const Ren::BufferHandle lights_buf = fg.AccessRWBuffer(common_buffers.lights);
+        const Ren::BufferHandle decals_buf = fg.AccessRWBuffer(common_buffers.decals);
+        const Ren::BufferHandle items_buf = fg.AccessRWBuffer(common_buffers.items);
+        const Ren::BufferHandle rt_items_buf = fg.AccessRWBuffer(common_buffers.rt_items);
 
-        Ren::UpdateBuffer(cells_buf, 0, p_list_->cells.count * sizeof(cell_data_t), p_list_->cells.data,
-                          *p_list_->cells_stage_buf, fg.backend_frame() * CellsBufChunkSize, CellsBufChunkSize,
-                          fg.cmd_buf());
+        UpdateBuffer(fg.ren_ctx().api(), fg.storages(), cells_buf, 0, p_list_->cells.count * sizeof(cell_data_t),
+                     p_list_->cells.data, p_list_->cells_stage_buf, fg.backend_frame() * CellsBufChunkSize,
+                     CellsBufChunkSize, fg.cmd_buf());
 
-        Ren::UpdateBuffer(rt_cells_buf, 0, p_list_->rt_cells.count * sizeof(cell_data_t), p_list_->rt_cells.data,
-                          *p_list_->rt_cells_stage_buf, fg.backend_frame() * CellsBufChunkSize, CellsBufChunkSize,
-                          fg.cmd_buf());
+        UpdateBuffer(fg.ren_ctx().api(), fg.storages(), rt_cells_buf, 0, p_list_->rt_cells.count * sizeof(cell_data_t),
+                     p_list_->rt_cells.data, p_list_->rt_cells_stage_buf, fg.backend_frame() * CellsBufChunkSize,
+                     CellsBufChunkSize, fg.cmd_buf());
 
-        Ren::UpdateBuffer(lights_buf, 0, uint32_t(p_list_->lights.size() * sizeof(light_item_t)),
-                          p_list_->lights.data(), *p_list_->lights_stage_buf, fg.backend_frame() * LightsBufChunkSize,
-                          LightsBufChunkSize, fg.cmd_buf());
+        UpdateBuffer(fg.ren_ctx().api(), fg.storages(), lights_buf, 0,
+                     uint32_t(p_list_->lights.size() * sizeof(light_item_t)), p_list_->lights.data(),
+                     p_list_->lights_stage_buf, fg.backend_frame() * LightsBufChunkSize, LightsBufChunkSize,
+                     fg.cmd_buf());
 
-        Ren::UpdateBuffer(decals_buf, 0, uint32_t(p_list_->decals.size() * sizeof(decal_item_t)),
-                          p_list_->decals.data(), *p_list_->decals_stage_buf, fg.backend_frame() * DecalsBufChunkSize,
-                          DecalsBufChunkSize, fg.cmd_buf());
+        UpdateBuffer(fg.ren_ctx().api(), fg.storages(), decals_buf, 0,
+                     uint32_t(p_list_->decals.size() * sizeof(decal_item_t)), p_list_->decals.data(),
+                     p_list_->decals_stage_buf, fg.backend_frame() * DecalsBufChunkSize, DecalsBufChunkSize,
+                     fg.cmd_buf());
 
         if (p_list_->items.count) {
-            Ren::UpdateBuffer(items_buf, 0, p_list_->items.count * sizeof(item_data_t), p_list_->items.data,
-                              *p_list_->items_stage_buf, fg.backend_frame() * ItemsBufChunkSize, ItemsBufChunkSize,
-                              fg.cmd_buf());
+            UpdateBuffer(fg.ren_ctx().api(), fg.storages(), items_buf, 0, p_list_->items.count * sizeof(item_data_t),
+                         p_list_->items.data, p_list_->items_stage_buf, fg.backend_frame() * ItemsBufChunkSize,
+                         ItemsBufChunkSize, fg.cmd_buf());
         } else {
-            const item_data_t dummy = {};
-            Ren::UpdateBuffer(items_buf, 0, sizeof(item_data_t), &dummy, *p_list_->items_stage_buf,
-                              fg.backend_frame() * ItemsBufChunkSize, ItemsBufChunkSize, fg.cmd_buf());
+            static const item_data_t dummy = {};
+            UpdateBuffer(fg.ren_ctx().api(), fg.storages(), items_buf, 0, sizeof(item_data_t), &dummy,
+                         p_list_->items_stage_buf, fg.backend_frame() * ItemsBufChunkSize, ItemsBufChunkSize,
+                         fg.cmd_buf());
         }
 
         if (p_list_->rt_items.count) {
-            Ren::UpdateBuffer(rt_items_buf, 0, p_list_->rt_items.count * sizeof(item_data_t), p_list_->rt_items.data,
-                              *p_list_->rt_items_stage_buf, fg.backend_frame() * ItemsBufChunkSize, ItemsBufChunkSize,
-                              fg.cmd_buf());
+            UpdateBuffer(fg.ren_ctx().api(), fg.storages(), rt_items_buf, 0,
+                         p_list_->rt_items.count * sizeof(item_data_t), p_list_->rt_items.data,
+                         p_list_->rt_items_stage_buf, fg.backend_frame() * ItemsBufChunkSize, ItemsBufChunkSize,
+                         fg.cmd_buf());
         } else {
             const item_data_t dummy = {};
-            Ren::UpdateBuffer(rt_items_buf, 0, sizeof(item_data_t), &dummy, *p_list_->rt_items_stage_buf,
-                              fg.backend_frame() * ItemsBufChunkSize, ItemsBufChunkSize, fg.cmd_buf());
+            UpdateBuffer(fg.ren_ctx().api(), fg.storages(), rt_items_buf, 0, sizeof(item_data_t), &dummy,
+                         p_list_->rt_items_stage_buf, fg.backend_frame() * ItemsBufChunkSize, ItemsBufChunkSize,
+                         fg.cmd_buf());
         }
     });
 }
@@ -586,27 +597,29 @@ void Eng::Renderer::AddGBufferFillPass(const CommonBuffers &common_buffers, cons
     using Stg = Ren::eStage;
 
     auto &gbuf_fill = fg_builder_.AddNode("GBUFFER FILL");
-    const FgResRef vtx_buf1 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgResRef vtx_buf2 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgResRef ndx_buf = gbuf_fill.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufHandle vtx_buf1 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
+    const FgBufHandle vtx_buf2 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
+    const FgBufHandle ndx_buf = gbuf_fill.AddIndexBufferInput(persistent_data.indices_buf);
 
-    const FgResRef materials_buf = gbuf_fill.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
+    const FgBufHandle materials_buf =
+        gbuf_fill.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
 
     const FgResRef noise_tex =
         gbuf_fill.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
     const FgResRef dummy_white = gbuf_fill.AddTextureInput(dummy_white_, Stg::FragmentShader);
     const FgResRef dummy_black = gbuf_fill.AddTextureInput(dummy_black_, Stg::FragmentShader);
 
-    const FgResRef instances_buf = gbuf_fill.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
-    const FgResRef instances_indices_buf =
+    const FgBufHandle instances_buf =
+        gbuf_fill.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+    const FgBufHandle instances_indices_buf =
         gbuf_fill.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
-    const FgResRef shared_data_buf = gbuf_fill.AddUniformBufferInput(
+    const FgBufHandle shared_data_buf = gbuf_fill.AddUniformBufferInput(
         common_buffers.shared_data, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
 
-    const FgResRef cells_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
-    const FgResRef items_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
-    const FgResRef decals_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
+    const FgBufHandle cells_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
+    const FgBufHandle items_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
+    const FgBufHandle decals_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
 
     frame_textures.albedo = gbuf_fill.AddColorOutput(MAIN_ALBEDO_TEX, frame_textures.albedo_desc);
     frame_textures.normal = gbuf_fill.AddColorOutput(MAIN_NORMAL_TEX, frame_textures.normal_desc);
@@ -624,11 +637,11 @@ void Eng::Renderer::AddForwardOpaquePass(const CommonBuffers &common_buffers, co
     using Stg = Ren::eStage;
 
     auto &opaque = fg_builder_.AddNode("OPAQUE");
-    const FgResRef vtx_buf1 = opaque.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgResRef vtx_buf2 = opaque.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgResRef ndx_buf = opaque.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufHandle vtx_buf1 = opaque.AddVertexBufferInput(persistent_data.vertex_buf1);
+    const FgBufHandle vtx_buf2 = opaque.AddVertexBufferInput(persistent_data.vertex_buf2);
+    const FgBufHandle ndx_buf = opaque.AddIndexBufferInput(persistent_data.indices_buf);
 
-    const FgResRef materials_buf = opaque.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
+    const FgBufHandle materials_buf = opaque.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
     const FgResRef brdf_lut = opaque.AddTextureInput(brdf_lut_, Stg::FragmentShader);
     const FgResRef noise_tex =
         opaque.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
@@ -636,17 +649,17 @@ void Eng::Renderer::AddForwardOpaquePass(const CommonBuffers &common_buffers, co
 
     const FgResRef dummy_black = opaque.AddTextureInput(dummy_black_, Stg::FragmentShader);
 
-    const FgResRef instances_buf = opaque.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
-    const FgResRef instances_indices_buf =
+    const FgBufHandle instances_buf = opaque.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+    const FgBufHandle instances_indices_buf =
         opaque.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
-    const FgResRef shader_data_buf =
+    const FgBufHandle shader_data_buf =
         opaque.AddUniformBufferInput(common_buffers.shared_data, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
 
-    const FgResRef cells_buf = opaque.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
-    const FgResRef items_buf = opaque.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
-    const FgResRef lights_buf = opaque.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
-    const FgResRef decals_buf = opaque.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
+    const FgBufHandle cells_buf = opaque.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
+    const FgBufHandle items_buf = opaque.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
+    const FgBufHandle lights_buf = opaque.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
+    const FgBufHandle decals_buf = opaque.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
 
     const FgResRef shadowmap_tex = opaque.AddTextureInput(frame_textures.shadow_depth, Stg::FragmentShader);
     const FgResRef ssao_tex = opaque.AddTextureInput(frame_textures.ssao, Stg::FragmentShader);
@@ -663,11 +676,11 @@ void Eng::Renderer::AddForwardOpaquePass(const CommonBuffers &common_buffers, co
     frame_textures.specular = opaque.AddColorOutput(MAIN_SPEC_TEX, frame_textures.specular_desc);
     frame_textures.depth = opaque.AddDepthOutput(MAIN_DEPTH_TEX, frame_textures.depth_desc);
 
-    opaque.make_executor<ExOpaque>(
-        &p_list_, &view_state_, vtx_buf1, vtx_buf2, ndx_buf, materials_buf, persistent_data.pipelines.data(), &bindless,
-        brdf_lut, noise_tex, cone_rt_lut, dummy_black, instances_buf, instances_indices_buf, shader_data_buf, cells_buf,
-        items_buf, lights_buf, decals_buf, shadowmap_tex, ssao_tex, lmap_tex, frame_textures.color,
-        frame_textures.normal, frame_textures.specular, frame_textures.depth);
+    opaque.make_executor<ExOpaque>(ctx_.api(), &p_list_, &view_state_, vtx_buf1, vtx_buf2, ndx_buf, materials_buf,
+                                   &bindless, brdf_lut, noise_tex, cone_rt_lut, dummy_black, instances_buf,
+                                   instances_indices_buf, shader_data_buf, cells_buf, items_buf, lights_buf, decals_buf,
+                                   shadowmap_tex, ssao_tex, lmap_tex, frame_textures.color, frame_textures.normal,
+                                   frame_textures.specular, frame_textures.depth);
 }
 
 void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffers,
@@ -676,11 +689,11 @@ void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffer
     using Stg = Ren::eStage;
 
     auto &transparent = fg_builder_.AddNode("TRANSPARENT");
-    const FgResRef vtx_buf1 = transparent.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgResRef vtx_buf2 = transparent.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgResRef ndx_buf = transparent.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufHandle vtx_buf1 = transparent.AddVertexBufferInput(persistent_data.vertex_buf1);
+    const FgBufHandle vtx_buf2 = transparent.AddVertexBufferInput(persistent_data.vertex_buf2);
+    const FgBufHandle ndx_buf = transparent.AddIndexBufferInput(persistent_data.indices_buf);
 
-    const FgResRef materials_buf =
+    const FgBufHandle materials_buf =
         transparent.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
     const FgResRef brdf_lut = transparent.AddTextureInput(brdf_lut_, Stg::FragmentShader);
     const FgResRef noise_tex =
@@ -689,17 +702,18 @@ void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffer
 
     const FgResRef dummy_black = transparent.AddTextureInput(dummy_black_, Stg::FragmentShader);
 
-    const FgResRef instances_buf = transparent.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
-    const FgResRef instances_indices_buf =
+    const FgBufHandle instances_buf =
+        transparent.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+    const FgBufHandle instances_indices_buf =
         transparent.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
-    const FgResRef shader_data_buf = transparent.AddUniformBufferInput(
+    const FgBufHandle shader_data_buf = transparent.AddUniformBufferInput(
         common_buffers.shared_data, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
 
-    const FgResRef cells_buf = transparent.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
-    const FgResRef items_buf = transparent.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
-    const FgResRef lights_buf = transparent.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
-    const FgResRef decals_buf = transparent.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
+    const FgBufHandle cells_buf = transparent.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
+    const FgBufHandle items_buf = transparent.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
+    const FgBufHandle lights_buf = transparent.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
+    const FgBufHandle decals_buf = transparent.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
 
     const FgResRef shadowmap_tex = transparent.AddTextureInput(frame_textures.shadow_depth, Stg::FragmentShader);
     const FgResRef ssao_tex = transparent.AddTextureInput(frame_textures.ssao, Stg::FragmentShader);
@@ -717,10 +731,10 @@ void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffer
     frame_textures.depth = transparent.AddDepthOutput(MAIN_DEPTH_TEX, frame_textures.depth_desc);
 
     transparent.make_executor<ExTransparent>(
-        &p_list_, &view_state_, vtx_buf1, vtx_buf2, ndx_buf, materials_buf, persistent_data.pipelines.data(), &bindless,
-        brdf_lut, noise_tex, cone_rt_lut, dummy_black, instances_buf, instances_indices_buf, shader_data_buf, cells_buf,
-        items_buf, lights_buf, decals_buf, shadowmap_tex, ssao_tex, lmap_tex, frame_textures.color,
-        frame_textures.normal, frame_textures.specular, frame_textures.depth);
+        ctx_.api(), &p_list_, &view_state_, vtx_buf1, vtx_buf2, ndx_buf, materials_buf, &bindless, brdf_lut, noise_tex,
+        cone_rt_lut, dummy_black, instances_buf, instances_indices_buf, shader_data_buf, cells_buf, items_buf,
+        lights_buf, decals_buf, shadowmap_tex, ssao_tex, lmap_tex, frame_textures.color, frame_textures.normal,
+        frame_textures.specular, frame_textures.depth);
 }
 
 void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, FrameTextures &frame_textures,
@@ -731,8 +745,8 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
     auto &gbuf_shade = fg_builder_.AddNode("GBUFFER SHADE");
 
     struct PassData {
-        FgResRef shared_data;
-        FgResRef cells_buf, items_buf, lights_buf, decals_buf;
+        FgBufHandle shared_data;
+        FgBufHandle cells_buf, items_buf, lights_buf, decals_buf;
         FgResRef shadow_depth_tex, shadow_color_tex, ssao_tex, gi_tex, sun_shadow_tex;
         FgResRef depth_tex, albedo_tex, normal_tex, spec_tex;
         FgResRef ltc_luts_tex, env_tex;
@@ -768,14 +782,14 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
     frame_textures.color = data->output_tex =
         gbuf_shade.AddStorageImageOutput(MAIN_COLOR_TEX, frame_textures.color_desc, Stg::ComputeShader);
 
-    gbuf_shade.set_execute_cb([this, data](FgContext &fg) {
+    gbuf_shade.set_execute_cb([this, data](const FgContext &fg) {
         using namespace GBufferShade;
 
-        const Ren::Buffer &unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
-        const Ren::Buffer &cells_buf = fg.AccessROBuffer(data->cells_buf);
-        const Ren::Buffer &items_buf = fg.AccessROBuffer(data->items_buf);
-        const Ren::Buffer &lights_buf = fg.AccessROBuffer(data->lights_buf);
-        const Ren::Buffer &decals_buf = fg.AccessROBuffer(data->decals_buf);
+        const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
+        const Ren::BufferHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
+        const Ren::BufferHandle items_buf = fg.AccessROBuffer(data->items_buf);
+        const Ren::BufferHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
+        const Ren::BufferHandle decals_buf = fg.AccessROBuffer(data->decals_buf);
 
         const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
         const Ren::Image &albedo_tex = fg.AccessROImage(data->albedo_tex);
@@ -791,7 +805,7 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
         const Ren::Image &ltc_luts = fg.AccessROImage(data->ltc_luts_tex);
         const Ren::Image &env_tex = fg.AccessROImage(data->env_tex);
 
-        Ren::Image &out_color_tex = fg.AccessRWImage(data->output_tex);
+        const Ren::Image &out_color_tex = fg.AccessRWImage(data->output_tex);
 
         const Ren::Binding bindings[] = {
             {Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
@@ -800,12 +814,12 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
             {Trg::UTBuf, LIGHT_BUF_SLOT, lights_buf},
             {Trg::UTBuf, DECAL_BUF_SLOT, decals_buf},
             {Trg::TexSampled, DEPTH_TEX_SLOT, {depth_tex, 1}},
-            {Trg::TexSampled, DEPTH_LIN_TEX_SLOT, {depth_tex, *linear_sampler_, 1}},
+            {Trg::TexSampled, DEPTH_LIN_TEX_SLOT, {depth_tex, linear_sampler_, 1}},
             {Trg::TexSampled, ALBEDO_TEX_SLOT, albedo_tex},
             {Trg::TexSampled, NORM_TEX_SLOT, normal_tex},
             {Trg::TexSampled, SPEC_TEX_SLOT, spec_tex},
             {Trg::TexSampled, SHADOW_DEPTH_TEX_SLOT, shad_depth_tex},
-            {Trg::TexSampled, SHADOW_DEPTH_VAL_TEX_SLOT, {shad_depth_tex, *nearest_sampler_}},
+            {Trg::TexSampled, SHADOW_DEPTH_VAL_TEX_SLOT, {shad_depth_tex, nearest_sampler_}},
             {Trg::TexSampled, SHADOW_COLOR_TEX_SLOT, shad_color_tex},
             {Trg::TexSampled, SSAO_TEX_SLOT, ssao_tex},
             {Trg::TexSampled, GI_TEX_SLOT, gi_tex},
@@ -821,8 +835,8 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
         uniform_params.img_size = Ren::Vec2u(view_state_.ren_res[0], view_state_.ren_res[1]);
         uniform_params.pixel_spread_angle = view_state_.pixel_spread_angle;
 
-        DispatchCompute(*pi_gbuf_shade_[settings.enable_shadow_jitter], grp_count, bindings, &uniform_params,
-                        sizeof(uniform_params), fg.descr_alloc(), fg.log());
+        DispatchCompute(fg.cmd_buf(), pi_gbuf_shade_[settings.enable_shadow_jitter], fg.storages(), grp_count, bindings,
+                        &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
     });
 }
 
@@ -831,21 +845,23 @@ void Eng::Renderer::AddEmissivePass(const CommonBuffers &common_buffers, const P
     using Stg = Ren::eStage;
 
     auto &emissive = fg_builder_.AddNode("EMISSIVE");
-    const FgResRef vtx_buf1 = emissive.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgResRef vtx_buf2 = emissive.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgResRef ndx_buf = emissive.AddIndexBufferInput(persistent_data.indices_buf);
 
-    const FgResRef materials_buf = emissive.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
+    const FgBufHandle vtx_buf1 = emissive.AddVertexBufferInput(persistent_data.vertex_buf1);
+    const FgBufHandle vtx_buf2 = emissive.AddVertexBufferInput(persistent_data.vertex_buf2);
+    const FgBufHandle ndx_buf = emissive.AddIndexBufferInput(persistent_data.indices_buf);
+
+    const FgBufHandle materials_buf =
+        emissive.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
 
     const FgResRef noise_tex =
         emissive.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
     const FgResRef dummy_white = emissive.AddTextureInput(dummy_white_, Stg::FragmentShader);
 
-    const FgResRef instances_buf = emissive.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
-    const FgResRef instances_indices_buf =
+    const FgBufHandle instances_buf = emissive.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+    const FgBufHandle instances_indices_buf =
         emissive.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
-    const FgResRef shared_data_buf = emissive.AddUniformBufferInput(
+    const FgBufHandle shared_data_buf = emissive.AddUniformBufferInput(
         common_buffers.shared_data, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
 
     frame_textures.color = emissive.AddColorOutput(MAIN_COLOR_TEX, frame_textures.color_desc);
@@ -863,7 +879,7 @@ void Eng::Renderer::AddFillStaticVelocityPass(const CommonBuffers &common_buffer
     auto &static_vel = fg_builder_.AddNode("FILL STATIC VEL");
 
     struct PassData {
-        FgResRef shared_data;
+        FgBufHandle shared_data;
         FgResRef depth_tex;
         FgResRef velocity_tex;
     };
@@ -876,8 +892,8 @@ void Eng::Renderer::AddFillStaticVelocityPass(const CommonBuffers &common_buffer
                                                        Ren::Bitmask{Stg::DepthAttachment} | Stg::FragmentShader);
     inout_velocity_tex = data->velocity_tex = static_vel.AddColorOutput(inout_velocity_tex);
 
-    static_vel.set_execute_cb([this, data](FgContext &fg) {
-        const Ren::Buffer &unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
+    static_vel.set_execute_cb([this, data](const FgContext &fg) {
+        const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
         Ren::WeakImgRef depth_tex = fg.AccessROImageRef(data->depth_tex);
 
         Ren::WeakImgRef velocity_tex = fg.AccessRWImageRef(data->velocity_tex);
@@ -932,8 +948,8 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
                 clear_reconstructed.AddClearImageOutput("Reconstructed Prev. Depth", desc);
         }
 
-        clear_reconstructed.set_execute_cb([data](FgContext &fg) {
-            Ren::Image &reconstructed_depth = fg.AccessRWImage(data->reconstructed_depth);
+        clear_reconstructed.set_execute_cb([data](const FgContext &fg) {
+            const Ren::Image &reconstructed_depth = fg.AccessRWImage(data->reconstructed_depth);
 
             Ren::ClearImage(reconstructed_depth, {}, fg.cmd_buf());
         });
@@ -980,15 +996,15 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
                 reconstruct.AddStorageImageOutput("Dilated Velocity", desc, Stg::ComputeShader);
         }
 
-        reconstruct.set_execute_cb([this, data](FgContext &fg) {
+        reconstruct.set_execute_cb([this, data](const FgContext &fg) {
             using namespace ReconstructDepth;
 
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
             const Ren::Image &velocity_tex = fg.AccessROImage(data->velocity_tex);
 
-            Ren::Image &reconstructed_depth_tex = fg.AccessRWImage(data->out_reconstructed_depth_tex);
-            Ren::Image &dilated_depth_tex = fg.AccessRWImage(data->out_dilated_depth_tex);
-            Ren::Image &dilated_velocity_tex = fg.AccessRWImage(data->out_dilated_velocity_tex);
+            const Ren::Image &reconstructed_depth_tex = fg.AccessRWImage(data->out_reconstructed_depth_tex);
+            const Ren::Image &dilated_depth_tex = fg.AccessRWImage(data->out_dilated_depth_tex);
+            const Ren::Image &dilated_velocity_tex = fg.AccessRWImage(data->out_dilated_velocity_tex);
 
             const Ren::Binding bindings[] = {
                 {Ren::eBindTarget::TexSampled, DEPTH_TEX_SLOT, {depth_tex, 1}},
@@ -1004,8 +1020,8 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
             uniform_params.img_size = view_state_.ren_res;
             uniform_params.texel_size = 1.0f / Ren::Vec2f(view_state_.ren_res);
 
-            DispatchCompute(*pi_reconstruct_depth_, grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                            ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_reconstruct_depth_, fg.storages(), grp_count, bindings, &uniform_params,
+                            sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
     { // Prepare disocclusion
@@ -1038,7 +1054,7 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
                 prep_disocclusion.AddStorageImageOutput("Disocclusion Mask", desc, Stg::ComputeShader);
         }
 
-        prep_disocclusion.set_execute_cb([this, data](FgContext &fg) {
+        prep_disocclusion.set_execute_cb([this, data](const FgContext &fg) {
             using namespace PrepareDisocclusion;
 
             const Ren::Image &dilated_depth_tex = fg.AccessROImage(data->dilated_depth_tex);
@@ -1046,7 +1062,7 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
             const Ren::Image &reconstructed_depth_tex = fg.AccessROImage(data->reconstructed_depth_tex);
             const Ren::Image &velocity_tex = fg.AccessROImage(data->velocity_tex);
 
-            Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
 
             const Ren::Binding bindings[] = {
                 {Ren::eBindTarget::TexSampled, DILATED_DEPTH_TEX_SLOT, dilated_depth_tex},
@@ -1064,8 +1080,8 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
             uniform_params.clip_info = view_state_.clip_info;
             uniform_params.frustum_info = view_state_.frustum_info;
 
-            DispatchCompute(*pi_prepare_disocclusion_, grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                            ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_prepare_disocclusion_, fg.storages(), grp_count, bindings, &uniform_params,
+                            sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
     FgResRef resolved_color;
@@ -1102,7 +1118,7 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
         }
         data->history_tex = taa.AddHistoryTextureInput(data->output_history_tex, Stg::FragmentShader);
 
-        taa.set_execute_cb([this, data, static_accumulation](FgContext &fg) {
+        taa.set_execute_cb([this, data, static_accumulation](const FgContext &fg) {
             const Ren::Image &color_tex = fg.AccessROImage(data->color_tex);
             const Ren::Image &history_tex = fg.AccessROImage(data->history_tex);
             const Ren::Image &dilated_depth_tex = fg.AccessROImage(data->dilated_depth_tex);
@@ -1123,7 +1139,7 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
                 {output_history_tex, Ren::eLoadOp::DontCare, Ren::eStoreOp::Store}};
 
             const Ren::Binding bindings[] = {
-                {Ren::eBindTarget::TexSampled, TSR::CURR_NEAREST_TEX_SLOT, {color_tex, *nearest_sampler_}},
+                {Ren::eBindTarget::TexSampled, TSR::CURR_NEAREST_TEX_SLOT, {color_tex, nearest_sampler_}},
                 {Ren::eBindTarget::TexSampled, TSR::CURR_LINEAR_TEX_SLOT, color_tex},
                 {Ren::eBindTarget::TexSampled, TSR::HIST_TEX_SLOT, history_tex},
                 {Ren::eBindTarget::TexSampled, TSR::DILATED_DEPTH_TEX_SLOT, dilated_depth_tex},
@@ -1177,9 +1193,9 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
                 classify_h.AddStorageImageOutput("MB Tiles H", desc, Ren::eStage::ComputeShader);
         }
 
-        classify_h.set_execute_cb([this, data](FgContext &fg) {
+        classify_h.set_execute_cb([this, data](const FgContext &fg) {
             const Ren::Image &in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
-            Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
+            const Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
 
             const Ren::Binding bindings[] = {
                 {Ren::eBindTarget::TexSampled, MotionBlur::VELOCITY_TEX_SLOT, in_velocity_tex},
@@ -1192,8 +1208,8 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
             MotionBlur::Params uniform_params;
             uniform_params.img_size = Ren::Vec2u{in_velocity_tex.params.w, in_velocity_tex.params.h};
 
-            DispatchCompute(*pi_motion_blur_classify_[0], grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                            ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_motion_blur_classify_[0], fg.storages(), grp_count, bindings,
+                            &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
     { // Vertical pass
@@ -1218,11 +1234,11 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
                 classify_v.AddStorageImageOutput("MB Tiles V", desc, Ren::eStage::ComputeShader);
         }
 
-        classify_v.set_execute_cb([this, data](FgContext &fg) {
+        classify_v.set_execute_cb([this, data](const FgContext &fg) {
             using namespace MotionBlur;
 
             const Ren::Image &in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
-            Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
+            const Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
 
             const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, VELOCITY_TEX_SLOT, in_velocity_tex},
                                              {Ren::eBindTarget::ImageRW, OUT_IMG_SLOT, out_tiles_tex}};
@@ -1233,8 +1249,8 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
             Params uniform_params;
             uniform_params.img_size = Ren::Vec2u{in_velocity_tex.params.w, in_velocity_tex.params.h};
 
-            DispatchCompute(*pi_motion_blur_classify_[1], grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                            ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_motion_blur_classify_[1], fg.storages(), grp_count, bindings,
+                            &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
     { // Dilation pass
@@ -1260,11 +1276,11 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
                 dilate.AddStorageImageOutput("MB Tiles Dilated", desc, Ren::eStage::ComputeShader);
         }
 
-        dilate.set_execute_cb([this, data](FgContext &fg) {
+        dilate.set_execute_cb([this, data](const FgContext &fg) {
             using namespace MotionBlur;
 
             const Ren::Image &in_tiles_tex = fg.AccessROImage(data->in_tiles_tex);
-            Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
+            const Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
 
             const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, TILES_TEX_SLOT, in_tiles_tex},
                                              {Ren::eBindTarget::ImageRW, OUT_IMG_SLOT, out_tiles_tex}};
@@ -1275,8 +1291,8 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
             Params uniform_params;
             uniform_params.img_size = Ren::Vec2u{in_tiles_tex.params.w, in_tiles_tex.params.h};
 
-            DispatchCompute(*pi_motion_blur_dilate_, grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                            ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_motion_blur_dilate_, fg.storages(), grp_count, bindings, &uniform_params,
+                            sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
     FgResRef output_tex;
@@ -1307,14 +1323,15 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
             output_tex = data->output_tex = filter.AddStorageImageOutput("MB Output", desc, Ren::eStage::ComputeShader);
         }
 
-        filter.set_execute_cb([this, data](FgContext &fg) {
+        filter.set_execute_cb([this, data](const FgContext &fg) {
             using namespace MotionBlur;
 
             const Ren::Image &in_color_tex = fg.AccessROImage(data->in_color_tex);
             const Ren::Image &in_depth_tex = fg.AccessROImage(data->in_depth_tex);
             const Ren::Image &in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
             const Ren::Image &in_tiles_tex = fg.AccessROImage(data->in_tiles_tex);
-            Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
+
+            const Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
 
             const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, COLOR_TEX_SLOT, in_color_tex},
                                              {Ren::eBindTarget::TexSampled, DEPTH_TEX_SLOT, {in_depth_tex, 1}},
@@ -1330,8 +1347,8 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
             uniform_params.inv_ren_res = 1.0f / Ren::Vec2f{view_state_.ren_res};
             uniform_params.clip_info = view_state_.clip_info;
 
-            DispatchCompute(*pi_motion_blur_filter_, grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                            ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_motion_blur_filter_, fg.storages(), grp_count, bindings, &uniform_params,
+                            sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
     return output_tex;
@@ -1359,7 +1376,7 @@ void Eng::Renderer::AddDownsampleDepthPass(const CommonBuffers &common_buffers, 
         out_depth_down_2x = data->out_depth_tex = downsample_depth.AddColorOutput("Depth Down 2X", desc);
     }
 
-    downsample_depth.set_execute_cb([this, data](FgContext &fg) {
+    downsample_depth.set_execute_cb([this, data](const FgContext &fg) {
         const Ren::Image &depth_tex = fg.AccessROImage(data->in_depth_tex);
         Ren::WeakImgRef output_tex = fg.AccessRWImageRef(data->out_depth_tex);
 
@@ -1405,9 +1422,9 @@ Eng::FgResRef Eng::Renderer::AddDebugVelocityPass(const FgResRef velocity) {
             debug_motion.AddStorageImageOutput("Motion Debug", desc, Ren::eStage::ComputeShader);
     }
 
-    debug_motion.set_execute_cb([this, data](FgContext &fg) {
+    debug_motion.set_execute_cb([this, data](const FgContext &fg) {
         const Ren::Image &velocity_tex = fg.AccessROImage(data->in_velocity_tex);
-        Ren::Image &output_tex = fg.AccessRWImage(data->out_color_tex);
+        const Ren::Image &output_tex = fg.AccessRWImage(data->out_color_tex);
 
         const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, DebugVelocity::VELOCITY_TEX_SLOT, velocity_tex},
                                          {Ren::eBindTarget::ImageRW, DebugVelocity::OUT_IMG_SLOT, output_tex}};
@@ -1419,8 +1436,8 @@ Eng::FgResRef Eng::Renderer::AddDebugVelocityPass(const FgResRef velocity) {
         DebugVelocity::Params uniform_params;
         uniform_params.img_size = Ren::Vec2u{view_state_.out_res};
 
-        DispatchCompute(*pi_debug_velocity_, grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                        ctx_.default_descr_alloc(), ctx_.log());
+        DispatchCompute(fg.cmd_buf(), pi_debug_velocity_, fg.storages(), grp_count, bindings, &uniform_params,
+                        sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
     });
 
     return output_tex;
@@ -1455,12 +1472,13 @@ Eng::FgResRef Eng::Renderer::AddDebugGBufferPass(const FrameTextures &frame_text
             debug_gbuffer.AddStorageImageOutput("GBuffer Debug", desc, Ren::eStage::ComputeShader);
     }
 
-    debug_gbuffer.set_execute_cb([this, data, pi_index](FgContext &fg) {
+    debug_gbuffer.set_execute_cb([this, data, pi_index](const FgContext &fg) {
         const Ren::Image &depth_tex = fg.AccessROImage(data->in_depth_tex);
         const Ren::Image &albedo_tex = fg.AccessROImage(data->in_albedo_tex);
         const Ren::Image &normals_tex = fg.AccessROImage(data->in_normals_tex);
         const Ren::Image &specular_tex = fg.AccessROImage(data->in_specular_tex);
-        Ren::Image &output_tex = fg.AccessRWImage(data->out_color_tex);
+
+        const Ren::Image &output_tex = fg.AccessRWImage(data->out_color_tex);
 
         const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, DebugGBuffer::DEPTH_TEX_SLOT, {depth_tex, 1}},
                                          {Ren::eBindTarget::TexSampled, DebugGBuffer::ALBEDO_TEX_SLOT, albedo_tex},
@@ -1476,8 +1494,8 @@ Eng::FgResRef Eng::Renderer::AddDebugGBufferPass(const FrameTextures &frame_text
         uniform_params.img_size[0] = view_state_.out_res[0];
         uniform_params.img_size[1] = view_state_.out_res[1];
 
-        DispatchCompute(*pi_debug_gbuffer_[pi_index], grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                        ctx_.default_descr_alloc(), ctx_.log());
+        DispatchCompute(fg.cmd_buf(), pi_debug_gbuffer_[pi_index], fg.storages(), grp_count, bindings, &uniform_params,
+                        sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
     });
 
     return output_tex;

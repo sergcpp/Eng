@@ -135,18 +135,21 @@ uint32_t Ren::VKAccessFlagsForState(const eResState state) { return g_access_fla
 
 uint32_t Ren::VKPipelineStagesForState(const eResState state) { return g_pipeline_stages_per_state_vk[int(state)]; }
 
-void Ren::TransitionResourceStates(ApiContext *api_ctx, CommandBuffer cmd_buf, const Bitmask<eStage> src_stages_mask,
-                                   const Bitmask<eStage> dst_stages_mask, Span<const TransitionInfo> transitions) {
+void Ren::TransitionResourceStates(const ApiContext &api, const StoragesRef &storages, CommandBuffer cmd_buf,
+                                   const Bitmask<eStage> src_stages_mask, const Bitmask<eStage> dst_stages_mask,
+                                   Span<const TransitionInfo> transitions) {
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 32> buf_barriers;
     SmallVector<VkImageMemoryBarrier, 32> img_barriers;
 
     for (const TransitionInfo &tr : transitions) {
-        if (std::holds_alternative<const Buffer *>(tr.p_res)) {
+        if (std::holds_alternative<BufferHandle>(tr.p_res)) {
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(std::get<BufferHandle>(tr.p_res));
+
             eResState old_state = tr.old_state;
             if (old_state == eResState::Undefined) {
                 // take state from resource itself
-                old_state = std::get<const Buffer *>(tr.p_res)->resource_state;
+                old_state = buf_main.resource_state;
                 if (old_state == tr.new_state && !IsRWState(old_state)) {
                     // transition is not needed
                     continue;
@@ -159,7 +162,7 @@ void Ren::TransitionResourceStates(ApiContext *api_ctx, CommandBuffer cmd_buf, c
             new_barrier.dstAccessMask = VKAccessFlagsForState(tr.new_state);
             new_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             new_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            new_barrier.buffer = std::get<const Buffer *>(tr.p_res)->vk_handle();
+            new_barrier.buffer = buf_main.buf;
             // transition whole buffer for now
             new_barrier.offset = 0;
             new_barrier.size = VK_WHOLE_SIZE;
@@ -168,7 +171,7 @@ void Ren::TransitionResourceStates(ApiContext *api_ctx, CommandBuffer cmd_buf, c
             dst_stages |= VKPipelineStagesForState(tr.new_state);
 
             if (tr.update_internal_state) {
-                std::get<const Buffer *>(tr.p_res)->resource_state = tr.new_state;
+                buf_main.resource_state = tr.new_state;
             }
         } else if (std::holds_alternative<const Image *>(tr.p_res)) {
             eResState old_state = tr.old_state;
@@ -222,13 +225,12 @@ void Ren::TransitionResourceStates(ApiContext *api_ctx, CommandBuffer cmd_buf, c
     src_stages &= to_pipeline_stage_flags_vk(src_stages_mask);
     dst_stages &= to_pipeline_stage_flags_vk(dst_stages_mask);
 
-    src_stages &= api_ctx->supported_stages_mask;
-    dst_stages &= api_ctx->supported_stages_mask;
+    src_stages &= api.supported_stages_mask;
+    dst_stages &= api.supported_stages_mask;
 
     if (!buf_barriers.empty() || !img_barriers.empty()) {
-        api_ctx->vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                      dst_stages ? dst_stages : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr,
-                                      buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(),
-                                      img_barriers.cdata());
+        api.vkCmdPipelineBarrier(cmd_buf, src_stages ? src_stages : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                 dst_stages ? dst_stages : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr,
+                                 buf_barriers.size(), buf_barriers.cdata(), img_barriers.size(), img_barriers.cdata());
     }
 }

@@ -109,7 +109,7 @@ class SceneManager {
     Eng::SceneData &scene_data() { return scene_data_; }
     Snd::Source &ambient_sound() { return amb_sound_; }
 
-    const Eng::PersistentGpuData &persistent_data() const { return scene_data_.persistent_data; }
+    const Eng::PersistentGpuData &persistent_data() const { return *scene_data_.persistent_data; }
 
     void set_tex_memory_limit(const size_t limit) { tex_memory_limit_ = limit; }
 
@@ -143,9 +143,9 @@ class SceneManager {
     void Alloc_TLAS();
     void Release_TLAS(bool immediate = false);
 
-    void AllocMeshBuffers();
+    bool AllocMeshBuffers();
     void LoadMeshBuffers();
-    void ReleaseMeshBuffers(bool immediate = false);
+    void ReleaseMeshBuffers(bool immediately = false);
 
     void ReleaseImages(bool immediate = false);
 
@@ -153,10 +153,10 @@ class SceneManager {
     void ReleaseLightTree(bool immediate = false);
 
     void AllocInstanceBuffer();
-    void ReleaseInstanceBuffer(bool immediate = false);
+    void ReleaseInstanceBuffer(bool immediately = false);
 
     void AllocMaterialsBuffer();
-    void ReleaseMaterialsBuffer(bool immediate = false);
+    void ReleaseMaterialsBuffer(bool immediately = false);
 
     void LoadProbeCache();
 
@@ -166,9 +166,9 @@ class SceneManager {
     using PostLoadFunc = void(const Sys::JsObjectP &js_comp_obj, void *comp, Ren::Vec3f obj_bbox[2]);
     void RegisterComponent(uint32_t index, Eng::CompStorage *storage, const std::function<PostLoadFunc> &post_init);
 
-    void SetPipelineInitializer(
-        std::function<void(const Ren::ProgramRef &prog, Ren::Bitmask<Ren::eMatFlags> mat_flags,
-                           Ren::PipelineStorage &storage, Ren::SmallVectorImpl<Ren::PipelineRef> &out_pipelines)> &&f) {
+    void
+    SetPipelineInitializer(std::function<void(const Ren::ProgramHandle prog, Ren::Bitmask<Ren::eMatFlags> mat_flags,
+                                              Ren::SmallVectorImpl<Ren::PipelineHandle> &out_pipelines)> &&f) {
         init_pipelines_ = std::move(f);
     }
 
@@ -208,9 +208,9 @@ class SceneManager {
     std::array<Ren::MaterialRef, 3> OnLoadMaterial(std::string_view name);
     void OnLoadPipelines(Ren::Bitmask<Ren::eMatFlags> flags, std::string_view v_shader, std::string_view f_shader,
                          std::string_view tc_shader, std::string_view te_shader,
-                         Ren::SmallVectorImpl<Ren::PipelineRef> &out_pipelines);
+                         Ren::SmallVectorImpl<Ren::PipelineHandle> &out_pipelines);
     Ren::ImgRef OnLoadTexture(std::string_view name, const uint8_t color[4], Ren::Bitmask<Ren::eImgFlags> flags);
-    Ren::SamplerRef OnLoadSampler(Ren::SamplingParams params);
+    Ren::SamplerHandle OnLoadSampler(Ren::SamplingParams params);
 
     Ren::MeshRef LoadMesh(std::string_view name, std::istream *data, const Ren::material_load_callback &on_mat_load,
                           Ren::eMeshLoadStatus *load_status);
@@ -219,7 +219,7 @@ class SceneManager {
                                   const Ren::texture_load_callback &on_tex_load,
                                   const Ren::sampler_load_callback &on_sampler_load);
     Ren::ImgRef LoadImage(std::string_view name, Ren::Span<const uint8_t> data, const Ren::ImgParams &p,
-                            Ren::eImgLoadStatus *load_status);
+                          Ren::eImgLoadStatus *load_status);
     Ren::Vec4f LoadDecalTexture(std::string_view name);
 
     void EstimateTextureMemory(int portion_size);
@@ -227,8 +227,8 @@ class SceneManager {
 
     void RebuildMaterialTextureGraph();
 
-    std::function<void(const Ren::ProgramRef &prog, Ren::Bitmask<Ren::eMatFlags> mat_flags,
-                       Ren::PipelineStorage &storage, Ren::SmallVectorImpl<Ren::PipelineRef> &out_pipelines)>
+    std::function<void(Ren::ProgramHandle prog, Ren::Bitmask<Ren::eMatFlags> mat_flags,
+                       Ren::SmallVectorImpl<Ren::PipelineHandle> &out_pipelines)>
         init_pipelines_;
 
     void UpdateWorldScrolling(const Ren::Vec3d &new_origin);

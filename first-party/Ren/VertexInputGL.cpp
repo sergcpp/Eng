@@ -22,52 +22,44 @@ bool IsNormalizedType(const eType type) {
 }
 } // namespace Ren
 
-Ren::VertexInput::VertexInput() = default;
-
-Ren::VertexInput::~VertexInput() {
-    if (gl_vao_) {
-        auto vao = GLuint(gl_vao_);
-        glDeleteVertexArrays(1, &vao);
-    }
+bool Ren::VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> _attribs,
+                           const BufferHandle _elem_buf) {
+    vtx_input.attribs.assign(_attribs.begin(), _attribs.end());
+    vtx_input.elem_buf = _elem_buf;
+    vtx_input.cached_attribs_buf.resize(uint32_t(_attribs.size()));
+    return true;
 }
 
-Ren::VertexInput &Ren::VertexInput::operator=(VertexInput &&rhs) noexcept {
-    if (this == &rhs) {
-        return (*this);
-    }
-
-    if (gl_vao_) {
-        auto vao = GLuint(gl_vao_);
+void Ren::VertexInput_Destroy(VertexInputMain &vtx_input) {
+    if (vtx_input.gl_vao) {
+        auto vao = GLuint(vtx_input.gl_vao);
         glDeleteVertexArrays(1, &vao);
     }
-
-    gl_vao_ = std::exchange(rhs.gl_vao_, 0);
-    attribs = std::move(rhs.attribs);
-    elem_buf = std::exchange(rhs.elem_buf, {});
-
-    return (*this);
+    vtx_input = {};
 }
 
-uint32_t Ren::VertexInput::GetVAO() const {
+uint32_t Ren::VertexInput_GetVAO(const VertexInputMain &vtx_input, const DualStorage<BufferMain, BufferCold> &buffers) {
     bool changed = false;
-    if (elem_buf) {
-        changed |= (elem_buf->handle() != elem_buf_handle_);
+    if (vtx_input.elem_buf) {
+        changed |= (buffers.Get(vtx_input.elem_buf).first.buf != vtx_input.cached_elem_buf.first);
+        changed |= (buffers.Get(vtx_input.elem_buf).first.generation != vtx_input.cached_elem_buf.second);
     }
-    for (int i = 0; i < int(attribs.size()); ++i) {
-        changed |= (attribs[i].buf->handle() != attribs_buf_handles_[i]);
+    for (int i = 0; i < int(vtx_input.attribs.size()); ++i) {
+        changed |= (buffers.Get(vtx_input.attribs[i].buf).first.buf != vtx_input.cached_attribs_buf[i].first);
+        changed |= (buffers.Get(vtx_input.attribs[i].buf).first.generation != vtx_input.cached_attribs_buf[i].second);
     }
     if (changed) {
-        if (!gl_vao_) {
+        if (!vtx_input.gl_vao) {
             GLuint vao;
             glGenVertexArrays(1, &vao);
-            gl_vao_ = uint32_t(vao);
+            vtx_input.gl_vao = uint32_t(vao);
         }
-        glBindVertexArray(GLuint(gl_vao_));
+        glBindVertexArray(GLuint(vtx_input.gl_vao));
 
-        for (int i = 0; i < int(attribs.size()); i++) {
-            const VtxAttribDesc &a = attribs[i];
+        for (int i = 0; i < int(vtx_input.attribs.size()); i++) {
+            const VtxAttribDesc &a = vtx_input.attribs[i];
 
-            glBindBuffer(GL_ARRAY_BUFFER, a.buf->id());
+            glBindBuffer(GL_ARRAY_BUFFER, buffers.Get(a.buf).first.buf);
             glEnableVertexAttribArray(GLuint(a.loc));
             if (IsIntegerType(a.type)) {
                 glVertexAttribIPointer(GLuint(a.loc), GLint(a.size), g_attrib_types_gl[int(a.type)], GLsizei(a.stride),
@@ -78,19 +70,15 @@ uint32_t Ren::VertexInput::GetVAO() const {
                                       reinterpret_cast<void *>(uintptr_t(a.offset)));
             }
 
-            attribs_buf_handles_[i] = a.buf->handle();
+            vtx_input.cached_attribs_buf[i].first = buffers.Get(a.buf).first.buf;
+            vtx_input.cached_attribs_buf[i].second = buffers.Get(a.buf).first.generation;
         }
-        if (elem_buf) {
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GLuint(elem_buf->id()));
-            elem_buf_handle_ = elem_buf->handle();
+        if (vtx_input.elem_buf) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers.Get(vtx_input.elem_buf).first.buf);
+            vtx_input.cached_elem_buf.first = buffers.Get(vtx_input.elem_buf).first.buf;
+            vtx_input.cached_elem_buf.second = buffers.Get(vtx_input.elem_buf).first.generation;
         }
         glBindVertexArray(0);
     }
-    return gl_vao_;
-}
-
-void Ren::VertexInput::Init(Span<const VtxAttribDesc> _attribs, const BufRef &_elem_buf) {
-    attribs.assign(std::begin(_attribs), std::end(_attribs));
-    elem_buf = _elem_buf;
-    attribs_buf_handles_.resize(attribs.size());
+    return vtx_input.gl_vao;
 }

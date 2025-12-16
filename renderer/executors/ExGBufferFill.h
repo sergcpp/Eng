@@ -10,8 +10,8 @@ class ExGBufferFill final : public FgExecutor {
     bool initialized = false;
 
     // lazily initialized data
-    Ren::PipelineRef pi_simple_[3];
-    Ren::PipelineRef pi_vegetation_[2];
+    Ren::PipelineHandle pi_simple_[3];
+    Ren::PipelineHandle pi_vegetation_[2];
 
     Ren::Framebuffer main_draw_fb_[Ren::MaxFramesInFlight][2];
     int fb_to_use_ = 0;
@@ -24,17 +24,17 @@ class ExGBufferFill final : public FgExecutor {
 
     const DrawList **p_list_ = nullptr;
 
-    FgResRef vtx_buf1_;
-    FgResRef vtx_buf2_;
-    FgResRef ndx_buf_;
-    FgResRef instances_buf_;
-    FgResRef instance_indices_buf_;
-    FgResRef shared_data_buf_;
-    FgResRef materials_buf_;
-    FgResRef cells_buf_;
-    FgResRef items_buf_;
-    FgResRef lights_buf_;
-    FgResRef decals_buf_;
+    FgBufHandle vtx_buf1_;
+    FgBufHandle vtx_buf2_;
+    FgBufHandle ndx_buf_;
+    FgBufHandle instances_buf_;
+    FgBufHandle instance_indices_buf_;
+    FgBufHandle shared_data_buf_;
+    FgBufHandle materials_buf_;
+    FgBufHandle cells_buf_;
+    FgBufHandle items_buf_;
+    FgBufHandle lights_buf_;
+    FgBufHandle decals_buf_;
     FgResRef noise_tex_;
     FgResRef dummy_white_;
     FgResRef dummy_black_;
@@ -44,18 +44,18 @@ class ExGBufferFill final : public FgExecutor {
     FgResRef out_spec_tex_;
     FgResRef out_depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::WeakBufRef &vtx_buf1,
-                  const Ren::WeakBufRef &vtx_buf2, const Ren::WeakBufRef &ndx_buf, const Ren::WeakImgRef &albedo_tex,
-                  const Ren::WeakImgRef &normal_tex, const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex);
-    void DrawOpaque(FgContext &fg);
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
+                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &albedo_tex, const Ren::WeakImgRef &normal_tex,
+                  const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex);
+    void DrawOpaque(const FgContext &fg);
 
   public:
-    ExGBufferFill(const DrawList **p_list, const view_state_t *view_state, const FgResRef vtx_buf1,
-                  const FgResRef vtx_buf2, const FgResRef ndx_buf, const FgResRef materials_buf,
+    ExGBufferFill(const DrawList **p_list, const view_state_t *view_state, const FgBufHandle vtx_buf1,
+                  const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf, const FgBufHandle materials_buf,
                   const BindlessTextureData *bindless_tex, const FgResRef noise_tex, const FgResRef dummy_white,
-                  const FgResRef dummy_black, const FgResRef instances_buf, const FgResRef instance_indices_buf,
-                  const FgResRef shared_data_buf, const FgResRef cells_buf, const FgResRef items_buf,
-                  const FgResRef decals_buf, const FgResRef out_albedo, const FgResRef out_normals,
+                  const FgResRef dummy_black, const FgBufHandle instances_buf, const FgBufHandle instance_indices_buf,
+                  const FgBufHandle shared_data_buf, const FgBufHandle cells_buf, const FgBufHandle items_buf,
+                  const FgBufHandle decals_buf, const FgResRef out_albedo, const FgResRef out_normals,
                   const FgResRef out_spec, const FgResRef out_depth) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;
@@ -83,6 +83,6 @@ class ExGBufferFill final : public FgExecutor {
         out_depth_tex_ = out_depth;
     }
 
-    void Execute(FgContext &fg) override;
+    void Execute(const FgContext &fg) override;
 };
 } // namespace Eng

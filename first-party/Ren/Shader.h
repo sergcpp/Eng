@@ -21,6 +21,11 @@ struct Descr {
 };
 inline bool operator==(const Descr &lhs, const Descr &rhs) { return lhs.loc == rhs.loc && lhs.name == rhs.name; }
 
+struct Range {
+    uint16_t offset;
+    uint16_t size;
+};
+
 using Attribute = Descr;
 using Uniform = Descr;
 using UniformBlock = Descr;

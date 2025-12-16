@@ -11,8 +11,8 @@
 void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const CommonBuffers &common_buffers,
                                      const PersistentGpuData &persistent_data,
                                      const AccelerationStructureData &acc_struct_data,
-                                     const BindlessTextureData &bindless, FgResRef rt_geo_instances_res,
-                                     FgResRef rt_obj_instances_res, FrameTextures &frame_textures) {
+                                     const BindlessTextureData &bindless, const FgBufHandle rt_geo_instances_res,
+                                     const FgBufHandle rt_obj_instances_res, FrameTextures &frame_textures) {
     using Stg = Ren::eStage;
     using Trg = Ren::eBindTarget;
 
@@ -105,10 +105,11 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
         frame_textures.gi_cache_offset = data->offset_tex =
             probe_blend.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
 
-        probe_blend.set_execute_cb([this, data, &persistent_data](FgContext &fg) {
+        probe_blend.set_execute_cb([this, data, &persistent_data](const FgContext &fg) {
             const Ren::Image &ray_data_tex = fg.AccessROImage(data->ray_data);
             const Ren::Image &offset_tex = fg.AccessROImage(data->offset_tex);
-            Ren::Image &out_irr_tex = fg.AccessRWImage(data->output_tex);
+            
+            const Ren::Image &out_irr_tex = fg.AccessRWImage(data->output_tex);
 
             const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeBlend::RAY_DATA_TEX_SLOT, ray_data_tex},
                                              {Trg::TexSampled, ProbeBlend::OFFSET_TEX_SLOT, offset_tex},
@@ -135,16 +136,16 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
             // total irradiance
             uniform_params.input_offset = 0;
             uniform_params.output_offset = 0;
-            DispatchCompute(*pi_probe_blend_[bool(persistent_data.stoch_lights_buf)][partial],
-                            Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y}, bindings,
-                            &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_probe_blend_[bool(persistent_data.stoch_lights_buf)][partial],
+                            fg.storages(), Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y},
+                            bindings, &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
 
             // diffuse-only irradiance
             uniform_params.input_offset = PROBE_VOLUME_RES_Y;
             uniform_params.output_offset = PROBE_VOLUMES_COUNT * PROBE_VOLUME_RES_Y;
-            DispatchCompute(*pi_probe_blend_[bool(persistent_data.stoch_lights_buf)][partial],
-                            Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y}, bindings,
-                            &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_probe_blend_[bool(persistent_data.stoch_lights_buf)][partial],
+                            fg.storages(), Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y},
+                            bindings, &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
 
@@ -166,10 +167,11 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
         frame_textures.gi_cache_distance = data->output_tex =
             probe_blend.AddStorageImageOutput(persistent_data.probe_distance, Stg::ComputeShader);
 
-        probe_blend.set_execute_cb([this, data, &persistent_data](FgContext &fg) {
+        probe_blend.set_execute_cb([this, data, &persistent_data](const FgContext &fg) {
             const Ren::Image &ray_data_tex = fg.AccessROImage(data->ray_data);
             const Ren::Image &offset_tex = fg.AccessROImage(data->offset_tex);
-            Ren::Image &out_dist_tex = fg.AccessRWImage(data->output_tex);
+            
+            const Ren::Image &out_dist_tex = fg.AccessRWImage(data->output_tex);
 
             const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeBlend::RAY_DATA_TEX_SLOT, ray_data_tex},
                                              {Trg::TexSampled, ProbeBlend::OFFSET_TEX_SLOT, offset_tex},
@@ -192,7 +194,7 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
             uniform_params.grid_spacing = Ren::Vec4f{grid_spacing[0], grid_spacing[1], grid_spacing[2], 0.0f};
             uniform_params.quat_rot = view_state_.probe_ray_rotator;
 
-            DispatchCompute(*pi_probe_blend_[2][partial],
+            DispatchCompute(fg.cmd_buf(), pi_probe_blend_[2][partial], fg.storages(),
                             Ren::Vec3u{PROBE_VOLUME_RES_X, PROBE_VOLUME_RES_Z, PROBE_VOLUME_RES_Y}, bindings,
                             &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
@@ -213,9 +215,10 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
         frame_textures.gi_cache_offset = data->output_tex =
             probe_relocate.AddStorageImageOutput(persistent_data.probe_offset, Stg::ComputeShader);
 
-        probe_relocate.set_execute_cb([this, data, &persistent_data](FgContext &fg) {
+        probe_relocate.set_execute_cb([this, data, &persistent_data](const FgContext &fg) {
             const Ren::Image &ray_data_tex = fg.AccessROImage(data->ray_data);
-            Ren::Image &out_dist_tex = fg.AccessRWImage(data->output_tex);
+            
+            const Ren::Image &out_dist_tex = fg.AccessRWImage(data->output_tex);
 
             const Ren::Binding bindings[] = {{Trg::TexSampled, ProbeRelocate::RAY_DATA_TEX_SLOT, ray_data_tex},
                                              {Trg::ImageRW, ProbeRelocate::OUT_IMG_SLOT, out_dist_tex}};
@@ -243,8 +246,8 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
 
             const int pi_index =
                 persistent_data.probe_volumes[volume_to_update].reset_relocation ? 2 : (partial ? 1 : 0);
-            DispatchCompute(*pi_probe_relocate_[pi_index], grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                            ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_probe_relocate_[pi_index], fg.storages(), grp_count, bindings,
+                            &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
             persistent_data.probe_volumes[volume_to_update].reset_relocation = false;
         });
     }
@@ -253,7 +256,7 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
         auto &probe_classify = fg_builder_.AddNode("PROBE CLASSIFY");
 
         struct PassData {
-            FgResRef shared_data;
+            FgBufHandle shared_data;
             FgResRef ray_data;
             FgResRef output_tex;
         };
@@ -265,10 +268,11 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
         frame_textures.gi_cache_offset = data->output_tex =
             probe_classify.AddStorageImageOutput(persistent_data.probe_offset, Stg::ComputeShader);
 
-        probe_classify.set_execute_cb([this, data, &persistent_data](FgContext &fg) {
-            const Ren::Buffer &shared_data_buf = fg.AccessROBuffer(data->shared_data);
+        probe_classify.set_execute_cb([this, data, &persistent_data](const FgContext &fg) {
+            const Ren::BufferHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &ray_data_tex = fg.AccessROImage(data->ray_data);
-            Ren::Image &out_dist_tex = fg.AccessRWImage(data->output_tex);
+            
+            const Ren::Image &out_dist_tex = fg.AccessRWImage(data->output_tex);
 
             const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, shared_data_buf},
                                              {Trg::TexSampled, ProbeClassify::RAY_DATA_TEX_SLOT, ray_data_tex},
@@ -307,8 +311,8 @@ void Eng::Renderer::AddGICachePasses(const Ren::WeakImgRef &env_map, const Commo
                 pi_index = 4;
             }
 
-            DispatchCompute(*pi_probe_classify_[pi_index], grp_count, bindings, &uniform_params, sizeof(uniform_params),
-                            ctx_.default_descr_alloc(), ctx_.log());
+            DispatchCompute(fg.cmd_buf(), pi_probe_classify_[pi_index], fg.storages(), grp_count, bindings,
+                            &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
             persistent_data.probe_volumes[volume_to_update].reset_classification = false;
         });
     }

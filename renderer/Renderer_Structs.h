@@ -486,7 +486,7 @@ struct BindlessTextureData {
 enum class eTLASIndex { Main, Shadow, Volume, _Count };
 
 struct AccelerationStructureData {
-    Ren::WeakBufRef rt_tlas_buf[int(eTLASIndex::_Count)];
+    Ren::BufferHandle rt_tlas_buf[int(eTLASIndex::_Count)];
     struct {
         uint32_t rt_tlas_build_scratch_size = 0;
     } hwrt;

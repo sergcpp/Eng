@@ -23,8 +23,7 @@ void CaptureMaterialTextureChange(Ren::Context &ctx, Eng::SceneData &scene_data,
         scene_data.material_changes.push_back(tex_user);
         const size_t ndx =
             std::distance(mat.textures.begin(), std::find(mat.textures.begin(), mat.textures.end(), ref));
-        Ren::eSamplerLoadStatus status;
-        mat.samplers[ndx] = ctx.LoadSampler(ref->params.sampling, &status);
+        mat.samplers[ndx] = ctx.FindOrCreateSampler(ref->params.sampling);
         tex_user = mat.next_texture_user[ndx];
     }
 }
@@ -348,7 +347,7 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
                 req->ref->params = p;
 
                 req->ref->Realloc(w, h, new_mip_count, 1 /* samples */, req->orig_format, stage_buf->cmd_buf,
-                                  scene_data_.persistent_data.mem_allocs.get(), ren_ctx_.log());
+                                  scene_data_.persistent_data->mem_allocs.get(), ren_ctx_.log());
 
                 int data_off = int(req->buf->data_off());
                 for (int j = int(req->mip_offset_to_init); j < int(req->mip_offset_to_init) + req->mip_count_to_init;
@@ -410,7 +409,7 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
             const int h = std::max(p.h >> p.mip_count, 1);
 
             req.ref->Realloc(w, h, 1 /* mip_count */, 1 /* samples */, p.format, ren_ctx_.current_cmd_buf(),
-                             scene_data_.persistent_data.mem_allocs.get(), ren_ctx_.log());
+                             scene_data_.persistent_data->mem_allocs.get(), ren_ctx_.log());
 
             SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, req.ref);
 
@@ -594,7 +593,7 @@ void Eng::SceneManager::InvalidateTexture(const Ren::ImgRef &ref) {
 void Eng::SceneManager::StartTextureLoaderThread(const int requests_count, const int mip_levels_per_request) {
     for (int i = 0; i < requests_count; i++) {
         TextureRequestPending &req = io_pending_tex_.emplace_back();
-        req.buf = std::make_unique<TextureUpdateFileBuf>(ren_ctx_.api_ctx());
+        req.buf = std::make_unique<TextureUpdateFileBuf>(&ren_ctx_.api(), ren_ctx_.log());
     }
     mip_levels_per_request_ = mip_levels_per_request;
     tex_loader_stop_ = false;
@@ -647,7 +646,7 @@ void Eng::SceneManager::ForceTextureReload() {
         }
 
         it->Realloc(w, h, 1 /* mip_count */, 1 /* samples */, p.format, ren_ctx_.current_cmd_buf(),
-                    scene_data_.persistent_data.mem_allocs.get(), ren_ctx_.log());
+                    scene_data_.persistent_data->mem_allocs.get(), ren_ctx_.log());
 
         img_transitions.emplace_back(&(*it), Ren::eResState::ShaderResource);
 
@@ -660,8 +659,8 @@ void Eng::SceneManager::ForceTextureReload() {
     }
 
     if (!img_transitions.empty()) {
-        TransitionResourceStates(ren_ctx_.api_ctx(), ren_ctx_.current_cmd_buf(), Ren::AllStages, Ren::AllStages,
-                                 img_transitions);
+        TransitionResourceStates(ren_ctx_.api(), ren_ctx_.storages(), ren_ctx_.current_cmd_buf(), Ren::AllStages,
+                                 Ren::AllStages, img_transitions);
     }
 
     fill(begin(scene_data_.texture_mem_buckets), end(scene_data_.texture_mem_buckets), 0);
@@ -676,7 +675,7 @@ void Eng::SceneManager::ReleaseImages(const bool immediate) {
     assert(immediate);
 
     auto new_alloc = std::make_unique<Ren::MemAllocators>(
-        "Scene Mem Allocs", ren_ctx_.api_ctx(), 16 * 1024 * 1024 /* initial_block_size */, 1.5f /* growth_factor */,
+        "Scene Mem Allocs", &ren_ctx_.api(), 16 * 1024 * 1024 /* initial_block_size */, 1.5f /* growth_factor */,
         128 * 1024 * 1024 /* max_pool_size */);
 
     std::vector<Ren::TransitionInfo> img_transitions;
@@ -710,11 +709,12 @@ void Eng::SceneManager::ReleaseImages(const bool immediate) {
 
     if (!img_transitions.empty()) {
         Ren::CommandBuffer cmd_buf = ren_ctx_.BegTempSingleTimeCommands();
-        TransitionResourceStates(ren_ctx_.api_ctx(), cmd_buf, Ren::AllStages, Ren::AllStages, img_transitions);
+        TransitionResourceStates(ren_ctx_.api(), ren_ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages,
+                                 img_transitions);
         ren_ctx_.EndTempSingleTimeCommands(cmd_buf);
     }
 
-    scene_data_.persistent_data.mem_allocs = std::move(new_alloc);
+    scene_data_.persistent_data->mem_allocs = std::move(new_alloc);
 
     fill(begin(scene_data_.texture_mem_buckets), end(scene_data_.texture_mem_buckets), 0);
     scene_data_.tex_mem_bucket_index = 0;

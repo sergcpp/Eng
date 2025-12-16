@@ -55,15 +55,15 @@ inline bool operator<(const ImgHandle &lhs, const ImgHandle &rhs) {
 }
 
 class Image : public RefCounter {
-    ApiContext *api_ctx_ = nullptr;
+    ApiContext *api_ = nullptr;
     ImgHandle handle_;
     MemAllocation alloc_;
     String name_;
 
-    void InitFromRAWData(Buffer *sbuf, int data_off, CommandBuffer cmd_buf, MemAllocators *mem_allocs,
-                         const ImgParams &p, ILog *log);
-    void InitFromRAWData(Buffer &sbuf, int data_off[6], CommandBuffer cmd_buf, MemAllocators *mem_allocs,
-                         const ImgParams &p, ILog *log);
+    void InitFromRAWData(const BufferMain *sbuf_main, const BufferCold *sbuf_cold, int data_off, CommandBuffer cmd_buf,
+                         MemAllocators *mem_allocs, const ImgParams &p, ILog *log);
+    void InitFromRAWData(const BufferMain *sbuf_main, const BufferCold *sbuf_cold, int data_off[6],
+                         CommandBuffer cmd_buf, MemAllocators *mem_allocs, const ImgParams &p, ILog *log);
 
   public:
     ImgParamsPacked params;
@@ -72,15 +72,15 @@ class Image : public RefCounter {
     mutable eResState resource_state = eResState::Undefined;
 
     Image() = default;
-    Image(std::string_view name, ApiContext *api_ctx, const ImgParams &params, MemAllocators *mem_allocs, ILog *log);
-    Image(std::string_view name, ApiContext *api_ctx, const ImgHandle &handle, const ImgParams &_params,
+    Image(std::string_view name, ApiContext *api, const ImgParams &params, MemAllocators *mem_allocs, ILog *log);
+    Image(std::string_view name, ApiContext *api, const ImgHandle &handle, const ImgParams &_params,
           MemAllocation &&alloc, ILog *log)
-        : api_ctx_(api_ctx), name_(name) {
+        : api_(api), name_(name) {
         Init(handle, _params, std::move(alloc), log);
     }
-    Image(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> data, const ImgParams &p,
+    Image(std::string_view name, ApiContext *api, Span<const uint8_t> data, const ImgParams &p,
           MemAllocators *mem_allocs, eImgLoadStatus *load_status, ILog *log);
-    Image(std::string_view name, ApiContext *api_ctx, Span<const uint8_t> data[6], const ImgParams &p,
+    Image(std::string_view name, ApiContext *api, Span<const uint8_t> data[6], const ImgParams &p,
           MemAllocators *mem_allocs, eImgLoadStatus *load_status, ILog *log);
     Image(const Image &rhs) = delete;
     Image(Image &&rhs) noexcept { (*this) = std::move(rhs); }
@@ -117,7 +117,7 @@ class Image : public RefCounter {
         return ret;
     }
 
-    ApiContext *api_ctx() const { return api_ctx_; }
+    ApiContext *api() const { return api_; }
 
     [[nodiscard]] const String &name() const { return name_; }
 
@@ -127,29 +127,32 @@ class Image : public RefCounter {
     int AddView(eFormat format, int mip_level, int mip_count, int base_layer, int layer_count);
 
     void SetSubImage(int layer, int level, int offsetx, int offsety, int offsetz, int sizex, int sizey, int sizez,
-                     eFormat format, const Buffer &sbuf, CommandBuffer cmd_buf, int data_off, int data_len);
+                     eFormat format, const BufferMain &sbuf_main, CommandBuffer cmd_buf, int data_off,
+                     int data_len) const;
     void SetSubImage(int level, int offsetx, int offsety, int offsetz, int sizex, int sizey, int sizez, eFormat format,
-                     const Buffer &sbuf, CommandBuffer cmd_buf, int data_off, int data_len) {
-        SetSubImage(0, level, offsetx, offsety, offsetz, sizex, sizey, sizez, format, sbuf, cmd_buf, data_off,
+                     const BufferMain &sbuf_main, CommandBuffer cmd_buf, int data_off, int data_len) const {
+        SetSubImage(0, level, offsetx, offsety, offsetz, sizex, sizey, sizez, format, sbuf_main, cmd_buf, data_off,
                     data_len);
     }
     void SetSubImage(int offsetx, int offsety, int offsetz, int sizex, int sizey, int sizez, eFormat format,
-                     const Buffer &sbuf, CommandBuffer cmd_buf, int data_off, int data_len) {
-        SetSubImage(0, 0, offsetx, offsety, offsetz, sizex, sizey, sizez, format, sbuf, cmd_buf, data_off, data_len);
+                     const BufferMain &sbuf_main, CommandBuffer cmd_buf, int data_off, int data_len) const {
+        SetSubImage(0, 0, offsetx, offsety, offsetz, sizex, sizey, sizez, format, sbuf_main, cmd_buf, data_off,
+                    data_len);
     }
-    void SetSubImage(int offsetx, int offsety, int sizex, int sizey, eFormat format, const Buffer &sbuf,
-                     CommandBuffer cmd_buf, int data_off, int data_len) {
-        SetSubImage(0, 0, offsetx, offsety, 0, sizex, sizey, 1, format, sbuf, cmd_buf, data_off, data_len);
+    void SetSubImage(int offsetx, int offsety, int sizex, int sizey, eFormat format, const BufferMain &sbuf_main,
+                     CommandBuffer cmd_buf, int data_off, int data_len) const {
+        SetSubImage(0, 0, offsetx, offsety, 0, sizex, sizey, 1, format, sbuf_main, cmd_buf, data_off, data_len);
     }
 
-    void CopyTextureData(const Buffer &sbuf, CommandBuffer cmd_buf, int data_off, int data_len) const;
+    void CopyTextureData(const BufferMain &sbuf_main, const BufferCold &sbuf_cold, CommandBuffer cmd_buf, int data_off,
+                         int data_len) const;
 };
 
-void CopyImageToImage(CommandBuffer cmd_buf, const Image &src_tex, uint32_t src_level, uint32_t src_x, uint32_t src_y,
-                      uint32_t src_z, Image &dst_tex, uint32_t dst_level, uint32_t dst_x, uint32_t dst_y,
+void CopyImageToImage(CommandBuffer cmd_buf, const Image &src, uint32_t src_level, uint32_t src_x, uint32_t src_y,
+                      uint32_t src_z, const Image &dst, uint32_t dst_level, uint32_t dst_x, uint32_t dst_y,
                       uint32_t dst_z, uint32_t dst_face, uint32_t w, uint32_t h, uint32_t d);
 
-void ClearImage(Image &tex, const ClearColor &col, CommandBuffer cmd_buf);
+void ClearImage(const Image &img, const ClearColor &col, CommandBuffer cmd_buf);
 
 VkFormat VKFormatFromFormat(eFormat format);
 

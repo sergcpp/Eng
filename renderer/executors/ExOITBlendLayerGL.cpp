@@ -13,25 +13,13 @@
 
 namespace ExSharedInternal {
 void _bind_textures_and_samplers(Ren::Context &ctx, const Ren::Material &mat,
-                                 Ren::SmallVectorImpl<Ren::SamplerRef> &temp_samplers);
-uint32_t _draw_list_range_full(Eng::FgContext &fg, const Ren::MaterialStorage *materials,
-                               const Ren::Pipeline pipelines[], Ren::Span<const Eng::custom_draw_batch_t> main_batches,
-                               Ren::Span<const uint32_t> main_batch_indices, uint32_t i, uint64_t mask,
-                               uint64_t &cur_mat_id, uint64_t &cur_pipe_id, uint64_t &cur_prog_id,
-                               Eng::backend_info_t &backend_info);
-
-uint32_t _draw_list_range_full_rev(Eng::FgContext &fg, const Ren::MaterialStorage *materials,
-                                   const Ren::Pipeline pipelines[],
-                                   Ren::Span<const Eng::custom_draw_batch_t> main_batches,
-                                   Ren::Span<const uint32_t> main_batch_indices, uint32_t ndx, uint64_t mask,
-                                   uint64_t &cur_mat_id, uint64_t &cur_pipe_id, uint64_t &cur_prog_id,
-                                   Eng::backend_info_t &backend_info);
-uint32_t _draw_range_ext2(Eng::FgContext &fg, const Ren::MaterialStorage &materials, const Ren::Image &white_tex,
+                                 Ren::SmallVectorImpl<Ren::SamplerHandle> &temp_samplers);
+uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &materials, const Ren::Image &white_tex,
                           Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
                           uint32_t i, uint64_t mask, uint32_t &cur_mat_id, int *draws_count);
 } // namespace ExSharedInternal
 
-void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef &depth_tex) {
+void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &depth_tex) {
     using namespace ExSharedInternal;
 
     const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
@@ -39,15 +27,15 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
     const Ren::Image &shadow_map_tex = fg.AccessROImage(shadow_map_);
     const Ren::Image &ltc_luts_tex = fg.AccessROImage(ltc_luts_tex_);
     const Ren::Image &env_tex = fg.AccessROImage(env_tex_);
-    const Ren::Buffer &instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::Buffer &instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::Buffer &unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::Buffer &cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::Buffer &items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::Buffer &lights_buf = fg.AccessROBuffer(lights_buf_);
-    const Ren::Buffer &decals_buf = fg.AccessROBuffer(decals_buf_);
-    const Ren::Buffer &oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
+    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(cells_buf_);
+    const Ren::BufferHandle items_buf = fg.AccessROBuffer(items_buf_);
+    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(lights_buf_);
+    const Ren::BufferHandle decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferHandle oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
 
     const Ren::Image &back_color_tex = fg.AccessROImage(back_color_tex_);
     const Ren::Image &back_depth_tex = fg.AccessROImage(back_depth_tex_);
@@ -102,16 +90,20 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
     _rast_state.depth.write_enabled = false;
     _rast_state.depth.compare_op = unsigned(Ren::eCompareOp::Greater);
 
+    const Ren::StoragesRef &storages = fg.storages();
+
     // Bind main buffer for drawing
     glBindFramebuffer(GL_FRAMEBUFFER, main_draw_fb_[0][fb_to_use_].id());
 
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf.id()));
+    const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
     if (fg.ren_ctx().capabilities.bindless_texture) {
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX,
-                         GLuint(bindless_tex_->rt_inline_textures.buf->id()));
+        const Ren::BufferMain &buf_main = storages.buffers.Get(bindless_tex_->rt_inline_textures.buf).first;
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_BINDLESS_TEX, GLuint(buf_main.buf));
     }
 
-    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf.id());
+    const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
+    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
 
     if ((*p_list_)->decals_atlas) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_DECAL_TEX, (*p_list_)->decals_atlas->tex_id(0));
@@ -119,13 +111,19 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
 
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex.id());
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf.view(0).second));
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf.id()));
+    const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
+    const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::CELLS_BUF_SLOT, cells_buf.view(0).second);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::ITEMS_BUF_SLOT, items_buf.view(0).second);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::LIGHT_BUF_SLOT, lights_buf.view(0).second);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::DECAL_BUF_SLOT, decals_buf.view(0).second);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::CELLS_BUF_SLOT,
+                               storages.buffers.Get(cells_buf).first.views[0].second);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::ITEMS_BUF_SLOT,
+                               storages.buffers.Get(items_buf).first.views[0].second);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::LIGHT_BUF_SLOT,
+                               storages.buffers.Get(lights_buf).first.views[0].second);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, OITBlendLayer::DECAL_BUF_SLOT,
+                               storages.buffers.Get(decals_buf).first.views[0].second);
 
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::SHADOW_TEX_SLOT, shadow_map_tex.id());
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, OITBlendLayer::LTC_LUTS_TEX_SLOT, ltc_luts_tex.id());
@@ -154,16 +152,23 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
 
     using BDB = basic_draw_batch_t;
 
-    { // Simple meshes
-        Ren::DebugMarker _m(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SIMPLE");
+    const Ren::ApiContext &api = fg.ren_ctx().api();
 
-        glBindVertexArray(pi_simple_[0]->vtx_input()->GetVAO());
-        glUseProgram(pi_simple_[0]->prog()->id());
+    { // Simple meshes
+        Ren::DebugMarker _m(api, fg.cmd_buf(), "SIMPLE");
+
+        const Ren::PipelineMain &pi_simple0_main = storages.pipelines.Get(pi_simple_[0]).first;
+        const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
+        const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
+
+        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 
         { // solid one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SOLID-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SOLID-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -172,7 +177,7 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
             i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, BDB::BitAlphaBlend, cur_mat_id,
                                  &draws_count);
 
-            rast_state = pi_simple_[1]->rast_state();
+            rast_state = pi_simple1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -182,9 +187,9 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
                                  BDB::BitAlphaBlend | BDB::BitBackSided, cur_mat_id, &draws_count);
         }
         { // solid two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "SOLID-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "SOLID-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -194,9 +199,9 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
                                  BDB::BitAlphaBlend | BDB::BitTwoSided, cur_mat_id, &draws_count);
         }
         { // moving solid one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "MOVING-SOLID-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-SOLID-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -206,9 +211,9 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
                                  BDB::BitAlphaBlend | BDB::BitMoving, cur_mat_id, &draws_count);
         }
         { // moving solid two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "MOVING-SOLID-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-SOLID-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -219,9 +224,9 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
                                  &draws_count);
         }
         { // alpha-tested one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "ALPHA-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "ALPHA-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -231,9 +236,9 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
                                  BDB::BitAlphaBlend | BDB::BitAlphaTest, cur_mat_id, &draws_count);
         }
         { // alpha-tested two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "ALPHA-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "ALPHA-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -244,9 +249,9 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
                                  &draws_count);
         }
         { // moving alpha-tested one-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "MOVING-ALPHA-ONE-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-ALPHA-ONE-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[0]->rast_state();
+            Ren::RastState rast_state = pi_simple0_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());
@@ -257,9 +262,9 @@ void Eng::ExOITBlendLayer::DrawTransparent(FgContext &fg, const Ren::WeakImgRef 
                                  &draws_count);
         }
         { // moving alpha-tested two-sided
-            Ren::DebugMarker _mm(fg.ren_ctx().api_ctx(), fg.cmd_buf(), "MOVING-ALPHA-TWO-SIDED");
+            Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-ALPHA-TWO-SIDED");
 
-            Ren::RastState rast_state = pi_simple_[2]->rast_state();
+            Ren::RastState rast_state = pi_simple2_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
             rast_state.viewport[3] = view_state_->ren_res[1];
             rast_state.ApplyChanged(fg.rast_state());

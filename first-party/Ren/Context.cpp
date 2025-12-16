@@ -18,17 +18,18 @@ Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, const float *position
 }
 
 Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, const float *positions, const int vtx_count,
-                                    const uint32_t *indices, const int ndx_count, BufRef &vertex_buf1,
-                                    BufRef &vertex_buf2, BufRef &index_buf, eMeshLoadStatus *load_status) {
+                                    const uint32_t *indices, const int ndx_count, const BufferHandle vertex_buf1,
+                                    const BufferHandle vertex_buf2, const BufferHandle index_buf,
+                                    eMeshLoadStatus *load_status) {
     MeshRef ref = meshes_.FindByName(name);
     if (!ref) {
-        ref = meshes_.Insert(name, positions, vtx_count, indices, ndx_count, api_ctx_.get(), vertex_buf1, vertex_buf2,
+        ref = meshes_.Insert(name, positions, vtx_count, indices, ndx_count, *api_, buffers_, vertex_buf1, vertex_buf2,
                              index_buf, load_status, log_);
     } else {
         if (ref->ready()) {
             (*load_status) = eMeshLoadStatus::Found;
         } else if (positions) {
-            ref->Init(positions, vtx_count, indices, ndx_count, api_ctx_.get(), vertex_buf1, vertex_buf2, index_buf,
+            ref->Init(positions, vtx_count, indices, ndx_count, *api_, buffers_, vertex_buf1, vertex_buf2, index_buf,
                       load_status, log_);
         }
     }
@@ -39,22 +40,23 @@ Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, const float *position
 Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, std::istream *data,
                                     const material_load_callback &on_mat_load, eMeshLoadStatus *load_status) {
     return LoadMesh(name, data, on_mat_load, default_vertex_buf1_, default_vertex_buf2_, default_indices_buf_,
-                    default_skin_vertex_buf_, default_delta_buf_, load_status);
+                    default_skin_vertex_buf_, default_delta_vertex_buf_, load_status);
 }
 
 Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, std::istream *data,
-                                    const material_load_callback &on_mat_load, BufRef &vertex_buf1, BufRef &vertex_buf2,
-                                    BufRef &index_buf, BufRef &skin_vertex_buf, BufRef &delta_buf,
+                                    const material_load_callback &on_mat_load, const BufferHandle vertex_buf1,
+                                    const BufferHandle vertex_buf2, const BufferHandle index_buf,
+                                    const BufferHandle skin_vertex_buf, const BufferHandle delta_buf,
                                     eMeshLoadStatus *load_status) {
     MeshRef ref = meshes_.FindByName(name);
     if (!ref) {
-        ref = meshes_.Insert(name, data, on_mat_load, api_ctx_.get(), vertex_buf1, vertex_buf2, index_buf,
+        ref = meshes_.Insert(name, data, on_mat_load, *api_, buffers_, vertex_buf1, vertex_buf2, index_buf,
                              skin_vertex_buf, delta_buf, load_status, log_);
     } else {
         if (ref->ready()) {
             (*load_status) = eMeshLoadStatus::Found;
         } else if (data) {
-            ref->Init(data, on_mat_load, api_ctx_.get(), vertex_buf1, vertex_buf2, index_buf, skin_vertex_buf,
+            ref->Init(data, on_mat_load, *api_, buffers_, vertex_buf1, vertex_buf2, index_buf, skin_vertex_buf,
                       delta_buf, load_status, log_);
         }
     }
@@ -97,106 +99,129 @@ void Ren::Context::ReleaseMaterials() {
 }
 
 #if defined(REN_GL_BACKEND)
-Ren::ShaderRef Ren::Context::LoadShaderGLSL(std::string_view name, std::string_view shader_src, eShaderType type) {
-    ShaderRef ref = shaders_.FindByName(name);
-    if (!ref) {
-        ref = shaders_.Insert(name, api_ctx_.get(), shader_src, type, log_);
-    } else if (!ref->ready() && !shader_src.empty()) {
-        ref->Init(shader_src, type, log_);
+Ren::ShaderHandle Ren::Context::LoadShader(std::string_view name, std::string_view shader_src, const eShaderType type) {
+    ShaderHandle ret = shaders_.Find(name);
+    if (!ret) {
+        const Ren::String name_str{name};
+        ret = shaders_.Emplace(name_str);
+
+        const auto &[shader_main, shader_cold] = shaders_.Get(ret);
+        if (!Shader_Init(*api_, shader_main, shader_cold, shader_src, name_str, type, log_)) {
+            shaders_.Release(name);
+            return {};
+        }
     }
-    return ref;
+    return ret;
 }
 #endif
 
-#if defined(REN_GL_BACKEND) || defined(REN_VK_BACKEND)
-Ren::ShaderRef Ren::Context::LoadShaderSPIRV(std::string_view name, Span<const uint8_t> shader_data, eShaderType type) {
-    ShaderRef ref = shaders_.FindByName(name);
-    if (!ref) {
-        ref = shaders_.Insert(name, api_ctx_.get(), shader_data, type, log_);
-    } else if (!ref->ready() && !shader_data.empty()) {
-        ref->Init(shader_data, type, log_);
-    }
-    return ref;
-}
-#endif
+Ren::ShaderHandle Ren::Context::LoadShader(std::string_view name, Span<const uint8_t> spirv_data,
+                                           const eShaderType type) {
+    ShaderHandle ret = shaders_.Find(name);
+    if (!ret) {
+        const Ren::String name_str{name};
+        ret = shaders_.Emplace(name_str);
 
-Ren::ProgramRef Ren::Context::LoadProgram(ShaderRef vs_ref, ShaderRef fs_ref, ShaderRef tcs_ref, ShaderRef tes_ref,
-                                          ShaderRef gs_ref) {
-    std::array<ShaderRef, int(eShaderType::_Count)> temp_shaders;
-    temp_shaders[int(eShaderType::Vertex)] = vs_ref;
-    temp_shaders[int(eShaderType::Fragment)] = fs_ref;
-    temp_shaders[int(eShaderType::TesselationControl)] = tcs_ref;
-    temp_shaders[int(eShaderType::TesselationEvaluation)] = tes_ref;
-    temp_shaders[int(eShaderType::Geometry)] = gs_ref;
-    ProgramRef ref = programs_.LowerBound([&](const Program &p) { return p.shaders() < temp_shaders; });
-    if (!ref || ref->shaders() != temp_shaders) {
-        assert(vs_ref && fs_ref);
-        ref = programs_.Insert(api_ctx_.get(), std::move(vs_ref), std::move(fs_ref), std::move(tcs_ref),
-                               std::move(tes_ref), std::move(gs_ref), log_);
+        const auto &[shader_main, shader_cold] = shaders_.Get(ret);
+        if (!Shader_Init(*api_, shader_main, shader_cold, spirv_data, name_str, type, log_)) {
+            shaders_.Release(name);
+            return {};
+        }
     }
-    return ref;
+    return ret;
 }
 
-Ren::ProgramRef Ren::Context::LoadProgram(ShaderRef cs_ref) {
-    std::array<ShaderRef, int(eShaderType::_Count)> temp_shaders;
-    temp_shaders[int(eShaderType::Compute)] = cs_ref;
-    ProgramRef ref = programs_.LowerBound([&](const Program &p) { return p.shaders() < temp_shaders; });
-    if (!ref || ref->shaders() != temp_shaders) {
-        assert(cs_ref);
-        ref = programs_.Insert(api_ctx_.get(), std::move(cs_ref), log_);
+Ren::ProgramHandle Ren::Context::LoadProgram(const ShaderHandle vs, const ShaderHandle fs, const ShaderHandle tcs,
+                                             const ShaderHandle tes, const ShaderHandle gs) {
+    std::array<ShaderHandle, int(eShaderType::_Count)> temp_shaders;
+    temp_shaders[int(eShaderType::Vertex)] = vs;
+    temp_shaders[int(eShaderType::Fragment)] = fs;
+    temp_shaders[int(eShaderType::TesselationControl)] = tcs;
+    temp_shaders[int(eShaderType::TesselationEvaluation)] = tes;
+    temp_shaders[int(eShaderType::Geometry)] = gs;
+    ProgramHandle ret = programs_.LowerBound([&](const ProgramMain &p) { return p.shaders < temp_shaders; });
+    if (!ret || programs_.Get(ret).first.shaders != temp_shaders) {
+        assert(vs && fs);
+
+        ProgramMain prog_main;
+        ProgramCold prog_cold;
+
+        if (!Program_Init(*api_, shaders_, prog_main, prog_cold, vs, fs, tcs, tes, gs, log_)) {
+            return {};
+        }
+
+        ret = programs_.Insert(std::move(prog_main), std::move(prog_cold));
+        assert(programs_.CheckUnique());
     }
-    return ref;
+    return ret;
+}
+
+Ren::ProgramHandle Ren::Context::LoadProgram(const ShaderHandle cs) {
+    std::array<Ren::ShaderHandle, int(Ren::eShaderType::_Count)> temp_shaders;
+    temp_shaders[int(Ren::eShaderType::Compute)] = cs;
+    ProgramHandle ret = programs_.LowerBound([&](const ProgramMain &p) { return p.shaders < temp_shaders; });
+    if (!ret || programs_.Get(ret).first.shaders != temp_shaders) {
+        assert(cs);
+
+        ProgramMain prog_main;
+        ProgramCold prog_cold;
+
+        if (!Program_Init(*api_, shaders_, prog_main, prog_cold, cs, log_)) {
+            return {};
+        }
+
+        ret = programs_.Insert(std::move(prog_main), std::move(prog_cold));
+        assert(programs_.CheckUnique());
+    }
+    return ret;
 }
 
 #if defined(REN_VK_BACKEND)
-Ren::ProgramRef Ren::Context::LoadProgram2(ShaderRef raygen_ref, ShaderRef closesthit_ref, ShaderRef anyhit_ref,
-                                           ShaderRef miss_ref, ShaderRef intersection_ref) {
-    std::array<ShaderRef, int(eShaderType::_Count)> temp_shaders;
-    temp_shaders[int(eShaderType::RayGen)] = raygen_ref;
-    temp_shaders[int(eShaderType::ClosestHit)] = closesthit_ref;
-    temp_shaders[int(eShaderType::AnyHit)] = anyhit_ref;
-    temp_shaders[int(eShaderType::Miss)] = miss_ref;
-    temp_shaders[int(eShaderType::Intersection)] = intersection_ref;
-    ProgramRef ref = programs_.LowerBound([&](const Program &p) { return p.shaders() < temp_shaders; });
-    if (!ref || ref->shaders() != temp_shaders) {
-        assert(raygen_ref);
-        ref = programs_.Insert(api_ctx_.get(), std::move(raygen_ref), std::move(closesthit_ref), std::move(anyhit_ref),
-                               std::move(miss_ref), std::move(intersection_ref), log_, 0);
+Ren::ProgramHandle Ren::Context::LoadProgram2(const ShaderHandle raygen, const ShaderHandle closesthit,
+                                              const ShaderHandle anyhit, const ShaderHandle miss,
+                                              const ShaderHandle intersection) {
+    std::array<Ren::ShaderHandle, int(Ren::eShaderType::_Count)> temp_shaders;
+    temp_shaders[int(Ren::eShaderType::RayGen)] = raygen;
+    temp_shaders[int(Ren::eShaderType::ClosestHit)] = closesthit;
+    temp_shaders[int(Ren::eShaderType::AnyHit)] = anyhit;
+    temp_shaders[int(Ren::eShaderType::Miss)] = miss;
+    temp_shaders[int(Ren::eShaderType::Intersection)] = intersection;
+    ProgramHandle ret = programs_.LowerBound([&](const ProgramMain &p) { return p.shaders < temp_shaders; });
+    if (!ret || programs_.Get(ret).first.shaders != temp_shaders) {
+        assert(raygen);
+
+        ProgramMain prog_main;
+        ProgramCold prog_cold;
+
+        if (!Program_Init(*api_, shaders_, prog_main, prog_cold, raygen, closesthit, anyhit, miss, intersection,
+                          log_)) {
+            return {};
+        }
+
+        ret = programs_.Insert(std::move(prog_main), std::move(prog_cold));
+        assert(programs_.CheckUnique());
     }
-    return ref;
+    return ret;
 }
 #endif
 
-Ren::ProgramRef Ren::Context::GetProgram(const uint32_t index) { return {&programs_, index}; }
-
 void Ren::Context::ReleasePrograms() {
-    if (programs_.empty()) {
+    if (programs_.Empty()) {
         return;
     }
     log_->Error("---------REMAINING PROGRAMS--------");
-    for (const Program &p : programs_) {
-        std::string prog_name;
-        for (const ShaderRef &sh : p.shaders()) {
-            if (!sh) {
-                continue;
-            }
-            if (!prog_name.empty()) {
-                prog_name += "&";
-            }
-            prog_name += sh->name();
-        }
-#if defined(REN_GL_BACKEND)
-        log_->Error("%s %i", prog_name.c_str(), int(p.id()));
-#elif defined(REN_VK_BACKEND)
-        log_->Error("%s", prog_name.c_str());
-#endif
+    while (!programs_.sorted_items().empty()) {
+        const ProgramHandle p = programs_.sorted_items().back();
+        const auto &[p_main, p_cold] = programs_.Get(p);
+        Program_Destroy(*api_, p_main, p_cold);
+        programs_.PopBack();
     }
     log_->Error("-----------------------------------");
-    programs_.clear();
 }
 
-Ren::VertexInputRef Ren::Context::LoadVertexInput(Span<const VtxAttribDesc> attribs, const BufRef &elem_buf) {
-    VertexInputRef ref = vtx_inputs_.LowerBound([&](const VertexInput &vi) {
+Ren::VertexInputHandle Ren::Context::FindOrCreateVertexInput(Span<const VtxAttribDesc> attribs,
+                                                             const BufferHandle elem_buf) {
+    VertexInputHandle ret = vtx_inputs_.LowerBound([&](const VertexInputMain &vi) {
         if (vi.elem_buf < elem_buf) {
             return true;
         } else if (vi.elem_buf == elem_buf) {
@@ -204,47 +229,116 @@ Ren::VertexInputRef Ren::Context::LoadVertexInput(Span<const VtxAttribDesc> attr
         }
         return false;
     });
-    if (!ref || ref->elem_buf != elem_buf || Span<const VtxAttribDesc>(ref->attribs) != attribs) {
-        ref = vtx_inputs_.Insert(attribs, elem_buf);
+    if (!ret || vtx_inputs_.Get(ret).first.elem_buf != elem_buf ||
+        Span<const VtxAttribDesc>(vtx_inputs_.Get(ret).first.attribs) != attribs) {
+        VertexInputMain main = {};
+
+        if (!VertexInput_Init(main, attribs, elem_buf)) {
+            return {};
+        }
+
+        ret = vtx_inputs_.Insert(std::move(main), {});
     }
-    return ref;
+    return ret;
 }
 
-Ren::RenderPassRef Ren::Context::LoadRenderPass(const RenderTargetInfo &depth_rt,
-                                                Span<const RenderTargetInfo> color_rts) {
-    RenderPassRef ref =
-        render_passes_.LowerBound([&](const RenderPass &rp) { return rp.LessThan(depth_rt, color_rts); });
-    if (!ref || !ref->Equals(depth_rt, color_rts)) {
-        ref = render_passes_.Insert(api_ctx_.get(), depth_rt, color_rts, log_);
+void Ren::Context::ReleaseVertexInput(const VertexInputHandle handle) { vtx_inputs_.Free(handle); }
+
+void Ren::Context::ReleaseVertexInputs() {
+    if (vtx_inputs_.Empty()) {
+        return;
     }
-    return ref;
+    // log_->Error("--------REMAINING VTX INPUTS-------");
+    while (!vtx_inputs_.sorted_items().empty()) {
+        const VertexInputHandle vi = vtx_inputs_.sorted_items().back();
+        const auto &[vi_main, vi_cold] = vtx_inputs_.Get(vi);
+        // if (vi_main.elem_buf) {
+        //     log_->Error("%i attribs + elem buf", int(vi_main.attribs.size()));
+        // } else {
+        //     log_->Error("%i attribs", int(vi_main.attribs.size()));
+        // }
+        VertexInput_Destroy(vi_main);
+        vtx_inputs_.PopBack();
+    }
+    // log_->Error("-----------------------------------");
 }
 
-Ren::PipelineRef Ren::Context::LoadPipeline(const ProgramRef &prog_ref, const int subgroup_size) {
-    PipelineRef ref = pipelines_.LowerBound([&](const Pipeline &pi) { return pi.LessThan({}, prog_ref, {}, {}); });
-    if (!ref || !ref->Equals({}, prog_ref, {}, {})) {
-        assert(prog_ref);
-        ref = pipelines_.Insert(api_ctx_.get(), prog_ref, log_, subgroup_size);
+Ren::RenderPassHandle Ren::Context::FindOrCreateRenderPass(const RenderTargetInfo &depth_rt,
+                                                           Span<const RenderTargetInfo> color_rts) {
+    RenderPassHandle ret =
+        render_passes_.LowerBound([&](const Ren::RenderPassMain &rp) { return rp.LessThan(depth_rt, color_rts); });
+    if (!ret || !render_passes_.Get(ret).first.Equals(depth_rt, color_rts)) {
+        Ren::RenderPassMain rp_main = {};
+        if (!RenderPass_Init(*api_, rp_main, depth_rt, color_rts, log_)) {
+            return {};
+        }
+        ret = render_passes_.Insert(std::move(rp_main), {});
+        assert(render_passes_.CheckUnique());
     }
-    return ref;
+    return ret;
 }
 
-Ren::PipelineRef Ren::Context::LoadPipeline(const RastState &rast_state, const ProgramRef &prog,
-                                            const VertexInputRef &vtx_input, const RenderPassRef &render_pass,
-                                            const uint32_t subpass_index) {
-    PipelineRef ref = pipelines_.LowerBound(
-        [&](const Pipeline &pi) { return pi.LessThan(rast_state, prog, vtx_input, render_pass); });
-    if (!ref || !ref->Equals(rast_state, prog, vtx_input, render_pass)) {
-        ref = pipelines_.Insert(api_ctx_.get(), rast_state, prog, vtx_input, render_pass, subpass_index, log_);
+void Ren::Context::ReleaseRenderPass(const RenderPassHandle handle) { render_passes_.Free(handle); }
+
+void Ren::Context::ReleaseRenderPasses() {
+    if (render_passes_.Empty()) {
+        return;
     }
-    return ref;
+    // log_->Error("------REMAINING RENDER PASSES------");
+    while (!render_passes_.sorted_items().empty()) {
+        const RenderPassHandle vi = render_passes_.sorted_items().back();
+        const auto &[rp_main, rp_cold] = render_passes_.Get(vi);
+        RenderPass_Destroy(*api_, rp_main);
+        render_passes_.PopBack();
+    }
+    // log_->Error("-----------------------------------");
+}
+
+Ren::PipelineHandle Ren::Context::FindOrCreatePipeline(const ProgramHandle prog, const int subgroup_size) {
+    PipelineHandle ret = pipelines_.LowerBound([&](const PipelineMain &pi) { return pi.LessThan({}, prog, {}, {}); });
+    if (!ret || !pipelines_.Get(ret).first.Equals({}, prog, {}, {})) {
+        assert(prog);
+
+        Ren::PipelineMain pipeline_main;
+        Ren::PipelineCold pipeline_cold;
+        if (!Pipeline_Init(*api_, shaders_, programs_, buffers_, pipeline_main, pipeline_cold, prog, log_,
+                           subgroup_size)) {
+            return {};
+        }
+
+        ret = pipelines_.Insert(std::move(pipeline_main), std::move(pipeline_cold));
+        assert(pipelines_.CheckUnique());
+    }
+    return ret;
+}
+
+Ren::PipelineHandle Ren::Context::FindOrCreatePipeline(const RastState &rast_state, const ProgramHandle prog,
+                                                       const VertexInputHandle vtx_input,
+                                                       const RenderPassHandle render_pass,
+                                                       const uint32_t subpass_index) {
+    PipelineHandle ret = pipelines_.LowerBound(
+        [&](const PipelineMain &pi) { return pi.LessThan(rast_state, prog, vtx_input, render_pass); });
+    if (!ret || !pipelines_.Get(ret).first.Equals(rast_state, prog, vtx_input, render_pass)) {
+        assert(prog);
+
+        PipelineMain pipeline_main;
+        PipelineCold pipeline_cold;
+        if (!Pipeline_Init(*api_, storages_, pipeline_main, pipeline_cold, rast_state, prog, vtx_input, render_pass,
+                           subpass_index, log_)) {
+            return {};
+        }
+
+        ret = pipelines_.Insert(std::move(pipeline_main), std::move(pipeline_cold));
+        assert(pipelines_.CheckUnique());
+    }
+    return ret;
 }
 
 Ren::ImgRef Ren::Context::LoadImage(std::string_view name, const ImgParams &p, MemAllocators *mem_allocs,
                                     eImgLoadStatus *load_status) {
     ImgRef ref = images_.FindByName(name);
     if (!ref) {
-        ref = images_.Insert(name, api_ctx_.get(), p, mem_allocs, log_);
+        ref = images_.Insert(name, api_.get(), p, mem_allocs, log_);
         (*load_status) = eImgLoadStatus::CreatedDefault;
     } else if (ref->params != p) {
         ref->Init(p, mem_allocs, log_);
@@ -259,7 +353,7 @@ Ren::ImgRef Ren::Context::LoadImage(std::string_view name, const ImgHandle &hand
                                     MemAllocation &&alloc, eImgLoadStatus *load_status) {
     ImgRef ref = images_.FindByName(name);
     if (!ref) {
-        ref = images_.Insert(name, api_ctx_.get(), handle, p, std::move(alloc), log_);
+        ref = images_.Insert(name, api_.get(), handle, p, std::move(alloc), log_);
         (*load_status) = eImgLoadStatus::CreatedDefault;
     } else if (ref->params != p) {
         ref->Init(handle, p, std::move(alloc), log_);
@@ -274,7 +368,7 @@ Ren::ImgRef Ren::Context::LoadImage(std::string_view name, Span<const uint8_t> d
                                     MemAllocators *mem_allocs, eImgLoadStatus *load_status) {
     ImgRef ref = images_.FindByName(name);
     if (!ref) {
-        ref = images_.Insert(name, api_ctx_.get(), data, p, mem_allocs, load_status, log_);
+        ref = images_.Insert(name, api_.get(), data, p, mem_allocs, load_status, log_);
     } else {
         (*load_status) = eImgLoadStatus::Found;
         if ((Bitmask<eImgFlags>{ref->params.flags} & eImgFlags::Stub) && !(p.flags & eImgFlags::Stub) &&
@@ -289,7 +383,7 @@ Ren::ImgRef Ren::Context::LoadImageCube(std::string_view name, Span<const uint8_
                                         MemAllocators *mem_allocs, eImgLoadStatus *load_status) {
     ImgRef ref = images_.FindByName(name);
     if (!ref) {
-        ref = images_.Insert(name, api_ctx_.get(), data, p, mem_allocs, load_status, log_);
+        ref = images_.Insert(name, api_.get(), data, p, mem_allocs, load_status, log_);
     } else {
         (*load_status) = eImgLoadStatus::Found;
         if ((Bitmask<eImgFlags>{ref->params.flags} & eImgFlags::Stub) && (p.flags & eImgFlags::Stub) && data) {
@@ -329,28 +423,28 @@ Ren::ImageRegionRef Ren::Context::LoadImageRegion(std::string_view name, Span<co
                                                   CommandBuffer cmd_buf, eImgLoadStatus *load_status) {
     ImageRegionRef ref = image_regions_.FindByName(name);
     if (!ref) {
-        ref = image_regions_.Insert(name, data, p, cmd_buf, &image_atlas_, load_status);
+        ref = image_regions_.Insert(name, data, p, cmd_buf, &image_atlas_, load_status, log_);
     } else {
         if (ref->ready()) {
             (*load_status) = eImgLoadStatus::Found;
         } else {
-            ref->Init(data, p, cmd_buf, &image_atlas_, load_status);
+            ref->Init(data, p, cmd_buf, &image_atlas_, load_status, log_);
         }
     }
     return ref;
 }
 
-Ren::ImageRegionRef Ren::Context::LoadImageRegion(std::string_view name, const Buffer &sbuf, const int data_off,
+Ren::ImageRegionRef Ren::Context::LoadImageRegion(std::string_view name, const BufferMain &sbuf, const int data_off,
                                                   const int data_len, const ImgParams &p, CommandBuffer cmd_buf,
                                                   eImgLoadStatus *load_status) {
     ImageRegionRef ref = image_regions_.FindByName(name);
     if (!ref) {
-        ref = image_regions_.Insert(name, sbuf, data_off, data_len, p, cmd_buf, &image_atlas_, load_status);
+        ref = image_regions_.Insert(name, sbuf, data_off, data_len, p, cmd_buf, &image_atlas_, load_status, log_);
     } else {
         if (ref->ready()) {
             (*load_status) = eImgLoadStatus::Found;
         } else {
-            ref->Init(sbuf, data_off, data_len, p, cmd_buf, &image_atlas_, load_status);
+            ref->Init(sbuf, data_off, data_len, p, cmd_buf, &image_atlas_, load_status, log_);
         }
     }
     return ref;
@@ -368,30 +462,34 @@ void Ren::Context::ReleaseTextureRegions() {
     image_regions_.clear();
 }
 
-Ren::SamplerRef Ren::Context::LoadSampler(SamplingParams params, eSamplerLoadStatus *load_status) {
-    auto it = std::find_if(std::begin(samplers_), std::end(samplers_),
-                           [&](const Sampler &sampler) { return sampler.params() == params; });
-    if (it != std::end(samplers_)) {
-        (*load_status) = eSamplerLoadStatus::Found;
-        return SamplerRef{&samplers_, it.index()};
-    } else {
-        const uint32_t new_index = samplers_.emplace();
-        samplers_.at(new_index).Init(api_ctx_.get(), params);
-        (*load_status) = eSamplerLoadStatus::Created;
-        return SamplerRef{&samplers_, new_index};
+Ren::SamplerHandle Ren::Context::FindOrCreateSampler(const SamplingParams params) {
+    SamplerHandle ret = samplers_.LowerBound([&](const SamplerMain &s) { return SamplingParams(s.params) < params; });
+    if (!ret || samplers_.Get(ret).first.params != params) {
+        SamplerMain s_main = {};
+        SamplerCold s_cold = {};
+
+        if (!Sampler_Init(*api_, s_main, s_cold, params)) {
+            return {};
+        }
+
+        ret = samplers_.Insert(std::move(s_main), std::move(s_cold));
+        assert(samplers_.CheckUnique());
     }
+    return ret;
 }
 
 void Ren::Context::ReleaseSamplers() {
-    if (samplers_.empty()) {
+    if (samplers_.Empty()) {
         return;
     }
-    log_->Error("--------REMAINING SAMPLERS---------");
-    for ([[maybe_unused]] const Sampler &s : samplers_) {
-        // log_->Error("%s", t.name().c_str());
+    // log_->Error("--------REMAINING SAMPLERS---------");
+    while (!samplers_.sorted_items().empty()) {
+        const SamplerHandle s = samplers_.sorted_items().back();
+        const auto &[s_main, s_cold] = samplers_.Get(s);
+        Sampler_Destroy(*api_, s_main, s_cold);
+        samplers_.PopBack();
     }
-    log_->Error("-----------------------------------");
-    samplers_.clear();
+    // log_->Error("-----------------------------------");
 }
 
 Ren::AnimSeqRef Ren::Context::LoadAnimSequence(std::string_view name, std::istream &data) {
@@ -404,7 +502,6 @@ Ren::AnimSeqRef Ren::Context::LoadAnimSequence(std::string_view name, std::istre
             ref->Init(data);
         }
     }
-
     return ref;
 }
 
@@ -424,65 +521,147 @@ void Ren::Context::ReleaseAnims() {
     anims_.clear();
 }
 
-Ren::BufRef Ren::Context::LoadBuffer(std::string_view name, const eBufType type, const uint32_t initial_size,
-                                     const uint32_t size_alignment, MemAllocators *mem_allocs) {
-    BufRef ref = buffers_.FindByName(name);
-    if (!ref) {
-        ref = buffers_.Insert(name, api_ctx_.get(), type, initial_size, size_alignment, mem_allocs);
-    } else if (ref->size() < initial_size) {
-        assert(ref->type() == type);
-        ref->Resize(initial_size, false /* keep_content */);
+Ren::BufferHandle Ren::Context::FindOrCreateBuffer(std::string_view name, const eBufType type,
+                                                   const uint32_t initial_size, const uint32_t size_alignment,
+                                                   MemAllocators *mem_allocs) {
+    BufferHandle ret = buffers_.Find(name);
+    if (!ret) {
+        String name_str{name};
+        ret = buffers_.Emplace(name_str);
+
+        const auto &[buf_main, buf_cold] = buffers_.Get(ret);
+
+        if (!Buffer_Init(*api_, buf_main, buf_cold, name_str, type, initial_size, log_, size_alignment, mem_allocs)) {
+            buffers_.Release(name_str);
+            ret = {};
+        }
     }
-    return ref;
+    return ret;
 }
 
-Ren::BufRef Ren::Context::LoadBuffer(std::string_view name, const eBufType type, const BufHandle &handle,
-                                     MemAllocation &&alloc, const uint32_t initial_size,
-                                     const uint32_t size_alignment) {
-    BufRef ref = buffers_.FindByName(name);
-    if (!ref) {
-        ref = buffers_.Insert(name, api_ctx_.get(), type, handle, std::move(alloc), initial_size, size_alignment);
-    } else if (ref->size() < initial_size) {
-        assert(ref->type() == type);
-        ref->Resize(initial_size, false /* keep_content */);
+Ren::BufferHandle Ren::Context::CreateBuffer(std::string_view name, const eBufType type, const BufferMain &_buf_main,
+                                             MemAllocation &&alloc, const uint32_t initial_size,
+                                             const uint32_t size_alignment) {
+    BufferHandle ret = buffers_.Find(name);
+    assert(!ret);
+    { // Add new buffer
+        String name_str{name};
+        ret = buffers_.Emplace(name_str);
+
+        const auto &[buf_main, buf_cold] = buffers_.Get(ret);
+
+        buf_main = _buf_main;
+        if (!Buffer_Init(*api_, buf_cold, name_str, type, std::move(alloc), initial_size, log_, size_alignment)) {
+            buffers_.Release(name_str);
+            ret = {};
+        }
     }
-    return ref;
+    return ret;
+}
+
+int Ren::Context::FindOrCreateBufferView(const BufferHandle handle, const eFormat format) {
+    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    for (int i = 0; i < int(buf_main.views.size()); ++i) {
+        if (buf_main.views[i].first == format) {
+            return i;
+        }
+    }
+    return Buffer_AddView(*api_, buf_main, buf_cold, format);
+}
+
+bool Ren::Context::ResizeBuffer(const BufferHandle handle, const uint32_t new_size, const bool keep_content,
+                                const bool release_immediately) {
+    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    return Buffer_Resize(*api_, buf_main, buf_cold, new_size, log_, keep_content, release_immediately);
+}
+
+uint8_t *Ren::Context::MapBufferRange(const BufferHandle handle, const uint32_t offset, const uint32_t size,
+                                      const bool persistent) {
+    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    return Buffer_MapRange(*api_, buf_main, buf_cold, offset, size, persistent);
+}
+
+uint8_t *Ren::Context::MapBuffer(const BufferHandle handle, const bool persistent) {
+    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    return Buffer_MapRange(*api_, buf_main, buf_cold, 0, buf_cold.size, persistent);
+}
+
+void Ren::Context::UnmapBuffer(const BufferHandle handle) {
+    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    Buffer_Unmap(*api_, buf_main, buf_cold);
+}
+
+void Ren::Context::ReleaseBuffer(const BufferHandle handle, const bool immediately) {
+    const auto &[buf_main, buf_cold] = buffers_.Get(handle);
+    const String name_str = buf_cold.name;
+    if (immediately) {
+        Buffer_DestroyImmediately(*api_, buf_main, buf_cold);
+    } else {
+        Buffer_Destroy(*api_, buf_main, buf_cold);
+    }
+    buffers_.Release(name_str);
 }
 
 void Ren::Context::ReleaseBuffers() {
-    if (buffers_.empty()) {
+    if (buffers_.Empty()) {
         return;
     }
     log_->Error("---------REMAINING BUFFERS--------");
-    for (const Buffer &b : buffers_) {
-        log_->Error("%s\t: %u", b.name().c_str(), b.size());
+    auto &all_buffers = buffers_.items_by_name();
+    for (auto it = all_buffers.begin(); it != all_buffers.end();) {
+        const auto &[buf_main, buf_cold] = buffers_.Get(it->val);
+        const String name_str = buf_cold.name;
+        log_->Error("%s\t: %u", name_str.c_str(), buf_cold.size);
+
+        Buffer_Destroy(*api_, buf_main, buf_cold);
+        it = buffers_.Free(it);
     }
     log_->Error("-----------------------------------");
-    buffers_.clear();
 }
 
 void Ren::Context::InitDefaultBuffers() {
-    default_vertex_buf1_ =
-        buffers_.Insert("default_vtx_buf1", api_ctx_.get(), eBufType::VertexAttribs, 1 * 1024 * 1024, 16);
-    default_vertex_buf1_->AddView(eFormat::RGBA32F);
-    default_vertex_buf2_ =
-        buffers_.Insert("default_vtx_buf2", api_ctx_.get(), eBufType::VertexAttribs, 1 * 1024 * 1024, 16);
-    default_vertex_buf2_->AddView(eFormat::RGBA32UI);
-    default_skin_vertex_buf_ =
-        buffers_.Insert("default_skin_vtx_buf", api_ctx_.get(), eBufType::VertexAttribs, 1 * 1024 * 1024, 16);
-    default_delta_buf_ =
-        buffers_.Insert("default_delta_buf", api_ctx_.get(), eBufType::VertexAttribs, 1 * 1024 * 1024, 16);
-    default_indices_buf_ =
-        buffers_.Insert("default_ndx_buf", api_ctx_.get(), eBufType::VertexIndices, 1 * 1024 * 1024, 4);
-    default_indices_buf_->AddView(eFormat::R32UI);
+    assert(!default_vertex_buf1_);
+    assert(!default_vertex_buf2_);
+    assert(!default_indices_buf_);
+    assert(!default_skin_vertex_buf_);
+    assert(!default_delta_vertex_buf_);
+
+    { // Vertex Buffer 1
+        default_vertex_buf1_ = FindOrCreateBuffer("Default Vtx Buf 1", eBufType::VertexAttribs, 1 * 1024 * 1024, 16);
+        const int view_index = FindOrCreateBufferView(default_vertex_buf1_, eFormat::RGBA32F);
+        assert(view_index == 0);
+    }
+    { // Vertex Buffer 2
+        default_vertex_buf2_ = FindOrCreateBuffer("Default Vtx Buf 2", eBufType::VertexAttribs, 1 * 1024 * 1024, 16);
+        const int view_index = FindOrCreateBufferView(default_vertex_buf2_, eFormat::RGBA32UI);
+        assert(view_index == 0);
+    }
+    { // Index Buffer
+        default_indices_buf_ = FindOrCreateBuffer("Default Ndx Buf", eBufType::VertexIndices, 1 * 1024 * 1024, 4);
+        const int view_index = FindOrCreateBufferView(default_indices_buf_, eFormat::R32UI);
+        assert(view_index == 0);
+    }
+    { // Skin Buffer
+        default_skin_vertex_buf_ =
+            FindOrCreateBuffer("Default Skin Vtx Buf", eBufType::VertexAttribs, 1 * 1024 * 1024, 16);
+    }
+    { // Delta Shapes Buffer
+        default_delta_vertex_buf_ =
+            FindOrCreateBuffer("Default Delta Vtx Buf", eBufType::VertexAttribs, 1 * 1024 * 1024, 16);
+    }
 }
 
 void Ren::Context::ReleaseDefaultBuffers() {
+    ReleaseBuffer(default_vertex_buf1_);
     default_vertex_buf1_ = {};
+    ReleaseBuffer(default_vertex_buf2_);
     default_vertex_buf2_ = {};
-    default_skin_vertex_buf_ = {};
-    default_delta_buf_ = {};
+    ReleaseBuffer(default_indices_buf_);
     default_indices_buf_ = {};
+    ReleaseBuffer(default_skin_vertex_buf_);
+    default_skin_vertex_buf_ = {};
+    ReleaseBuffer(default_delta_vertex_buf_);
+    default_delta_vertex_buf_ = {};
 }
 
 void Ren::Context::ReleaseAll() {
@@ -495,19 +674,25 @@ void Ren::Context::ReleaseAll() {
     ReleaseImages();
     ReleaseTextureRegions();
     ReleaseBuffers();
+    ReleaseVertexInputs();
+    ReleaseRenderPasses();
+    ReleaseSamplers();
 
     image_atlas_ = {};
 }
 
-int Ren::Context::backend_frame() const { return api_ctx_->backend_frame; }
-
-int Ren::Context::active_present_image() const { return api_ctx_->active_present_image; }
-
-Ren::ImgRef Ren::Context::backbuffer_ref() const {
-    return api_ctx_->present_image_refs[api_ctx_->active_present_image];
+Ren::DescrMultiPoolAlloc &Ren::Context::default_descr_alloc() const {
+    return *default_descr_alloc_[api_->backend_frame];
 }
 
-Ren::StageBufRef::StageBufRef(Context &_ctx, BufRef &_buf, SyncFence &_fence, CommandBuffer _cmd_buf, bool &_is_in_use)
+int Ren::Context::backend_frame() const { return api_->backend_frame; }
+
+int Ren::Context::active_present_image() const { return api_->active_present_image; }
+
+Ren::ImgRef Ren::Context::backbuffer_ref() const { return api_->present_image_refs[api_->active_present_image]; }
+
+Ren::StageBufRef::StageBufRef(Context &_ctx, const BufferHandle _buf, SyncFence &_fence, CommandBuffer _cmd_buf,
+                              bool &_is_in_use)
     : ctx(_ctx), buf(_buf), fence(_fence), cmd_buf(_cmd_buf), is_in_use(_is_in_use) {
     is_in_use = true;
     const eWaitResult res = fence.ClientWaitSync();

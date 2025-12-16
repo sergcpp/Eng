@@ -13,7 +13,7 @@ Ren::Framebuffer &Ren::Framebuffer::operator=(Framebuffer &&rhs) noexcept {
 
     Destroy();
 
-    api_ctx_ = std::exchange(rhs.api_ctx_, nullptr);
+    api_ = std::exchange(rhs.api_, nullptr);
     handle_ = std::exchange(rhs.handle_, VkFramebuffer{VK_NULL_HANDLE});
     renderpass_ = std::exchange(rhs.renderpass_, VkRenderPass{VK_NULL_HANDLE});
     w = std::exchange(rhs.w, -1);
@@ -29,30 +29,30 @@ Ren::Framebuffer::~Framebuffer() { Destroy(); }
 
 void Ren::Framebuffer::Destroy() {
     if (handle_ != VK_NULL_HANDLE) {
-        api_ctx_->framebuffers_to_destroy[api_ctx_->backend_frame].push_back(handle_);
+        api_->framebuffers_to_destroy[api_->backend_frame].push_back(handle_);
         handle_ = VK_NULL_HANDLE;
     }
 }
 
-bool Ren::Framebuffer::Changed(const RenderPass &render_pass, const WeakImgRef &_depth_attachment,
+bool Ren::Framebuffer::Changed(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
                                const WeakImgRef &_stencil_attachment, Span<const WeakImgRef> _color_attachments) const {
-    return renderpass_ != render_pass.vk_handle() || depth_attachment != _depth_attachment ||
+    return renderpass_ != render_pass.handle || depth_attachment != _depth_attachment ||
            stencil_attachment != _stencil_attachment || Span<const Attachment>(color_attachments) != _color_attachments;
 }
 
-bool Ren::Framebuffer::Changed(const RenderPass &render_pass, const WeakImgRef &_depth_attachment,
+bool Ren::Framebuffer::Changed(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
                                const WeakImgRef &_stencil_attachment,
                                Span<const RenderTarget> _color_attachments) const {
-    return renderpass_ != render_pass.vk_handle() || depth_attachment != _depth_attachment ||
+    return renderpass_ != render_pass.handle || depth_attachment != _depth_attachment ||
            stencil_attachment != _stencil_attachment || Span<const Attachment>(color_attachments) != _color_attachments;
 }
 
-bool Ren::Framebuffer::LessThan(const RenderPass &render_pass, const WeakImgRef &_depth_attachment,
+bool Ren::Framebuffer::LessThan(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
                                 const WeakImgRef &_stencil_attachment,
                                 Span<const WeakImgRef> _color_attachments) const {
-    if (renderpass_ < render_pass.vk_handle()) {
+    if (renderpass_ < render_pass.handle) {
         return true;
-    } else if (renderpass_ == render_pass.vk_handle()) {
+    } else if (renderpass_ == render_pass.handle) {
         if (depth_attachment < _depth_attachment) {
             return true;
         } else if (depth_attachment == _depth_attachment) {
@@ -66,12 +66,12 @@ bool Ren::Framebuffer::LessThan(const RenderPass &render_pass, const WeakImgRef 
     return false;
 }
 
-bool Ren::Framebuffer::LessThan(const RenderPass &render_pass, const WeakImgRef &_depth_attachment,
+bool Ren::Framebuffer::LessThan(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
                                 const WeakImgRef &_stencil_attachment,
                                 Span<const RenderTarget> _color_attachments) const {
-    if (renderpass_ < render_pass.vk_handle()) {
+    if (renderpass_ < render_pass.handle) {
         return true;
-    } else if (renderpass_ == render_pass.vk_handle()) {
+    } else if (renderpass_ == render_pass.handle) {
         if (depth_attachment < _depth_attachment) {
             return true;
         } else if (depth_attachment == _depth_attachment) {
@@ -85,7 +85,7 @@ bool Ren::Framebuffer::LessThan(const RenderPass &render_pass, const WeakImgRef 
     return false;
 }
 
-bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass, const int _w, const int _h,
+bool Ren::Framebuffer::Setup(const ApiContext *api, const RenderPassMain &render_pass, const int _w, const int _h,
                              const WeakImgRef _depth_attachment, const WeakImgRef _stencil_attachment,
                              Span<const WeakImgRef> _color_attachments, const bool is_multisampled, ILog *log) {
     if (!Changed(render_pass, _depth_attachment, _stencil_attachment, _color_attachments)) {
@@ -95,7 +95,7 @@ bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass,
 
     Destroy();
 
-    api_ctx_ = api_ctx;
+    api_ = api;
     color_attachments.clear();
     depth_attachment = {};
     stencil_attachment = {};
@@ -123,7 +123,7 @@ bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass,
         }
     }
 
-    renderpass_ = render_pass.vk_handle();
+    renderpass_ = render_pass.handle;
     w = _w;
     h = _h;
 
@@ -135,7 +135,7 @@ bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass,
     framebuf_create_info.height = _h;
     framebuf_create_info.layers = 1;
 
-    const VkResult res = api_ctx->vkCreateFramebuffer(api_ctx->device, &framebuf_create_info, nullptr, &handle_);
+    const VkResult res = api->vkCreateFramebuffer(api->device, &framebuf_create_info, nullptr, &handle_);
     if (res != VK_SUCCESS) {
         log->Error("Framebuffer creation failed (error %i)", int(res));
 #ifdef VERBOSE_LOGGING
@@ -146,7 +146,7 @@ bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass,
     return res == VK_SUCCESS;
 }
 
-bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass, const int _w, const int _h,
+bool Ren::Framebuffer::Setup(const ApiContext *api, const RenderPassMain &render_pass, const int _w, const int _h,
                              const RenderTarget &_depth_target, const RenderTarget &_stencil_target,
                              Span<const RenderTarget> _color_targets, ILog *log) {
     SmallVector<WeakImgRef, 4> color_refs;
@@ -165,7 +165,7 @@ bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass,
 
     Destroy();
 
-    api_ctx_ = api_ctx;
+    api_ = api;
     color_attachments.clear();
     depth_attachment = {};
     stencil_attachment = {};
@@ -194,7 +194,7 @@ bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass,
         }
     }
 
-    renderpass_ = render_pass.vk_handle();
+    renderpass_ = render_pass.handle;
     w = _w;
     h = _h;
 
@@ -206,7 +206,7 @@ bool Ren::Framebuffer::Setup(ApiContext *api_ctx, const RenderPass &render_pass,
     framebuf_create_info.height = _h;
     framebuf_create_info.layers = 1;
 
-    const VkResult res = api_ctx->vkCreateFramebuffer(api_ctx->device, &framebuf_create_info, nullptr, &handle_);
+    const VkResult res = api->vkCreateFramebuffer(api->device, &framebuf_create_info, nullptr, &handle_);
     if (res != VK_SUCCESS) {
         log->Error("Framebuffer creation failed (error %i)", int(res));
 #ifdef VERBOSE_LOGGING

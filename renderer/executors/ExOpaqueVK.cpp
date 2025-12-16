@@ -7,8 +7,8 @@
 #include <Ren/VKCtx.h>
 
 namespace ExSharedInternal {
-uint32_t _draw_list_range_full(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf, VkDescriptorSet res_descr_set,
-                               Ren::Span<const VkDescriptorSet> texture_descr_sets, const Ren::Pipeline pipelines[],
+uint32_t _draw_list_range_full(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, VkDescriptorSet res_descr_set,
+                               Ren::Span<const VkDescriptorSet> texture_descr_sets, const Ren::PipelineMain pipelines[],
                                Ren::Span<const Eng::custom_draw_batch_t> main_batches,
                                Ren::Span<const uint32_t> main_batch_indices, uint32_t i, uint64_t mask,
                                const uint32_t materials_per_descriptor, uint64_t &cur_pipe_id, uint32_t &bound_descr_id,
@@ -24,26 +24,25 @@ uint32_t _draw_list_range_full(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf
         }
 
         if (cur_pipe_id != batch.pipe_id) {
-            api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].handle());
-            api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                             pipelines[batch.pipe_id].layout(), 0, 1, &res_descr_set, 0, nullptr);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].handle);
+            api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].layout, 0, 1,
+                                        &res_descr_set, 0, nullptr);
             cur_pipe_id = batch.pipe_id;
             bound_descr_id = 0xffffffff;
         }
 
         const uint32_t descr_id = batch.material_index / materials_per_descriptor;
         if (descr_id != bound_descr_id) {
-            api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                             pipelines[batch.pipe_id].layout(), 1, 1, &texture_descr_sets[descr_id], 0,
-                                             nullptr);
+            api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].layout, 1, 1,
+                                        &texture_descr_sets[descr_id], 0, nullptr);
             bound_descr_id = descr_id;
         }
 
-        api_ctx->vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
-                                  batch.instance_count,         // instance count
-                                  batch.indices_offset,         // first index
-                                  batch.base_vertex,            // vertex offset
-                                  batch.instance_start);        // first instance
+        api.vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
+                             batch.instance_count,         // instance count
+                             batch.indices_offset,         // first index
+                             batch.base_vertex,            // vertex offset
+                             batch.instance_start);        // first instance
 
         backend_info.opaque_draw_calls_count++;
         backend_info.tris_rendered += (batch.indices_count / 3) * batch.instance_count;
@@ -52,8 +51,9 @@ uint32_t _draw_list_range_full(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf
     return i;
 }
 
-uint32_t _draw_list_range_full_rev(Ren::ApiContext *api_ctx, VkCommandBuffer cmd_buf, VkDescriptorSet res_descr_set,
-                                   Ren::Span<const VkDescriptorSet> texture_descr_sets, const Ren::Pipeline pipelines[],
+uint32_t _draw_list_range_full_rev(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, VkDescriptorSet res_descr_set,
+                                   Ren::Span<const VkDescriptorSet> texture_descr_sets,
+                                   const Ren::PipelineMain pipelines[],
                                    Ren::Span<const Eng::custom_draw_batch_t> main_batches,
                                    Ren::Span<const uint32_t> main_batch_indices, uint32_t ndx, uint64_t mask,
                                    const uint32_t materials_per_descriptor, uint64_t &cur_pipe_id,
@@ -70,26 +70,25 @@ uint32_t _draw_list_range_full_rev(Ren::ApiContext *api_ctx, VkCommandBuffer cmd
         }
 
         if (cur_pipe_id != batch.pipe_id) {
-            api_ctx->vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].handle());
-            api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                             pipelines[batch.pipe_id].layout(), 0, 1, &res_descr_set, 0, nullptr);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].handle);
+            api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].layout, 0, 1,
+                                        &res_descr_set, 0, nullptr);
             cur_pipe_id = batch.pipe_id;
             bound_descr_id = 0xffffffff;
         }
 
         const uint32_t descr_id = batch.material_index / materials_per_descriptor;
         if (descr_id != bound_descr_id) {
-            api_ctx->vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                             pipelines[batch.pipe_id].layout(), 1, 1, &texture_descr_sets[descr_id], 0,
-                                             nullptr);
+            api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].layout, 1, 1,
+                                        &texture_descr_sets[descr_id], 0, nullptr);
             bound_descr_id = descr_id;
         }
 
-        api_ctx->vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
-                                  batch.instance_count,         // instance count
-                                  batch.indices_offset,         // first index
-                                  batch.base_vertex,            // vertex offset
-                                  batch.instance_start);        // first instance
+        api.vkCmdDrawIndexed(cmd_buf, batch.indices_count, // index count
+                             batch.instance_count,         // instance count
+                             batch.indices_offset,         // first index
+                             batch.base_vertex,            // vertex offset
+                             batch.instance_start);        // first instance
 
         backend_info.opaque_draw_calls_count++;
         backend_info.tris_rendered += (batch.indices_count / 3) * batch.instance_count;
@@ -99,22 +98,23 @@ uint32_t _draw_list_range_full_rev(Ren::ApiContext *api_ctx, VkCommandBuffer cmd
 }
 } // namespace ExSharedInternal
 
-void Eng::ExOpaque::DrawOpaque(FgContext &fg) {
+void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     using namespace ExSharedInternal;
 
-    auto *api_ctx = fg.ren_ctx().api_ctx();
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
 
     //
     // Prepare descriptor sets
     //
-    const Ren::Buffer &instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::Buffer &instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::Buffer &unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::Buffer &materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::Buffer &cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::Buffer &items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::Buffer &lights_buf = fg.AccessROBuffer(lights_buf_);
-    const Ren::Buffer &decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(cells_buf_);
+    const Ren::BufferHandle items_buf = fg.AccessROBuffer(items_buf_);
+    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(lights_buf_);
+    const Ren::BufferHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
     const Ren::Image &shad_tex = fg.AccessROImage(shad_tex_);
     [[maybe_unused]] const Ren::Image &brdf_lut = fg.AccessROImage(brdf_lut_);
@@ -163,16 +163,20 @@ void Eng::ExOpaque::DrawOpaque(FgContext &fg) {
         // const VkDescriptorImageInfo cone_rt_info = cone_rt_lut.vk_desc_image_info();
         // const VkDescriptorImageInfo brdf_info = brdf_lut.vk_desc_image_info();
 
-        const VkBufferView lights_buf_view = lights_buf.view(0).second;
-        const VkBufferView decals_buf_view = decals_buf.view(0).second;
-        const VkBufferView cells_buf_view = cells_buf.view(0).second;
-        const VkBufferView items_buf_view = items_buf.view(0).second;
+        const VkBufferView lights_buf_view = storages.buffers.Get(lights_buf).first.views[0].second;
+        const VkBufferView decals_buf_view = storages.buffers.Get(decals_buf).first.views[0].second;
+        const VkBufferView cells_buf_view = storages.buffers.Get(cells_buf).first.views[0].second;
+        const VkBufferView items_buf_view = storages.buffers.Get(items_buf).first.views[0].second;
 
-        const VkDescriptorBufferInfo ubuf_info = {unif_shared_data_buf.vk_handle(), 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
+        const VkDescriptorBufferInfo ubuf_info = {unif_shared_data_buf_main.buf, 0, VK_WHOLE_SIZE};
 
-        const VkBufferView instances_buf_view = instances_buf.view(0).second;
-        const VkDescriptorBufferInfo instance_indices_buf_info = {instance_indices_buf.vk_handle(), 0, VK_WHOLE_SIZE};
-        const VkDescriptorBufferInfo mat_buf_info = {materials_buf.vk_handle(), 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
+        const VkBufferView instances_buf_view = instances_buf_main.views[0].second;
+        const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
+        const VkDescriptorBufferInfo instance_indices_buf_info = {instance_indices_buf_main.buf, 0, VK_WHOLE_SIZE};
+        const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
+        const VkDescriptorBufferInfo mat_buf_info = {materials_buf_main.buf, 0, VK_WHOLE_SIZE};
 
         Ren::SmallVector<VkWriteDescriptorSet, 16> descr_writes;
 
@@ -337,21 +341,21 @@ void Eng::ExOpaque::DrawOpaque(FgContext &fg) {
             descr_write.pBufferInfo = &mat_buf_info;
         }
 
-        api_ctx->vkUpdateDescriptorSets(api_ctx->device, descr_writes.size(), descr_writes.cdata(), 0, nullptr);
+        api.vkUpdateDescriptorSets(api.device, descr_writes.size(), descr_writes.cdata(), 0, nullptr);
     }
 
-    VkCommandBuffer cmd_buf = api_ctx->draw_cmd_buf[api_ctx->backend_frame];
+    VkCommandBuffer cmd_buf = fg.cmd_buf();
 
     //
     // Setup viewport
     //
     const VkViewport viewport = {0.0f, 0.0f, float(view_state_->ren_res[0]), float(view_state_->ren_res[1]),
                                  0.0f, 1.0f};
-    api_ctx->vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+    api.vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
     const VkRect2D scissor = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
-    api_ctx->vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+    api.vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
-    const uint32_t materials_per_descriptor = api_ctx->max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
+    const uint32_t materials_per_descriptor = api.max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
 
     Ren::Span<const custom_draw_batch_t> batches = {(*p_list_)->custom_batches};
     Ren::Span<const uint32_t> batch_indices = {(*p_list_)->custom_batch_indices};
@@ -367,57 +371,61 @@ void Eng::ExOpaque::DrawOpaque(FgContext &fg) {
         uint32_t i = 0;
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = rp_opaque_->vk_handle();
+        rp_begin_info.renderPass =  storages.render_passes.Get(rp_opaque_).first.handle;
         rp_begin_info.framebuffer = opaque_draw_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
-        api_ctx->vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        draw_pass_vi_->BindBuffers(api_ctx, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        const Ren::VertexInputMain &vi_main = storages.vtx_inputs.Get(draw_pass_vi_).first;
+        VertexInput_BindBuffers(api, vi_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         { // one-sided1
-            Ren::DebugMarker _m(api_ctx, cmd_buf, "ONE-SIDED-1");
-            i = _draw_list_range_full(api_ctx, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets, pipelines_,
-                                      batches, batch_indices, i, 0ull, materials_per_descriptor, cur_pipe_id,
-                                      bound_descr_id, _dummy);
-        }
-
-        { // two-sided1
-            Ren::DebugMarker _m(api_ctx, cmd_buf, "TWO-SIDED-1");
-            i = _draw_list_range_full(api_ctx, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets, pipelines_,
-                                      batches, batch_indices, i, CDB::BitTwoSided, materials_per_descriptor,
-                                      cur_pipe_id, bound_descr_id, _dummy);
-        }
-
-        { // one-sided2
-            Ren::DebugMarker _m(api_ctx, cmd_buf, "ONE-SIDED-2");
-            i = _draw_list_range_full(api_ctx, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets, pipelines_,
-                                      batches, batch_indices, i, CDB::BitAlphaTest, materials_per_descriptor,
-                                      cur_pipe_id, bound_descr_id, _dummy);
-        }
-
-        { // two-sided2
-            Ren::DebugMarker _m(api_ctx, cmd_buf, "TWO-SIDED-2");
-            i = _draw_list_range_full(api_ctx, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets, pipelines_,
-                                      batches, batch_indices, i, CDB::BitAlphaTest | CDB::BitTwoSided,
+            Ren::DebugMarker _m(api, cmd_buf, "ONE-SIDED-1");
+            i = _draw_list_range_full(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
+                                      fg.pipelines().data_main(), batches, batch_indices, i, 0ull,
                                       materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
         }
 
+        { // two-sided1
+            Ren::DebugMarker _m(api, cmd_buf, "TWO-SIDED-1");
+            i = _draw_list_range_full(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
+                                      fg.pipelines().data_main(), batches, batch_indices, i, CDB::BitTwoSided,
+                                      materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
+        }
+
+        { // one-sided2
+            Ren::DebugMarker _m(api, cmd_buf, "ONE-SIDED-2");
+            i = _draw_list_range_full(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
+                                      fg.pipelines().data_main(), batches, batch_indices, i, CDB::BitAlphaTest,
+                                      materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
+        }
+
+        { // two-sided2
+            Ren::DebugMarker _m(api, cmd_buf, "TWO-SIDED-2");
+            i = _draw_list_range_full(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
+                                      fg.pipelines().data_main(), batches, batch_indices, i,
+                                      CDB::BitAlphaTest | CDB::BitTwoSided, materials_per_descriptor, cur_pipe_id,
+                                      bound_descr_id, _dummy);
+        }
+
         { // two-sided-tested-blended
-            Ren::DebugMarker _m(api_ctx, cmd_buf, "TWO-SIDED-TESTED-BLENDED");
-            i = _draw_list_range_full_rev(api_ctx, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
-                                          pipelines_, batches, batch_indices, uint32_t(batch_indices.size() - 1),
+            Ren::DebugMarker _m(api, cmd_buf, "TWO-SIDED-TESTED-BLENDED");
+            i = _draw_list_range_full_rev(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
+                                          fg.pipelines().data_main(), batches, batch_indices,
+                                          uint32_t(batch_indices.size() - 1),
                                           CDB::BitAlphaBlend | CDB::BitAlphaTest | CDB::BitTwoSided,
                                           materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
         }
 
         { // one-sided-tested-blended
-            Ren::DebugMarker _m(api_ctx, cmd_buf, "ONE-SIDED-TESTED-BLENDED");
-            _draw_list_range_full_rev(api_ctx, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets, pipelines_,
-                                      batches, batch_indices, i, CDB::BitAlphaBlend | CDB::BitAlphaTest,
-                                      materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
+            Ren::DebugMarker _m(api, cmd_buf, "ONE-SIDED-TESTED-BLENDED");
+            _draw_list_range_full_rev(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
+                                      fg.pipelines().data_main(), batches, batch_indices, i,
+                                      CDB::BitAlphaBlend | CDB::BitAlphaTest, materials_per_descriptor, cur_pipe_id,
+                                      bound_descr_id, _dummy);
         }
 
-        api_ctx->vkCmdEndRenderPass(cmd_buf);
+        api.vkCmdEndRenderPass(cmd_buf);
     }
 }
 
@@ -449,13 +457,12 @@ void Eng::ExOpaque::InitDescrSetLayout() {
     layout_info.bindingCount = uint32_t(std::size(bindings));
     layout_info.pBindings = bindings;
 
-    const VkResult res =
-        api_ctx_->vkCreateDescriptorSetLayout(api_ctx_->device, &layout_info, nullptr, &descr_set_layout_);
+    const VkResult res = api_.vkCreateDescriptorSetLayout(api_.device, &layout_info, nullptr, &descr_set_layout_);
     assert(res == VK_SUCCESS);
 }
 
 Eng::ExOpaque::~ExOpaque() {
     if (descr_set_layout_ != VK_NULL_HANDLE) {
-        api_ctx_->vkDestroyDescriptorSetLayout(api_ctx_->device, descr_set_layout_, nullptr);
+        api_.vkDestroyDescriptorSetLayout(api_.device, descr_set_layout_, nullptr);
     }
 }
