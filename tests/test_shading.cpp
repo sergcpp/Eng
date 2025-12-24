@@ -94,7 +94,7 @@ void test_shading(Sys::ThreadPool &threads, const bool full) {
     run_image_test(ren_ctx, threads, "complex_mat2_hdri_light", 22.40, Full);
     run_image_test(ren_ctx, threads, "complex_mat2_hdri_light", 23.85, Full_Ultra);
     run_image_test(ren_ctx, threads, "complex_mat2_portal_hdri", 24.40, NoDiffGI);
-    run_image_test(ren_ctx, threads, "complex_mat2_portal_hdri", 24.45, MedDiffGI);
+    run_image_test(ren_ctx, threads, "complex_mat2_portal_hdri", 24.40, MedDiffGI);
     run_image_test(ren_ctx, threads, "complex_mat2_portal_hdri", 23.85, Full);
     run_image_test(ren_ctx, threads, "complex_mat2_portal_hdri", 24.80, Full_Ultra);
     run_image_test(ren_ctx, threads, "complex_mat2_portal_sky", 23.55, MedDiffGI);

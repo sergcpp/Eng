@@ -342,7 +342,8 @@ void main() {
     const float unbiased_weight_sqr = unbiased_weight * unbiased_weight;
     const float history_weight = mix(HistoryWeightMin, HistoryWeightMax, unbiased_weight_sqr);
 
-    vec3 col_temporal = mix(col_curr.xyz, col_hist.xyz, history_weight);
+    const float alpha = max(0.001, min(color_weight.w, 1.0 - history_weight));
+    vec3 col_temporal = mix(col_hist.xyz, col_curr.xyz, alpha);
 #if defined(YCoCg)
     col_temporal = YCoCg_to_RGB(col_temporal);
 #endif
