@@ -18,7 +18,7 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
     using Stg = Ren::eStage;
     using Trg = Ren::eBindTarget;
 
-    FgResRef oit_depth_buf, oit_specular[OIT_REFLECTION_LAYERS], oit_rays_counter;
+    FgResRef oit_depth_buf, oit_specular[OIT_REFLECTION_LAYERS], oit_ray_counter, oit_ray_bitmask;
 
     const int oit_layer_count =
         (settings.transparency_quality == eTransparencyQuality::Ultra) ? OIT_LAYERS_ULTRA : OIT_LAYERS_HIGH;
@@ -29,7 +29,8 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
         struct PassData {
             FgResRef oit_depth_buf;
             FgResRef oit_specular[OIT_REFLECTION_LAYERS];
-            FgResRef oit_rays_counter;
+            FgResRef oit_ray_counter;
+            FgResRef oit_ray_bitmask;
         };
 
         auto *data = oit_clear.AllocNodeData<PassData>();
@@ -61,17 +62,30 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
             desc.type = Ren::eBufType::Storage;
             desc.size = 8 * sizeof(uint32_t);
 
-            oit_rays_counter = data->oit_rays_counter = oit_clear.AddTransferOutput("OIT Ray Counter", desc);
+            oit_ray_counter = data->oit_ray_counter = oit_clear.AddTransferOutput("OIT Ray Counter", desc);
+        }
+
+        { // ray bitmask (halfres)
+            const int w = (((view_state_.ren_res[0] + 1) / 2) + 31) / 32;
+            const int h = ((view_state_.ren_res[1] + 1) / 2);
+
+            FgBufDesc desc = {};
+            desc.type = Ren::eBufType::Storage;
+            desc.size = OIT_REFLECTION_LAYERS * (w * h) * sizeof(uint32_t);
+
+            oit_ray_bitmask = data->oit_ray_bitmask = oit_clear.AddTransferOutput("OIT Ray Bitmask", desc);
         }
 
         oit_clear.set_execute_cb([this, data](FgContext &fg) {
             Ren::Buffer &out_depth_buf = fg.AccessRWBuffer(data->oit_depth_buf);
-            Ren::Buffer &out_rays_counter_buf = fg.AccessRWBuffer(data->oit_rays_counter);
+            Ren::Buffer &out_ray_counter_buf = fg.AccessRWBuffer(data->oit_ray_counter);
+            Ren::Buffer &out_ray_bitmask_buf = fg.AccessRWBuffer(data->oit_ray_bitmask);
 
-            out_rays_counter_buf.Fill(0, out_rays_counter_buf.size(), 0, fg.cmd_buf());
+            out_ray_counter_buf.Fill(0, out_ray_counter_buf.size(), 0, fg.cmd_buf());
 
             if (p_list_->alpha_blend_start_index != -1) {
                 out_depth_buf.Fill(0, out_depth_buf.size(), 0, fg.cmd_buf());
+                out_ray_bitmask_buf.Fill(0, out_ray_bitmask_buf.size(), 0, fg.cmd_buf());
             }
             for (int i = 0; i < OIT_REFLECTION_LAYERS; ++i) {
                 Ren::Image &oit_specular = fg.AccessRWImage(data->oit_specular[i]);
@@ -138,20 +152,21 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
         frame_textures.depth = oit_schedule.AddDepthOutput(MAIN_DEPTH_TEX, frame_textures.depth_desc);
         oit_depth_buf = oit_schedule.AddStorageReadonlyInput(oit_depth_buf, Stg::FragmentShader);
 
-        oit_rays_counter = oit_schedule.AddStorageOutput(oit_rays_counter, Stg::FragmentShader);
+        oit_ray_counter = oit_schedule.AddStorageOutput(oit_ray_counter, Stg::FragmentShader);
         { // packed ray list
             FgBufDesc desc = {};
             desc.type = Ren::eBufType::Storage;
-            desc.size = OIT_REFLECTION_LAYERS * (view_state_.ren_res[0] / 2) * (view_state_.ren_res[1] / 2) * 2 *
-                        sizeof(uint32_t);
+            desc.size = OIT_REFLECTION_LAYERS * ((view_state_.ren_res[0] + 1) / 2) *
+                        ((view_state_.ren_res[1] + 1) / 2) * 2 * sizeof(uint32_t);
 
             oit_ray_list = oit_schedule.AddStorageOutput("OIT Ray List", desc, Stg::FragmentShader);
         }
+        oit_ray_bitmask = oit_schedule.AddStorageOutput(oit_ray_bitmask, Stg::FragmentShader);
 
         oit_schedule.make_executor<ExOITScheduleRays>(&p_list_, &view_state_, vtx_buf1, vtx_buf2, ndx_buf,
                                                       materials_buf, &bindless, noise_tex, white_tex, instances_buf,
                                                       instances_indices_buf, shader_data_buf, frame_textures.depth,
-                                                      oit_depth_buf, oit_rays_counter, oit_ray_list);
+                                                      oit_depth_buf, oit_ray_counter, oit_ray_list, oit_ray_bitmask);
     }
 
     FgResRef indir_disp_buf;
@@ -165,7 +180,7 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
         };
 
         auto *data = write_indir.AllocNodeData<PassData>();
-        oit_rays_counter = data->ray_counter = write_indir.AddStorageOutput(oit_rays_counter, Stg::ComputeShader);
+        oit_ray_counter = data->ray_counter = write_indir.AddStorageOutput(oit_ray_counter, Stg::ComputeShader);
 
         { // Indirect arguments
             FgBufDesc desc = {};
@@ -224,8 +239,7 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
 
         data->in_ray_list = ssr_trace_hq.AddStorageReadonlyInput(oit_ray_list, Stg::ComputeShader);
         data->indir_args = ssr_trace_hq.AddIndirectBufferInput(indir_disp_buf);
-        oit_rays_counter = data->inout_ray_counter =
-            ssr_trace_hq.AddStorageOutput(oit_rays_counter, Stg::ComputeShader);
+        oit_ray_counter = data->inout_ray_counter = ssr_trace_hq.AddStorageOutput(oit_ray_counter, Stg::ComputeShader);
         for (int i = 0; i < OIT_REFLECTION_LAYERS; ++i) {
             oit_specular[i] = data->out_ssr_tex[i] =
                 ssr_trace_hq.AddStorageImageOutput(oit_specular[i], Stg::ComputeShader);
@@ -234,8 +248,8 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
         { // packed ray list
             FgBufDesc desc = {};
             desc.type = Ren::eBufType::Storage;
-            desc.size = OIT_REFLECTION_LAYERS * (view_state_.ren_res[0] / 2) * (view_state_.ren_res[1] / 2) * 2 *
-                        sizeof(uint32_t);
+            desc.size = OIT_REFLECTION_LAYERS * ((view_state_.ren_res[0] + 1) / 2) *
+                        ((view_state_.ren_res[1] + 1) / 2) * 2 * sizeof(uint32_t);
 
             ray_rt_list = data->out_ray_list =
                 ssr_trace_hq.AddStorageOutput("OIT RT Ray List", desc, Stg::ComputeShader);
@@ -253,7 +267,7 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
             const Ren::Buffer &indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
             const Ren::Image *albedo_tex = nullptr, *specular_tex = nullptr, *ltc_luts_tex = nullptr,
-                               *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
+                             *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
             if (data->irradiance_tex) {
                 albedo_tex = &fg.AccessROImage(data->albedo_tex);
                 specular_tex = &fg.AccessROImage(data->specular_tex);
@@ -313,7 +327,7 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
             };
 
             auto *data = rt_disp_args.AllocNodeData<PassData>();
-            oit_rays_counter = data->ray_counter = rt_disp_args.AddStorageOutput(oit_rays_counter, Stg::ComputeShader);
+            oit_ray_counter = data->ray_counter = rt_disp_args.AddStorageOutput(oit_ray_counter, Stg::ComputeShader);
 
             { // Indirect arguments
                 FgBufDesc desc = {};
@@ -357,7 +371,7 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Pers
             data->depth_tex = rt_refl.AddTextureInput(frame_textures.depth, stage);
             data->normal_tex = rt_refl.AddTextureInput(frame_textures.normal, stage);
             data->env_tex = rt_refl.AddTextureInput(frame_textures.envmap, stage);
-            data->ray_counter = rt_refl.AddStorageReadonlyInput(oit_rays_counter, stage);
+            data->ray_counter = rt_refl.AddStorageReadonlyInput(oit_ray_counter, stage);
             if (ray_rt_list) {
                 data->ray_list = rt_refl.AddStorageReadonlyInput(ray_rt_list, stage);
             } else {

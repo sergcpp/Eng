@@ -11,7 +11,7 @@ Eng::ExOITScheduleRays::ExOITScheduleRays(const DrawList **p_list, const view_st
                                           const FgResRef instances_buf, const FgResRef instance_indices_buf,
                                           const FgResRef shared_data_buf, const FgResRef depth_tex,
                                           const FgResRef oit_depth_buf, const FgResRef ray_counter,
-                                          const FgResRef ray_list) {
+                                          const FgResRef ray_list, const FgResRef ray_bitmask) {
     view_state_ = view_state;
     bindless_tex_ = bindless_tex;
 
@@ -29,6 +29,7 @@ Eng::ExOITScheduleRays::ExOITScheduleRays(const DrawList **p_list, const view_st
     oit_depth_buf_ = oit_depth_buf;
     ray_counter_ = ray_counter;
     ray_list_ = ray_list;
+    ray_bitmask_ = ray_bitmask;
 
     depth_tex_ = depth_tex;
 }

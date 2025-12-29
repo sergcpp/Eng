@@ -34,6 +34,9 @@ layout(std430, binding = RAY_COUNTER_SLOT) coherent buffer RayCounter {
 layout(std430, binding = RAY_LIST_SLOT) writeonly buffer RayList {
     uint g_ray_list[];
 };
+layout(std430, binding = RAY_BITMASK_SLOT) coherent buffer RayBitmask {
+    uint g_ray_bitmask[];
+};
 
 layout(location = 0) in vec3 g_vtx_pos;
 layout(location = 1) in vec2 g_vtx_uvs;
@@ -79,13 +82,22 @@ void main() {
             frag_index += g_shrd_data.ires_and_ifres.x * g_shrd_data.ires_and_ifres.y;
         }
         if (layer_index != -1) {
-            const vec3 ray_dir = reflect(I, N);
-            const vec2 oct_dir = PackUnitVector(ray_dir) * 65535.0;
-            const uint packed_dir = (uint(oct_dir.y) << 16) | uint(oct_dir.x);
+            const int frag_lo_x = (int(gl_FragCoord.x) / 2), frag_lo_y = (int(gl_FragCoord.y) / 2);
+            int frag_lo_index = frag_lo_y * ((((g_shrd_data.ires_and_ifres.x + 1) / 2) + 31) / 32) + ((frag_lo_x + 31) / 32);
+            frag_lo_index += layer_index * ((((g_shrd_data.ires_and_ifres.x + 1) / 2) + 31) / 32) * ((g_shrd_data.ires_and_ifres.y + 1) / 2);
 
-            const uint ray_index = atomicAdd(g_ray_counter[0], 1);
-            g_ray_list[2 * ray_index + 0] = PackRay(uvec2(gl_FragCoord.xy), uint(layer_index));
-            g_ray_list[2 * ray_index + 1] = packed_dir;
+            // Ensure exactly one invocation per pixel
+            const uint new_mask = 1u << (frag_lo_x % 32);
+            const uint old_mask = atomicOr(g_ray_bitmask[frag_lo_index], new_mask);
+            if ((old_mask & new_mask) == 0) {
+                const vec3 ray_dir = reflect(I, N);
+                const vec2 oct_dir = PackUnitVector(ray_dir) * 65535.0;
+                const uint packed_dir = (uint(oct_dir.y) << 16) | uint(oct_dir.x);
+
+                const uint ray_index = atomicAdd(g_ray_counter[0], 1);
+                g_ray_list[2 * ray_index + 0] = PackRay(uvec2(gl_FragCoord.xy), uint(layer_index));
+                g_ray_list[2 * ray_index + 1] = packed_dir;
+            }
         }
     }
 }

@@ -5,10 +5,11 @@
 
 INTERFACE_START(OITScheduleRays)
 
-const int OIT_DEPTH_BUF_SLOT = 3;
+const int OIT_DEPTH_BUF_SLOT = 4;
 
 const int RAY_COUNTER_SLOT = 1;
 const int RAY_LIST_SLOT = 2;
+const int RAY_BITMASK_SLOT = 3;
 
 INTERFACE_END
 

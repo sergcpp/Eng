@@ -42,6 +42,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(FgContext &fg, const Ren::WeakImgRe
     const Ren::Buffer &oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
     Ren::Buffer &ray_counter_buf = fg.AccessRWBuffer(ray_counter_);
     Ren::Buffer &ray_list_buf = fg.AccessRWBuffer(ray_list_);
+    Ren::Buffer &ray_bitmask_buf = fg.AccessRWBuffer(ray_bitmask_);
 
     if ((*p_list_)->alpha_blend_start_index == -1) {
         return;
@@ -80,6 +81,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(FgContext &fg, const Ren::WeakImgRe
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, OITScheduleRays::RAY_COUNTER_SLOT, GLuint(ray_counter_buf.id()));
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, OITScheduleRays::RAY_LIST_SLOT, GLuint(ray_list_buf.id()));
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, OITScheduleRays::RAY_BITMASK_SLOT, GLuint(ray_bitmask_buf.id()));
 
     const Ren::Span<const basic_draw_batch_t> batches = {(*p_list_)->basic_batches};
     const Ren::Span<const uint32_t> batch_indices = {(*p_list_)->basic_batch_indices};

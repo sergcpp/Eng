@@ -35,6 +35,7 @@ class ExOITScheduleRays final : public FgExecutor {
     FgResRef oit_depth_buf_;
     FgResRef ray_counter_;
     FgResRef ray_list_;
+    FgResRef ray_bitmask_;
 
     FgResRef depth_tex_;
 
@@ -48,7 +49,7 @@ class ExOITScheduleRays final : public FgExecutor {
                       const BindlessTextureData *bindless_tex, const FgResRef noise_tex, const FgResRef dummy_white,
                       const FgResRef instances_buf, const FgResRef instance_indices_buf, const FgResRef shared_data_buf,
                       const FgResRef depth_tex, const FgResRef oit_depth_buf, const FgResRef ray_counter,
-                      const FgResRef ray_list);
+                      const FgResRef ray_list, const FgResRef ray_bitmask);
 
     void Execute(FgContext &fg) override;
 };

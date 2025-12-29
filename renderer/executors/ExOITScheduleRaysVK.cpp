@@ -28,6 +28,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(FgContext &fg, const Ren::WeakImgRe
     const Ren::Buffer &oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
     Ren::Buffer &ray_counter_buf = fg.AccessRWBuffer(ray_counter_);
     Ren::Buffer &ray_list_buf = fg.AccessRWBuffer(ray_list_);
+    Ren::Buffer &ray_bitmask_buf = fg.AccessRWBuffer(ray_bitmask_);
 
     if ((*p_list_)->alpha_blend_start_index == -1) {
         return;
@@ -38,8 +39,9 @@ void Eng::ExOITScheduleRays::DrawTransparent(FgContext &fg, const Ren::WeakImgRe
                                      {Ren::eBindTarget::UTBuf, OITScheduleRays::OIT_DEPTH_BUF_SLOT, oit_depth_buf},
                                      {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
                                      {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
-                                     {Ren::eBindTarget::SBufRO, OITScheduleRays::RAY_COUNTER_SLOT, ray_counter_buf},
-                                     {Ren::eBindTarget::SBufRO, OITScheduleRays::RAY_LIST_SLOT, ray_list_buf},
+                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_COUNTER_SLOT, ray_counter_buf},
+                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_LIST_SLOT, ray_list_buf},
+                                     {Ren::eBindTarget::SBufRW, OITScheduleRays::RAY_BITMASK_SLOT, ray_bitmask_buf},
                                      {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex}};
 
     VkDescriptorSet descr_sets[2];
