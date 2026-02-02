@@ -8,7 +8,7 @@ class ExReadExposure final : public FgExecutor {
   public:
     struct Args {
         FgResRef input_tex;
-        FgBufHandle output_buf;
+        FgBufRWHandle output_buf;
     };
 
     void Setup(const Args *args) { args_ = args; }

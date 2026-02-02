@@ -3,7 +3,7 @@
 bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
                         const DualStorage<ProgramMain, ProgramCold> &programs,
                         NamedDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
-                        PipelineCold &pipeline_cold, const ProgramHandle prog, ILog *log, const int) {
+                        PipelineCold &pipeline_cold, const ProgramROHandle prog, ILog *log, const int) {
     pipeline_main.prog = prog;
     pipeline_cold.type = ePipelineType::Compute;
 
@@ -11,8 +11,8 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
 }
 
 bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, PipelineMain &pipeline_main,
-                        PipelineCold &pipeline_cold, const RastState &rast_state, const ProgramHandle prog,
-                        const VertexInputHandle vtx_input, const RenderPassHandle render_pass,
+                        PipelineCold &pipeline_cold, const RastState &rast_state, const ProgramROHandle prog,
+                        const VertexInputROHandle vtx_input, const RenderPassROHandle render_pass,
                         const uint32_t subpass_index, ILog *log) {
     pipeline_main.rast_state = rast_state;
     pipeline_main.render_pass = render_pass;

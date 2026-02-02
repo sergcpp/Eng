@@ -22,7 +22,7 @@ class ILog;
 
 struct ProgramMain {
     uint32_t id = 0;
-    std::array<ShaderHandle, int(eShaderType::_Count)> shaders;
+    std::array<ShaderROHandle, int(eShaderType::_Count)> shaders;
 
     bool operator==(const ProgramMain &rhs) const { return shaders == rhs.shaders; }
     bool operator!=(const ProgramMain &rhs) const { return shaders != rhs.shaders; }
@@ -70,10 +70,10 @@ struct ProgramCold {
 };
 
 bool Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders, ProgramMain &prog_main,
-                  ProgramCold &prog_cold, ShaderHandle vs, ShaderHandle fs, ShaderHandle tcs, ShaderHandle tes,
-                  ShaderHandle gs, ILog *log);
+                  ProgramCold &prog_cold, ShaderROHandle vs, ShaderROHandle fs, ShaderROHandle tcs, ShaderROHandle tes,
+                  ShaderROHandle gs, ILog *log);
 bool Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders, ProgramMain &prog_main,
-                  ProgramCold &prog_cold, ShaderHandle cs, ILog *log);
+                  ProgramCold &prog_cold, ShaderROHandle cs, ILog *log);
 void Program_Destroy(const ApiContext &api, ProgramMain &prog_main, ProgramCold &prog_cold);
 } // namespace Ren
 

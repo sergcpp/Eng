@@ -19,9 +19,9 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
 } // namespace ExSharedInternal
 
 void Eng::ExDepthFill::Execute(const FgContext &fg) {
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(depth_tex_);
     Ren::WeakImgRef velocity_tex = fg.AccessRWImageRef(velocity_tex_);
@@ -30,8 +30,8 @@ void Eng::ExDepthFill::Execute(const FgContext &fg) {
     DrawDepth(fg, vtx_buf1, vtx_buf2, ndx_buf);
 }
 
-void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
-                                const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
+void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
+                                const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
                                 const Ren::WeakImgRef &depth_tex, const Ren::WeakImgRef &velocity_tex) {
     const Ren::RenderTarget velocity_target = {velocity_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
     const Ren::RenderTarget depth_clear_target = {depth_tex, Ren::eLoadOp::Clear, Ren::eStoreOp::Store,
@@ -119,10 +119,10 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
             sh.LoadProgram("internal/fillz_skin@OUTPUT_VELOCITY.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
         const Ren::ProgramHandle fillz_skin_solid_vel_mov_prog = sh.LoadProgram(
             "internal/fillz_skin@MOVING;OUTPUT_VELOCITY.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        const Ren::ProgramHandle fillz_skin_transp_prog = sh.LoadProgram(
-            bindless ? "internal/fillz_skin@ALPHATEST.vert.glsl"
-                     : "internal/fillz_skin@ALPHATEST;NO_BINDLESS.vert.glsl",
-            bindless ? "internal/fillz@ALPHATEST.frag.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.frag.glsl");
+        //const Ren::ProgramHandle fillz_skin_transp_prog = sh.LoadProgram(
+        //    bindless ? "internal/fillz_skin@ALPHATEST.vert.glsl"
+        //             : "internal/fillz_skin@ALPHATEST;NO_BINDLESS.vert.glsl",
+        //    bindless ? "internal/fillz@ALPHATEST.frag.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.frag.glsl");
         const Ren::ProgramHandle fillz_skin_transp_vel_prog =
             sh.LoadProgram(bindless ? "internal/fillz_skin@OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
                                     : "internal/fillz_skin@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",

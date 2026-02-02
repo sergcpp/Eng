@@ -23,7 +23,7 @@ bool IsNormalizedType(const eType type) {
 } // namespace Ren
 
 bool Ren::VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> _attribs,
-                           const BufferHandle _elem_buf) {
+                           const BufferROHandle _elem_buf) {
     vtx_input.attribs.assign(_attribs.begin(), _attribs.end());
     vtx_input.elem_buf = _elem_buf;
     vtx_input.cached_attribs_buf.resize(uint32_t(_attribs.size()));

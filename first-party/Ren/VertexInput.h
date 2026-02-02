@@ -5,7 +5,7 @@
 
 namespace Ren {
 struct VtxAttribDesc {
-    BufferHandle buf;
+    BufferROHandle buf;
     uint8_t loc = 0;
     uint8_t size = 0;
     eType type = eType::Undefined;
@@ -13,7 +13,7 @@ struct VtxAttribDesc {
     uint32_t offset = 0;
 
     VtxAttribDesc() = default;
-    VtxAttribDesc(const BufferHandle _buf, const int _loc, const uint8_t _size, const eType _type, const int _stride,
+    VtxAttribDesc(const BufferROHandle _buf, const int _loc, const uint8_t _size, const eType _type, const int _stride,
                   const uint32_t _offset)
         : buf(_buf), loc(_loc), size(_size), type(_type), stride(_stride), offset(_offset) {}
 };
@@ -39,7 +39,7 @@ struct VertexInputMain {
     mutable std::pair<uint32_t, uint32_t> cached_elem_buf;
 #endif
     SmallVector<VtxAttribDesc, 4> attribs;
-    BufferHandle elem_buf;
+    BufferROHandle elem_buf;
 
     bool operator==(const VertexInputMain &rhs) const { return elem_buf == rhs.elem_buf && attribs == rhs.attribs; }
     bool operator!=(const VertexInputMain &rhs) const { return elem_buf != rhs.elem_buf || attribs != rhs.attribs; }
@@ -57,7 +57,7 @@ struct VertexInputCold {
     // TODO:
 };
 
-bool VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> attribs, BufferHandle elem_buf);
+bool VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> attribs, BufferROHandle elem_buf);
 void VertexInput_Destroy(VertexInputMain &vtx_input);
 
 #if defined(REN_GL_BACKEND)

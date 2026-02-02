@@ -37,7 +37,7 @@ const int MaxVertexInputAttributeOffset = 16; // 16 seems to be supported by all
 } // namespace Ren
 
 bool Ren::VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> _attribs,
-                           const BufferHandle _elem_buf) {
+                           const BufferROHandle _elem_buf) {
     vtx_input.attribs.assign(_attribs.begin(), _attribs.end());
     vtx_input.elem_buf = _elem_buf;
     return true;
@@ -83,7 +83,7 @@ void Ren::VertexInput_FillVKDescriptions(
         &out_bindings,
     SmallVectorImpl<VkVertexInputAttributeDescription, aligned_allocator<VkVertexInputAttributeDescription, 4>>
         &out_attribs) {
-    SmallVector<std::pair<BufferHandle, VkDeviceSize>, 8> bound_buffers;
+    SmallVector<std::pair<BufferROHandle, VkDeviceSize>, 8> bound_buffers;
     for (const auto &attr_descr : vtx_input.attribs) {
         auto &vk_attr = out_attribs.emplace_back();
         vk_attr.location = uint32_t(attr_descr.loc);

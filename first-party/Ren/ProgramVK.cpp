@@ -17,7 +17,7 @@ bool InitDescrSetLayouts(const ApiContext &api, ProgramMain &prog_main,
     SmallVector<VkDescriptorSetLayoutBinding, 16> layout_bindings[4];
 
     for (int i = 0; i < int(eShaderType::_Count); ++i) {
-        const ShaderHandle sh_handle = prog_main.shaders[i];
+        const ShaderROHandle sh_handle = prog_main.shaders[i];
         if (!sh_handle) {
             continue;
         }
@@ -84,7 +84,7 @@ bool InitDescrSetLayouts(const ApiContext &api, ProgramMain &prog_main,
 void InitBindings(const ApiContext &api, ProgramMain &prog_main, ProgramCold &prog_cold,
                   const DualStorage<ShaderMain, ShaderCold> &shaders, ILog *log) {
     for (int i = 0; i < int(eShaderType::_Count); ++i) {
-        const ShaderHandle sh_handle = prog_main.shaders[i];
+        const ShaderROHandle sh_handle = prog_main.shaders[i];
         if (!sh_handle) {
             continue;
         }
@@ -113,7 +113,7 @@ void InitBindings(const ApiContext &api, ProgramMain &prog_main, ProgramCold &pr
         }
     }
 
-    if (const ShaderHandle sh_handle = prog_main.shaders[int(eShaderType::Vertex)]) {
+    if (const ShaderROHandle sh_handle = prog_main.shaders[int(eShaderType::Vertex)]) {
         const std::pair<const ShaderMain &, const ShaderCold &> sh = shaders.Get(sh_handle);
         for (const Descr &a : sh.second.attr_bindings) {
             prog_cold.attributes.emplace_back(a);
@@ -130,8 +130,8 @@ void InitBindings(const ApiContext &api, ProgramMain &prog_main, ProgramCold &pr
 } // namespace Ren
 
 bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle vs, const ShaderHandle fs,
-                       const ShaderHandle tcs, const ShaderHandle tes, const ShaderHandle gs, ILog *log) {
+                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle vs, const ShaderROHandle fs,
+                       const ShaderROHandle tcs, const ShaderROHandle tes, const ShaderROHandle gs, ILog *log) {
     // store shaders
     prog_main.shaders[int(eShaderType::Vertex)] = vs;
     prog_main.shaders[int(eShaderType::Fragment)] = fs;
@@ -149,7 +149,7 @@ bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, Shad
 }
 
 bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle cs, ILog *log) {
+                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle cs, ILog *log) {
     // store shader
     prog_main.shaders[int(eShaderType::Compute)] = cs;
 
@@ -163,8 +163,9 @@ bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, Shad
 }
 
 bool Ren::Program_Init2(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                        ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle rgs, const ShaderHandle chs,
-                        const ShaderHandle ahs, const ShaderHandle ms, const ShaderHandle is, ILog *log) {
+                        ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle rgs,
+                        const ShaderROHandle chs, const ShaderROHandle ahs, const ShaderROHandle ms,
+                        const ShaderROHandle is, ILog *log) {
     // store shaders
     prog_main.shaders[int(eShaderType::RayGen)] = rgs;
     prog_main.shaders[int(eShaderType::ClosestHit)] = chs;

@@ -12,7 +12,7 @@
 namespace Ren {
 void InitBindings(const ProgramMain &prog_main, ProgramCold &prog_cold,
                   const DualStorage<ShaderMain, ShaderCold> &shaders) {
-    for (const ShaderHandle sh_handle : prog_main.shaders) {
+    for (const ShaderROHandle sh_handle : prog_main.shaders) {
         if (!sh_handle) {
             continue;
         }
@@ -64,8 +64,8 @@ void InitBindings(const ProgramMain &prog_main, ProgramCold &prog_cold,
 } // namespace Ren
 
 bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle vs, const ShaderHandle fs,
-                       const ShaderHandle tcs, const ShaderHandle tes, const ShaderHandle gs, ILog *log) {
+                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle vs, const ShaderROHandle fs,
+                       const ShaderROHandle tcs, const ShaderROHandle tes, const ShaderROHandle gs, ILog *log) {
     assert(prog_main.id == 0);
 
     std::string prog_name;
@@ -132,7 +132,7 @@ bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, Shad
 }
 
 bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderHandle cs, ILog *log) {
+                       ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle cs, ILog *log) {
     assert(prog_main.id == 0);
 
     log->Info("Initializing program %s", shaders.Get(cs).second.name.c_str());

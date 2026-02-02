@@ -78,6 +78,7 @@ bool Ren::Buffer_Init(const ApiContext &api, BufferCold &buf_cold, String name, 
                       MemAllocation &&alloc, const uint32_t initial_size, ILog *log, const uint32_t size_alignment) {
     buf_cold.name = std::move(name);
     buf_cold.type = type;
+    buf_cold.alloc = std::move(alloc);
     buf_cold.size = initial_size;
     buf_cold.size_alignment = size_alignment;
 
@@ -434,7 +435,7 @@ bool Ren::Buffer_FreeSubRegion(BufferCold &buf_cold, const SubAllocation alloc) 
     return true;
 }
 
-void Ren::Buffer_Fill(const ApiContext &api, const BufferMain &buf_main, const uint32_t dst_offset, const uint32_t size,
+void Ren::Buffer_Fill(const ApiContext &api, BufferMain &buf_main, const uint32_t dst_offset, const uint32_t size,
                       const uint32_t data, CommandBuffer cmd_buf) {
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 1> barriers;
@@ -467,7 +468,7 @@ void Ren::Buffer_Fill(const ApiContext &api, const BufferMain &buf_main, const u
     buf_main.resource_state = eResState::CopyDst;
 }
 
-void Ren::Buffer_UpdateInPlace(const ApiContext &api, const BufferMain &buf_main, uint32_t dst_offset, uint32_t size,
+void Ren::Buffer_UpdateInPlace(const ApiContext &api, BufferMain &buf_main, uint32_t dst_offset, uint32_t size,
                                const void *data, CommandBuffer cmd_buf) {
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 1> barriers;
@@ -506,9 +507,8 @@ VkDeviceAddress Ren::Buffer_GetDeviceAddress(const ApiContext &api, const Buffer
     return api.vkGetBufferDeviceAddressKHR(api.device, &addr_info);
 }
 
-void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const uint32_t src_offset,
-                             const BufferMain &dst, const uint32_t dst_offset, const uint32_t size,
-                             CommandBuffer cmd_buf) {
+void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const uint32_t src_offset, BufferMain &dst,
+                             const uint32_t dst_offset, const uint32_t size, CommandBuffer cmd_buf) {
     VkPipelineStageFlags src_stages = 0, dst_stages = 0;
     SmallVector<VkBufferMemoryBarrier, 2> barriers;
 
@@ -561,7 +561,7 @@ void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const
     dst.resource_state = eResState::CopyDst;
 }
 
-void Ren::CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, const BufferHandle src,
+void Ren::CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, const BufferROHandle src,
                              const uint32_t src_offset, const BufferHandle dst, const uint32_t dst_offset,
                              const uint32_t size, CommandBuffer cmd_buf) {
     const auto &[src_main, src_cold] = storages.buffers.Get(src);

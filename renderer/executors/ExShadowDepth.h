@@ -21,28 +21,28 @@ class ExShadowDepth final : public FgExecutor {
     const BindlessTextureData *bindless_tex_ = nullptr;
 
     // inputs
-    FgBufHandle vtx_buf1_;
-    FgBufHandle vtx_buf2_;
-    FgBufHandle ndx_buf_;
-    FgBufHandle instances_buf_;
-    FgBufHandle instance_indices_buf_;
-    FgBufHandle shared_data_buf_;
-    FgBufHandle materials_buf_;
+    FgBufROHandle vtx_buf1_;
+    FgBufROHandle vtx_buf2_;
+    FgBufROHandle ndx_buf_;
+    FgBufROHandle instances_buf_;
+    FgBufROHandle instance_indices_buf_;
+    FgBufROHandle shared_data_buf_;
+    FgBufROHandle materials_buf_;
     FgResRef noise_tex_;
 
     // outputs
     FgResRef shadow_depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
-                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &shadow_depth_tex);
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
+                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &shadow_depth_tex);
     void DrawShadowMaps(const FgContext &fg);
 
   public:
-    ExShadowDepth(const int w, const int h, const DrawList **p_list, const FgBufHandle vtx_buf1,
-                  const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf, const FgBufHandle materials_buf,
-                  const BindlessTextureData *bindless_tex, const FgBufHandle instances_buf,
-                  const FgBufHandle instance_indices_buf, const FgBufHandle shared_data_buf, const FgResRef noise_tex,
-                  const FgResRef shadow_depth_tex)
+    ExShadowDepth(const int w, const int h, const DrawList **p_list, const FgBufROHandle vtx_buf1,
+                  const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
+                  const BindlessTextureData *bindless_tex, const FgBufROHandle instances_buf,
+                  const FgBufROHandle instance_indices_buf, const FgBufROHandle shared_data_buf,
+                  const FgResRef noise_tex, const FgResRef shadow_depth_tex)
         : w_(w), h_(h) {
         p_list_ = p_list;
         bindless_tex_ = bindless_tex;

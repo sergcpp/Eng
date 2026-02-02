@@ -14,7 +14,7 @@ class ExDebugOIT final : public FgExecutor {
     struct Args {
         int layer_index = 0;
 
-        FgBufHandle oit_depth_buf;
+        FgBufROHandle oit_depth_buf;
         FgResRef output_tex;
     };
 

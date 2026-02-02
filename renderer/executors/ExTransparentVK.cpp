@@ -8,14 +8,12 @@
 #include <Ren/RastState.h>
 #include <Ren/VKCtx.h>
 
-void Eng::ExTransparent::DrawTransparent_Simple(const FgContext &fg, const Ren::BufferHandle instances_buf,
-                                                const Ren::BufferHandle instance_indices_buf,
-                                                const Ren::BufferHandle unif_shared_data_buf,
-                                                const Ren::BufferHandle materials_buf,
-                                                const Ren::BufferHandle cells_buf, const Ren::BufferHandle items_buf,
-                                                const Ren::BufferHandle lights_buf, const Ren::BufferHandle decals_buf,
-                                                const Ren::Image &shad_tex, const Ren::WeakImgRef &color_tex,
-                                                const Ren::Image &ssao_tex) {
+void Eng::ExTransparent::DrawTransparent_Simple(
+    const FgContext &fg, const Ren::BufferROHandle instances_buf, const Ren::BufferROHandle instance_indices_buf,
+    const Ren::BufferROHandle unif_shared_data_buf, const Ren::BufferROHandle materials_buf,
+    const Ren::BufferROHandle cells_buf, const Ren::BufferROHandle items_buf, const Ren::BufferROHandle lights_buf,
+    const Ren::BufferROHandle decals_buf, const Ren::Image &shad_tex, const Ren::WeakImgRef &color_tex,
+    const Ren::Image &ssao_tex) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 

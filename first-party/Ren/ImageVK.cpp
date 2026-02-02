@@ -68,6 +68,12 @@ extern const VkCompareOp g_compare_ops_vk[];
 extern const float AnisotropyLevel;
 } // namespace Ren
 
+bool Ren::Image_Init(const ApiContext &api, ImageMain &img_main, ImageCold &img_cold, const ImgParams &p,
+                const BufferMain *sbuf_main, const BufferCold *sbuf_cold, int data_off, CommandBuffer cmd_buf,
+                MemAllocators *mem_allocs, ILog *log) {
+    return false;
+}
+
 Ren::Image::Image(std::string_view name, ApiContext *api, const ImgParams &p, MemAllocators *mem_allocs, ILog *log)
     : api_(api), name_(name) {
     Init(p, mem_allocs, log);

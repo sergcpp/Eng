@@ -71,7 +71,7 @@ Eng::ShaderLoader::~ShaderLoader() {
     // destroy shaders
     auto &all_shaders = ctx_.shaders().items_by_name();
     for (auto it = all_shaders.begin(); it != all_shaders.end();) {
-        const auto &[shader_main, shader_cold] = ctx_.shaders().Get(it->val);
+        const auto &[shader_main, shader_cold] = ctx_.shaders().GetUnsafe(it->val);
         Shader_Destroy(ctx_.api(), shader_main, shader_cold);
         it = ctx_.shaders().Free(it);
     }
@@ -132,7 +132,7 @@ void Eng::ShaderLoader::WritePipelineCache(const char *base_path) {
 }
 
 Ren::VertexInputHandle Eng::ShaderLoader::LoadVertexInput(Ren::Span<const Ren::VtxAttribDesc> attribs,
-                                                          const Ren::BufferHandle elem_buf) {
+                                                          const Ren::BufferROHandle elem_buf) {
     std::lock_guard<std::mutex> _(mtx_);
     return ctx_.FindOrCreateVertexInput(attribs, elem_buf);
 }
@@ -184,7 +184,7 @@ Ren::ProgramHandle Eng::ShaderLoader::LoadProgram(std::string_view vs_name, std:
 
     std::lock_guard<std::mutex> _(mtx_);
 
-    std::array<Ren::ShaderHandle, int(Ren::eShaderType::_Count)> temp_shaders;
+    std::array<Ren::ShaderROHandle, int(Ren::eShaderType::_Count)> temp_shaders;
     temp_shaders[int(Ren::eShaderType::Vertex)] = vs_handle;
     temp_shaders[int(Ren::eShaderType::Fragment)] = fs_handle;
     temp_shaders[int(Ren::eShaderType::TesselationControl)] = tcs_handle;
@@ -210,7 +210,7 @@ Ren::ProgramHandle Eng::ShaderLoader::LoadProgram(std::string_view vs_name, std:
 Ren::ProgramHandle Eng::ShaderLoader::LoadProgram(std::string_view cs_name) {
     const Ren::ShaderHandle cs_handle = LoadShader(cs_name);
 
-    std::array<Ren::ShaderHandle, int(Ren::eShaderType::_Count)> temp_shaders;
+    std::array<Ren::ShaderROHandle, int(Ren::eShaderType::_Count)> temp_shaders;
     temp_shaders[int(Ren::eShaderType::Compute)] = cs_handle;
 
     Ren::ProgramHandle ret;
@@ -239,9 +239,9 @@ Ren::ProgramHandle Eng::ShaderLoader::LoadProgram(std::string_view cs_name) {
 Ren::ProgramHandle Eng::ShaderLoader::LoadProgram2(std::string_view raygen_name, std::string_view closesthit_name,
                                                    std::string_view anyhit_name, std::string_view miss_name,
                                                    std::string_view intersection_name) {
-    const Ren::ShaderHandle raygen_handle = LoadShader(raygen_name);
+    const Ren::ShaderROHandle raygen_handle = LoadShader(raygen_name);
 
-    Ren::ShaderHandle closesthit_handle, anyhit_handle, miss_handle;
+    Ren::ShaderROHandle closesthit_handle, anyhit_handle, miss_handle;
     if (!closesthit_name.empty()) {
         closesthit_handle = LoadShader(closesthit_name);
     }
@@ -252,12 +252,12 @@ Ren::ProgramHandle Eng::ShaderLoader::LoadProgram2(std::string_view raygen_name,
         miss_handle = LoadShader(miss_name);
     }
 
-    Ren::ShaderHandle intersection_handle;
+    Ren::ShaderROHandle intersection_handle;
     if (!intersection_name.empty()) {
         intersection_handle = LoadShader(intersection_name);
     }
 
-    std::array<Ren::ShaderHandle, int(Ren::eShaderType::_Count)> temp_shaders;
+    std::array<Ren::ShaderROHandle, int(Ren::eShaderType::_Count)> temp_shaders;
     temp_shaders[int(Ren::eShaderType::RayGen)] = raygen_handle;
     temp_shaders[int(Ren::eShaderType::ClosestHit)] = closesthit_handle;
     temp_shaders[int(Ren::eShaderType::AnyHit)] = anyhit_handle;
@@ -356,9 +356,9 @@ Ren::ShaderHandle Eng::ShaderLoader::LoadShader(std::string_view name) {
     return ret;
 }
 
-Ren::PipelineHandle Eng::ShaderLoader::LoadPipeline(const Ren::RastState &rast_state, const Ren::ProgramHandle prog,
-                                                    const Ren::VertexInputHandle vtx_input,
-                                                    const Ren::RenderPassHandle render_pass,
+Ren::PipelineHandle Eng::ShaderLoader::LoadPipeline(const Ren::RastState &rast_state, const Ren::ProgramROHandle prog,
+                                                    const Ren::VertexInputROHandle vtx_input,
+                                                    const Ren::RenderPassROHandle render_pass,
                                                     const uint32_t subpass_index) {
     Ren::PipelineHandle ret;
     { // find pipeline
@@ -384,11 +384,11 @@ Ren::PipelineHandle Eng::ShaderLoader::LoadPipeline(const Ren::RastState &rast_s
 }
 
 Ren::PipelineHandle Eng::ShaderLoader::LoadPipeline(std::string_view cs_name, const int subgroup_size) {
-    const Ren::ProgramHandle prog_ref = LoadProgram(cs_name);
-    return LoadPipeline(prog_ref, subgroup_size);
+    const Ren::ProgramHandle prog_handle = LoadProgram(cs_name);
+    return LoadPipeline(prog_handle, subgroup_size);
 }
 
-Ren::PipelineHandle Eng::ShaderLoader::LoadPipeline(const Ren::ProgramHandle prog, const int subgroup_size) {
+Ren::PipelineHandle Eng::ShaderLoader::LoadPipeline(const Ren::ProgramROHandle prog, const int subgroup_size) {
     Ren::PipelineHandle ret;
     { // find pipeline
         std::lock_guard<std::mutex> _(mtx_);

@@ -8,24 +8,24 @@
 #include "../shaders/rt_gi_cache_interface.h"
 
 void Eng::ExRTGICache::Execute_HWRT(const FgContext &fg) {
-    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &env_tex = fg.AccessROImage(args_->env_tex);
-    [[maybe_unused]] const Ren::BufferHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    [[maybe_unused]] const Ren::BufferROHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
     const Ren::Image &shadow_depth_tex = fg.AccessROImage(args_->shadow_depth_tex);
     const Ren::Image &shadow_color_tex = fg.AccessROImage(args_->shadow_color_tex);
     const Ren::Image &ltc_luts_tex = fg.AccessROImage(args_->ltc_luts_tex);
-    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::BufferHandle items_buf = fg.AccessROBuffer(args_->items_buf);
+    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
+    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(args_->items_buf);
     const Ren::Image &irr_tex = fg.AccessROImage(args_->irradiance_tex);
     const Ren::Image &dist_tex = fg.AccessROImage(args_->distance_tex);
     const Ren::Image &off_tex = fg.AccessROImage(args_->offset_tex);
 
-    Ren::BufferHandle random_seq_buf = {}, stoch_lights_buf = {}, light_nodes_buf = {};
+    Ren::BufferROHandle random_seq_buf = {}, stoch_lights_buf = {}, light_nodes_buf = {};
     if (args_->stoch_lights_buf) {
         random_seq_buf = fg.AccessROBuffer(args_->random_seq);
         stoch_lights_buf = fg.AccessROBuffer(args_->stoch_lights_buf);

@@ -9,19 +9,19 @@
 #include "../shaders/rt_debug_interface.h"
 
 void Eng::ExDebugRT::Execute_HWRT(const FgContext &fg) {
-    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data_buf);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials_buf);
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(args_->vtx_buf2);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data_buf);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials_buf);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(args_->vtx_buf2);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &env_tex = fg.AccessROImage(args_->env_tex);
     const Ren::Image &shadow_depth_tex = fg.AccessROImage(args_->shadow_depth_tex);
     const Ren::Image &shadow_color_tex = fg.AccessROImage(args_->shadow_color_tex);
     const Ren::Image &ltc_luts_tex = fg.AccessROImage(args_->ltc_luts_tex);
-    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::BufferHandle items_buf = fg.AccessROBuffer(args_->items_buf);
+    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
+    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(args_->items_buf);
 
     const Ren::Image *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
     if (args_->irradiance_tex) {

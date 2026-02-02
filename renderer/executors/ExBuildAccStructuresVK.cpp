@@ -4,7 +4,7 @@
 #include <Ren/VKCtx.h>
 
 void Eng::ExBuildAccStructures::Execute_HWRT(const FgContext &fg) {
-    const Ren::BufferHandle rt_obj_instances_buf = fg.AccessROBuffer(rt_obj_instances_buf_);
+    const Ren::BufferROHandle rt_obj_instances_buf = fg.AccessROBuffer(rt_obj_instances_buf_ro_);
     [[maybe_unused]] const Ren::BufferHandle rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
     const Ren::BufferHandle rt_tlas_build_scratch_buf = fg.AccessRWBuffer(rt_tlas_build_scratch_buf_);
 

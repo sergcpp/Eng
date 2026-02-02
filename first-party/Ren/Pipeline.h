@@ -34,16 +34,16 @@ struct PipelineMain {
     VkPipeline handle = {};
 #endif
     RastState rast_state;
-    ProgramHandle prog;
-    VertexInputHandle vtx_input;
-    RenderPassHandle render_pass;
+    ProgramROHandle prog;
+    VertexInputROHandle vtx_input;
+    RenderPassROHandle render_pass;
 
-    bool Equals(const RastState &_rast_state, const ProgramHandle _prog, const VertexInputHandle _vtx_input,
-                const RenderPassHandle _render_pass) const {
+    bool Equals(const RastState &_rast_state, const ProgramROHandle _prog, const VertexInputROHandle _vtx_input,
+                const RenderPassROHandle _render_pass) const {
         return vtx_input == _vtx_input && prog == _prog && render_pass == _render_pass && rast_state == _rast_state;
     }
-    bool LessThan(const RastState &_rast_state, const ProgramHandle _prog, const VertexInputHandle _vtx_input,
-                  const RenderPassHandle _render_pass) const {
+    bool LessThan(const RastState &_rast_state, const ProgramROHandle _prog, const VertexInputROHandle _vtx_input,
+                  const RenderPassROHandle _render_pass) const {
         if (vtx_input < _vtx_input) {
             return true;
         } else if (vtx_input == _vtx_input) {
@@ -90,9 +90,9 @@ struct PipelineCold {
 bool Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
                    const DualStorage<ProgramMain, ProgramCold> &programs,
                    NamedDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
-                   PipelineCold &pipeline_cold, ProgramHandle prog, ILog *log, int subgroup_size = -1);
+                   PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log, int subgroup_size = -1);
 bool Pipeline_Init(const ApiContext &api, const StoragesRef &storages, PipelineMain &pipeline_main,
-                   PipelineCold &pipeline_cold, const RastState &rast_state, ProgramHandle prog,
-                   VertexInputHandle vtx_input, RenderPassHandle render_pass, uint32_t subpass_index, ILog *log);
+                   PipelineCold &pipeline_cold, const RastState &rast_state, ProgramROHandle prog,
+                   VertexInputROHandle vtx_input, RenderPassROHandle render_pass, uint32_t subpass_index, ILog *log);
 void Pipeline_Destroy(const ApiContext &api, PipelineMain &pipeline_main, PipelineCold &pipeline_cold);
 } // namespace Ren

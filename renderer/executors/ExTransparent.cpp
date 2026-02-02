@@ -6,9 +6,9 @@
 #include "../Renderer_Structs.h"
 
 void Eng::ExTransparent::Execute(const FgContext &fg) {
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     Ren::WeakImgRef color_tex = fg.AccessRWImageRef(color_tex_);
     Ren::WeakImgRef normal_tex = fg.AccessRWImageRef(normal_tex_);
@@ -20,14 +20,14 @@ void Eng::ExTransparent::Execute(const FgContext &fg) {
 }
 
 void Eng::ExTransparent::DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &color_tex) {
-    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::BufferHandle items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(lights_buf_);
-    const Ren::BufferHandle decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(cells_buf_);
+    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
+    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
+    const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
     const Ren::Image &shad_tex = fg.AccessROImage(shad_tex_);
     const Ren::Image &ssao_tex = fg.AccessROImage(ssao_tex_);
@@ -36,8 +36,8 @@ void Eng::ExTransparent::DrawTransparent(const FgContext &fg, const Ren::WeakImg
                            items_buf, lights_buf, decals_buf, shad_tex, color_tex, ssao_tex);
 }
 
-void Eng::ExTransparent::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
-                                  const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
+void Eng::ExTransparent::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
+                                  const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
                                   const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
                                   const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex) {
     const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store},

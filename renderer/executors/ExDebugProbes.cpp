@@ -14,7 +14,7 @@ Eng::ExDebugProbes::ExDebugProbes(PrimDraw &prim_draw, ShaderLoader &sh, const D
 }
 
 void Eng::ExDebugProbes::Execute(const FgContext &fg) {
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &off_tex = fg.AccessROImage(args_->offset_tex);
     const Ren::Image &irr_tex = fg.AccessROImage(args_->irradiance_tex);
     [[maybe_unused]] const Ren::Image &dist_tex = fg.AccessROImage(args_->distance_tex);

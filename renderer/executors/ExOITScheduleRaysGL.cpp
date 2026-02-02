@@ -22,11 +22,11 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
 
     const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
     const Ren::Image &dummy_white = fg.AccessROImage(dummy_white_);
-    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferHandle oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
+    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
     const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(ray_counter_);
     const Ren::BufferHandle ray_list_buf = fg.AccessRWBuffer(ray_list_);
     const Ren::BufferHandle ray_bitmask_buf = fg.AccessRWBuffer(ray_bitmask_);

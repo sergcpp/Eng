@@ -53,11 +53,11 @@ static_assert(sizeof(TraceRaysIndirectCommand) == sizeof(VkTraceRaysIndirectComm
 bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
                         const DualStorage<ProgramMain, ProgramCold> &programs,
                         NamedDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
-                        PipelineCold &pipeline_cold, ProgramHandle prog, ILog *log, int subgroup_size) {
+                        PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log, int subgroup_size) {
     const ProgramMain &prog_main = programs.Get(prog).first;
 
     std::string pipeline_name;
-    for (const ShaderHandle sh : prog_main.shaders) {
+    for (const ShaderROHandle sh : prog_main.shaders) {
         if (!sh) {
             continue;
         }
@@ -77,7 +77,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
 
     int hit_group_index = -1;
     for (int i = 0; i < int(eShaderType::_Count); ++i) {
-        const ShaderHandle sh = prog_main.shaders[i];
+        const ShaderROHandle sh = prog_main.shaders[i];
         if (!sh) {
             continue;
         }
@@ -301,13 +301,13 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
 }
 
 bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, PipelineMain &pipeline_main,
-                        PipelineCold &pipeline_cold, const RastState &rast_state, const ProgramHandle prog,
-                        const VertexInputHandle vtx_input, const RenderPassHandle render_pass,
+                        PipelineCold &pipeline_cold, const RastState &rast_state, const ProgramROHandle prog,
+                        const VertexInputROHandle vtx_input, const RenderPassROHandle render_pass,
                         const uint32_t subpass_index, ILog *log) {
     const auto &[pr_main, pr_cold] = storages.programs.Get(prog);
 
     std::string pipeline_name;
-    for (const ShaderHandle sh : pr_main.shaders) {
+    for (const ShaderROHandle sh : pr_main.shaders) {
         if (!sh) {
             continue;
         }
@@ -322,7 +322,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
 
     SmallVector<VkPipelineShaderStageCreateInfo, int(eShaderType::_Count)> shader_stage_create_info;
     for (int i = 0; i < int(eShaderType::_Count); ++i) {
-        const ShaderHandle sh = pr_main.shaders[i];
+        const ShaderROHandle sh = pr_main.shaders[i];
         if (!sh) {
             continue;
         }

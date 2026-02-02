@@ -78,10 +78,10 @@ struct fg_node_range_t {
 struct FgAllocRes {
     union {
         struct {
-            mutable uint8_t read_count;
-            mutable uint8_t write_count;
+            mutable uint8_t img_read_count;
+            mutable uint8_t img_write_count;
         };
-        uint16_t _generation = 0;
+        uint16_t _img_generation = 0;
     };
 
     // TODO: Use Ren::String here
@@ -112,22 +112,8 @@ struct FgAllocBufCold : public FgAllocRes {
     FgBufDesc desc;
 };
 
-struct FgBufHandle {
-    Ren::Handle<FgAllocBufMain> handle;
-    union {
-        struct {
-            uint8_t read_count;
-            uint8_t write_count;
-        };
-        uint16_t _generation = 0;
-    };
-
-    FgBufHandle() = default;
-    FgBufHandle(const Ren::Handle<FgAllocBufMain> _handle, const uint16_t __generation)
-        : handle(_handle), _generation(__generation) {}
-
-    operator bool() const { return bool(handle); }
-};
+using FgBufROHandle = Ren::Handle<FgAllocBufMain, Ren::ROTag>;
+using FgBufRWHandle = Ren::Handle<FgAllocBufMain, Ren::RWTag>;
 
 enum class eFgQueueType : uint8_t { Graphics, Compute, Transfer };
 
@@ -162,10 +148,10 @@ class FgContext {
 
     int backend_frame() const;
 
-    Ren::BufferHandle AccessROBuffer(FgBufHandle handle) const;
+    Ren::BufferROHandle AccessROBuffer(FgBufROHandle handle) const;
     const Ren::Image &AccessROImage(FgResRef handle) const;
 
-    Ren::BufferHandle AccessRWBuffer(FgBufHandle handle) const;
+    Ren::BufferHandle AccessRWBuffer(FgBufRWHandle handle) const;
     const Ren::Image &AccessRWImage(FgResRef handle) const;
 
     // TODO: Get rid of these!
@@ -184,7 +170,7 @@ class FgBuilder : public FgContext {
     bool DependsOn_r(int16_t dst_node, int16_t src_node);
     int16_t FindPreviousWrittenInNode(const FgResource &res);
     int16_t FindPreviousWrittenInNode(FgResRef res);
-    int16_t FindPreviousWrittenInNode(FgBufHandle res);
+    int16_t FindPreviousWrittenInNode(FgBufRWHandle res);
     void FindPreviousReadInNodes(const FgResource &res, Ren::SmallVectorImpl<int16_t> &out_nodes);
     void TraverseNodeDependencies_r(FgNode *node, int recursion_depth, std::vector<FgNode *> &out_node_stack);
 
@@ -248,9 +234,9 @@ class FgBuilder : public FgContext {
         return new_data;
     }
 
-    FgBufHandle ReadBuffer(FgBufHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
+    FgBufROHandle ReadBuffer(FgBufROHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
                            FgNode &node);
-    FgBufHandle ReadBuffer(Ren::BufferHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
+    FgBufROHandle ReadBuffer(Ren::BufferHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
                            FgNode &node, int slot_index = -1);
 
     FgResRef ReadImage(FgResRef handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages, FgNode &node);
@@ -264,11 +250,11 @@ class FgBuilder : public FgContext {
     FgResRef ReadHistoryImage(std::string_view name, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
                               FgNode &node);
 
-    FgBufHandle WriteBuffer(FgBufHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
+    FgBufRWHandle WriteBuffer(FgBufRWHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
                             FgNode &node);
-    FgBufHandle WriteBuffer(std::string_view name, const FgBufDesc &desc, Ren::eResState desired_state,
+    FgBufRWHandle WriteBuffer(std::string_view name, const FgBufDesc &desc, Ren::eResState desired_state,
                             Ren::Bitmask<Ren::eStage> stages, FgNode &node);
-    FgBufHandle WriteBuffer(Ren::BufferHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
+    FgBufRWHandle WriteBuffer(Ren::BufferHandle handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages,
                             FgNode &node);
 
     FgResRef WriteImage(FgResRef handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages, FgNode &node);
@@ -282,7 +268,7 @@ class FgBuilder : public FgContext {
     FgResRef ImportResource(const Ren::WeakImgRef &ref);
 
     void Reset();
-    void Compile(Ren::Span<const std::variant<FgResRef, FgBufHandle>> backbuffer_sources = {});
+    void Compile(Ren::Span<const std::variant<FgResRef, FgBufRWHandle>> backbuffer_sources = {});
     void Execute();
 
     struct node_timing_t {

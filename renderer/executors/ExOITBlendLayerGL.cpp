@@ -27,15 +27,15 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
     const Ren::Image &shadow_map_tex = fg.AccessROImage(shadow_map_);
     const Ren::Image &ltc_luts_tex = fg.AccessROImage(ltc_luts_tex_);
     const Ren::Image &env_tex = fg.AccessROImage(env_tex_);
-    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::BufferHandle items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(lights_buf_);
-    const Ren::BufferHandle decals_buf = fg.AccessROBuffer(decals_buf_);
-    const Ren::BufferHandle oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
+    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(cells_buf_);
+    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
+    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
+    const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferROHandle oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
 
     const Ren::Image &back_color_tex = fg.AccessROImage(back_color_tex_);
     const Ren::Image &back_depth_tex = fg.AccessROImage(back_depth_tex_);

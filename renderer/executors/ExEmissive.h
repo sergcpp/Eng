@@ -24,29 +24,29 @@ class ExEmissive final : public FgExecutor {
 
     const DrawList **p_list_ = nullptr;
 
-    FgBufHandle vtx_buf1_;
-    FgBufHandle vtx_buf2_;
-    FgBufHandle ndx_buf_;
-    FgBufHandle instances_buf_;
-    FgBufHandle instance_indices_buf_;
-    FgBufHandle shared_data_buf_;
-    FgBufHandle materials_buf_;
+    FgBufROHandle vtx_buf1_;
+    FgBufROHandle vtx_buf2_;
+    FgBufROHandle ndx_buf_;
+    FgBufROHandle instances_buf_;
+    FgBufROHandle instance_indices_buf_;
+    FgBufROHandle shared_data_buf_;
+    FgBufROHandle materials_buf_;
     FgResRef noise_tex_;
     FgResRef dummy_white_;
 
     FgResRef out_color_tex_;
     FgResRef out_depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
-                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &depth_tex);
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
+                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &depth_tex);
     void DrawOpaque(const FgContext &fg);
 
   public:
-    ExEmissive(const DrawList **p_list, const view_state_t *view_state, const FgBufHandle vtx_buf1,
-               const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf, const FgBufHandle materials_buf,
+    ExEmissive(const DrawList **p_list, const view_state_t *view_state, const FgBufROHandle vtx_buf1,
+               const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
                const BindlessTextureData *bindless_tex, const FgResRef noise_tex, const FgResRef dummy_white,
-               const FgBufHandle instances_buf, const FgBufHandle instance_indices_buf,
-               const FgBufHandle shared_data_buf, const FgResRef out_color, const FgResRef out_depth) {
+               const FgBufROHandle instances_buf, const FgBufROHandle instance_indices_buf,
+               const FgBufROHandle shared_data_buf, const FgResRef out_color, const FgResRef out_depth) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;
 

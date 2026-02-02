@@ -28,19 +28,19 @@ void Eng::ExVolVoxelize::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
 }
 
 void Eng::ExVolVoxelize::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &stbn_tex = fg.AccessROImage(args_->stbn_tex);
 
-    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::BufferHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
-    const Ren::BufferHandle blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
-    const Ren::BufferHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferROHandle blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
+    const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
+    const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
 
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->swrt.vtx_buf1);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->swrt.ndx_buf);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->swrt.vtx_buf1);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->swrt.ndx_buf);
 
     const Ren::Image &out_emission_tex = fg.AccessRWImage(args_->out_emission_tex);
     const Ren::Image &out_scatter_tex = fg.AccessRWImage(args_->out_scatter_tex);

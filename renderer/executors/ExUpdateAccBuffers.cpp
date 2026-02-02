@@ -34,7 +34,7 @@ void Eng::ExUpdateAccBuffers::Execute_SWRT(const FgContext &fg) {
             Buffer_Unmap(api, rt_geo_instances_stage_buf_main, rt_geo_instances_stage_buf_cold);
         }
 
-        const Ren::BufferMain &rt_geo_instances_buf_main = fg.storages().buffers.Get(rt_geo_instances_buf).first;
+        Ren::BufferMain &rt_geo_instances_buf_main = fg.storages().buffers.Get(rt_geo_instances_buf).first;
         CopyBufferToBuffer(api, rt_geo_instances_stage_buf_main, fg.backend_frame() * RTGeoInstancesBufChunkSize,
                            rt_geo_instances_buf_main, 0, rt_geo_instances_mem_size, fg.cmd_buf());
     }

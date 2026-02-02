@@ -25,17 +25,17 @@ class ExOpaque final : public FgExecutor {
 
     const DrawList **p_list_ = nullptr;
 
-    FgBufHandle vtx_buf1_;
-    FgBufHandle vtx_buf2_;
-    FgBufHandle ndx_buf_;
-    FgBufHandle instances_buf_;
-    FgBufHandle instance_indices_buf_;
-    FgBufHandle shared_data_buf_;
-    FgBufHandle materials_buf_;
-    FgBufHandle cells_buf_;
-    FgBufHandle items_buf_;
-    FgBufHandle lights_buf_;
-    FgBufHandle decals_buf_;
+    FgBufROHandle vtx_buf1_;
+    FgBufROHandle vtx_buf2_;
+    FgBufROHandle ndx_buf_;
+    FgBufROHandle instances_buf_;
+    FgBufROHandle instance_indices_buf_;
+    FgBufROHandle shared_data_buf_;
+    FgBufROHandle materials_buf_;
+    FgBufROHandle cells_buf_;
+    FgBufROHandle items_buf_;
+    FgBufROHandle lights_buf_;
+    FgBufROHandle decals_buf_;
     FgResRef shad_tex_;
     FgResRef lm_tex_[4];
     FgResRef ssao_tex_;
@@ -49,8 +49,8 @@ class ExOpaque final : public FgExecutor {
     FgResRef spec_tex_;
     FgResRef depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
-                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
+                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
                   const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex);
     void DrawOpaque(const FgContext &fg);
 
@@ -58,14 +58,15 @@ class ExOpaque final : public FgExecutor {
     void InitDescrSetLayout();
 #endif
   public:
-    ExOpaque(Ren::ApiContext &api, const DrawList **p_list, const view_state_t *view_state, const FgBufHandle vtx_buf1,
-             const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf, const FgBufHandle materials_buf,
-             const BindlessTextureData *bindless_tex, const FgResRef brdf_lut, const FgResRef noise_tex,
-             const FgResRef cone_rt_lut, const FgResRef dummy_black, const FgBufHandle instances_buf,
-             const FgBufHandle instance_indices_buf, const FgBufHandle shared_data_buf, const FgBufHandle cells_buf,
-             const FgBufHandle items_buf, const FgBufHandle lights_buf, const FgBufHandle decals_buf,
-             const FgResRef shadowmap_tex, const FgResRef ssao_tex, const FgResRef lm_tex[], const FgResRef out_color,
-             const FgResRef out_normals, const FgResRef out_spec, const FgResRef out_depth)
+    ExOpaque(Ren::ApiContext &api, const DrawList **p_list, const view_state_t *view_state,
+             const FgBufROHandle vtx_buf1, const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf,
+             const FgBufROHandle materials_buf, const BindlessTextureData *bindless_tex, const FgResRef brdf_lut,
+             const FgResRef noise_tex, const FgResRef cone_rt_lut, const FgResRef dummy_black,
+             const FgBufROHandle instances_buf, const FgBufROHandle instance_indices_buf,
+             const FgBufROHandle shared_data_buf, const FgBufROHandle cells_buf, const FgBufROHandle items_buf,
+             const FgBufROHandle lights_buf, const FgBufROHandle decals_buf, const FgResRef shadowmap_tex,
+             const FgResRef ssao_tex, const FgResRef lm_tex[], const FgResRef out_color, const FgResRef out_normals,
+             const FgResRef out_spec, const FgResRef out_depth)
         : api_(api) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;

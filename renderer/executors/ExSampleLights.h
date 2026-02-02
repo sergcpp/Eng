@@ -12,16 +12,16 @@ namespace Eng {
 class ExSampleLights final : public FgExecutor {
   public:
     struct Args {
-        FgBufHandle shared_data;
-        FgBufHandle random_seq;
-        FgBufHandle lights_buf;
-        FgBufHandle nodes_buf;
+        FgBufROHandle shared_data;
+        FgBufROHandle random_seq;
+        FgBufROHandle lights_buf;
+        FgBufROHandle nodes_buf;
 
-        FgBufHandle geo_data;
-        FgBufHandle materials;
-        FgBufHandle vtx_buf1;
-        FgBufHandle ndx_buf;
-        FgBufHandle tlas_buf;
+        FgBufROHandle geo_data;
+        FgBufROHandle materials;
+        FgBufROHandle vtx_buf1;
+        FgBufROHandle ndx_buf;
+        FgBufROHandle tlas_buf;
 
         FgResRef albedo_tex;
         FgResRef depth_tex;
@@ -32,9 +32,9 @@ class ExSampleLights final : public FgExecutor {
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgBufHandle rt_blas_buf;
-            FgBufHandle prim_ndx_buf;
-            FgBufHandle mesh_instances_buf;
+            FgBufROHandle rt_blas_buf;
+            FgBufROHandle prim_ndx_buf;
+            FgBufROHandle mesh_instances_buf;
         } swrt;
 
         FgResRef out_diffuse_tex;

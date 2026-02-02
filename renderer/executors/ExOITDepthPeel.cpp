@@ -4,12 +4,13 @@
 
 #include "../../utils/ShaderLoader.h"
 
-Eng::ExOITDepthPeel::ExOITDepthPeel(const DrawList **p_list, const view_state_t *view_state, const FgBufHandle vtx_buf1,
-                                    const FgBufHandle vtx_buf2, const FgBufHandle ndx_buf,
-                                    const FgBufHandle materials_buf, const BindlessTextureData *bindless_tex,
-                                    const FgResRef dummy_white, const FgBufHandle instances_buf,
-                                    const FgBufHandle instance_indices_buf, const FgBufHandle shared_data_buf,
-                                    const FgResRef depth_tex, const FgBufHandle out_depth_buf) {
+Eng::ExOITDepthPeel::ExOITDepthPeel(const DrawList **p_list, const view_state_t *view_state,
+                                    const FgBufROHandle vtx_buf1, const FgBufROHandle vtx_buf2,
+                                    const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
+                                    const BindlessTextureData *bindless_tex, const FgResRef dummy_white,
+                                    const FgBufROHandle instances_buf, const FgBufROHandle instance_indices_buf,
+                                    const FgBufROHandle shared_data_buf, const FgResRef depth_tex,
+                                    const FgBufRWHandle out_depth_buf) {
     view_state_ = view_state;
     bindless_tex_ = bindless_tex;
 
@@ -29,17 +30,17 @@ Eng::ExOITDepthPeel::ExOITDepthPeel(const DrawList **p_list, const view_state_t 
 }
 
 void Eng::ExOITDepthPeel::Execute(const FgContext &fg) {
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
     Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(depth_tex_);
 
     LazyInit(fg.ren_ctx(), fg.sh(), vtx_buf1, vtx_buf2, ndx_buf, depth_tex);
     DrawTransparent(fg);
 }
 
-void Eng::ExOITDepthPeel::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
-                                   const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
+void Eng::ExOITDepthPeel::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
+                                   const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
                                    const Ren::WeakImgRef depth_tex) {
     const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
                                             Ren::eStoreOp::Store};

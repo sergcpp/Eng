@@ -13,7 +13,7 @@ Eng::ExDebugOIT::ExDebugOIT(ShaderLoader &sh, const view_state_t *view_state, co
 }
 
 void Eng::ExDebugOIT::Execute(const FgContext &fg) {
-    const Ren::BufferHandle oit_depth_buf = fg.AccessROBuffer(args_->oit_depth_buf);
+    const Ren::BufferROHandle oit_depth_buf = fg.AccessROBuffer(args_->oit_depth_buf);
     const Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
 
     const Ren::Binding bindings[] = {{Ren::eBindTarget::UTBuf, OITDebug::OIT_DEPTH_BUF_SLOT, oit_depth_buf},

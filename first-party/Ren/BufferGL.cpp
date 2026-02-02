@@ -241,7 +241,7 @@ bool Ren::Buffer_FreeSubRegion(BufferCold &buf_cold, SubAllocation alloc) {
     return true;
 }
 
-void Ren::Buffer_Fill(const ApiContext &, const BufferMain &buf_main, const uint32_t dst_offset, const uint32_t size,
+void Ren::Buffer_Fill(const ApiContext &, BufferMain &buf_main, const uint32_t dst_offset, const uint32_t size,
                       const uint32_t data, CommandBuffer) {
     glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(buf_main.buf));
     glClearBufferSubData(GL_COPY_WRITE_BUFFER, GL_R32UI, GLintptr(dst_offset), GLsizeiptr(size), GL_RED,
@@ -249,15 +249,15 @@ void Ren::Buffer_Fill(const ApiContext &, const BufferMain &buf_main, const uint
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
-void Ren::Buffer_UpdateInPlace(const ApiContext &, const BufferMain &buf_main, const uint32_t dst_offset,
-                               const uint32_t size, const void *data, CommandBuffer) {
+void Ren::Buffer_UpdateInPlace(const ApiContext &, BufferMain &buf_main, const uint32_t dst_offset, const uint32_t size,
+                               const void *data, CommandBuffer) {
     glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(buf_main.buf));
     glBufferSubData(GL_COPY_WRITE_BUFFER, GLintptr(dst_offset), size, data);
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
-void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const uint32_t src_offset,
-                             const BufferMain &dst, const uint32_t dst_offset, const uint32_t size, CommandBuffer) {
+void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const uint32_t src_offset, BufferMain &dst,
+                             const uint32_t dst_offset, const uint32_t size, CommandBuffer) {
     glBindBuffer(GL_COPY_READ_BUFFER, GLuint(src.buf));
     glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(dst.buf));
     glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, src_offset, dst_offset, size);
@@ -265,7 +265,7 @@ void Ren::CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, const
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
-void Ren::CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, const BufferHandle src,
+void Ren::CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, const BufferROHandle src,
                              const uint32_t src_offset, const BufferHandle dst, const uint32_t dst_offset,
                              const uint32_t size, CommandBuffer cmd_buf) {
     const auto &[src_main, src_cold] = storages.buffers.Get(src);

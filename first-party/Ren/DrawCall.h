@@ -38,7 +38,7 @@ extern int g_param_buf_binding;
 struct OpaqueHandle {
     union {
         const Image *img;
-        const BufferHandle buf;
+        const BufferROHandle buf;
         const BindlessDescriptors *bindless;
 #if defined(REN_VK_BACKEND)
         const AccStructureVK *acc_struct;
@@ -49,14 +49,15 @@ struct OpaqueHandle {
 
         const Handle<void> handle;
     };
-    const SamplerHandle sampler = {};
+    const SamplerROHandle sampler = {};
     int view_index = 0;
 
     OpaqueHandle(const Image &_img, int _view_index = 0) : img(&_img), handle(), view_index(_view_index) {}
-    OpaqueHandle(const Image &_img, const SamplerHandle _sampler, int _view_index = 0)
+    OpaqueHandle(const Image &_img, const SamplerROHandle _sampler, int _view_index = 0)
         : img(&_img), handle({}), sampler(_sampler), view_index(_view_index) {}
-    OpaqueHandle(const BufferHandle _buf, int _view_index = 0) : buf(_buf), handle(), view_index(_view_index) {}
-    OpaqueHandle(const SamplerHandle _sampler) : ptr(nullptr), handle(), sampler(_sampler) {}
+    OpaqueHandle(const BufferROHandle _buf, int _view_index = 0) : buf(_buf), handle(), view_index(_view_index) {}
+    OpaqueHandle(const BufferRWHandle _buf, int _view_index = 0) : buf(_buf), handle(), view_index(_view_index) {}
+    OpaqueHandle(const SamplerROHandle _sampler) : ptr(nullptr), handle(), sampler(_sampler) {}
     OpaqueHandle(const BindlessDescriptors &_bindless) : bindless(&_bindless), handle() {}
 #if defined(REN_VK_BACKEND)
     OpaqueHandle(const AccStructureVK &_acc_struct) : acc_struct(&_acc_struct), handle() {}
@@ -92,7 +93,7 @@ void DispatchCompute(PipelineHandle pipeline, const StoragesRef &storages, Vec3u
                      DescrMultiPoolAlloc &descr_alloc, ILog *log);
 
 void DispatchComputeIndirect(CommandBuffer cmd_buf, PipelineHandle pipeline, const StoragesRef &storages,
-                             BufferHandle indir_buf, uint32_t indir_buf_offset, Span<const Binding> bindings,
+                             BufferROHandle indir_buf, uint32_t indir_buf_offset, Span<const Binding> bindings,
                              const void *uniform_data, int uniform_data_len, DescrMultiPoolAlloc &descr_alloc,
                              ILog *log);
 } // namespace Ren

@@ -227,7 +227,7 @@ void Ren::DispatchCompute(const PipelineHandle pipeline, const StoragesRef &stor
 }
 
 void Ren::DispatchComputeIndirect(CommandBuffer cmd_buf, const PipelineHandle pipeline, const StoragesRef &storages,
-                                  const BufferHandle indir_buf, const uint32_t indir_buf_offset,
+                                  const BufferROHandle indir_buf, const uint32_t indir_buf_offset,
                                   Span<const Binding> bindings, const void *uniform_data, int uniform_data_len,
                                   DescrMultiPoolAlloc &descr_alloc, ILog *log) {
     const ApiContext &api = descr_alloc.api();

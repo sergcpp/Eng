@@ -14,13 +14,10 @@ extern const float fs_quad_norm_uvs[] = {0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0
 extern const float fs_quad_norm_uvs[] = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};
 #endif
 extern const uint16_t fs_quad_indices[] = {0, 1, 2, 0, 2, 3};
-const int TempBufSize = 256;
+// const int TempBufSize = 256;
 #include "precomputed/__sphere_mesh.inl"
 
 extern const int SphereIndicesCount = __sphere_indices_count;
-
-// aligned to vertex stride
-const size_t SphereVerticesSize = 16 * ((sizeof(__sphere_positions) + 15) / 16);
 
 bool framebuffer_eq(const Ren::Framebuffer &fb, const Ren::RenderPassMain &rp, const Ren::WeakImgRef &depth_attachment,
                     const Ren::WeakImgRef &stencil_attachment,
@@ -42,9 +39,9 @@ bool Eng::PrimDraw::LazyInit(Ren::Context &ctx) {
     const Ren::BufferHandle vtx_buf1 = ctx.default_vertex_buf1(), vtx_buf2 = ctx.default_vertex_buf2(),
                             ndx_buf = ctx.default_indices_buf();
 
-    const auto &[vtx_buf1_main, vtx_buf1_cold] = ctx.buffers().Get(ctx.default_vertex_buf1());
-    const auto &[vtx_buf2_main, vtx_buf2_cold] = ctx.buffers().Get(ctx.default_vertex_buf2());
-    const auto &[ndx_buf_main, ndx_buf_cold] = ctx.buffers().Get(ctx.default_indices_buf());
+    const auto &[vtx_buf1_main, vtx_buf1_cold] = ctx.buffers().Get(vtx_buf1);
+    const auto &[vtx_buf2_main, vtx_buf2_cold] = ctx.buffers().Get(vtx_buf2);
+    const auto &[ndx_buf_main, ndx_buf_cold] = ctx.buffers().Get(ndx_buf);
 
     if (!initialized_) {
         uint32_t total_mem_required = sizeof(fs_quad_positions) + sizeof(fs_quad_norm_uvs);

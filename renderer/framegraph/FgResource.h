@@ -12,10 +12,10 @@ struct FgResource {
     Ren::eResState desired_state = Ren::eResState::Undefined;
     union {
         struct {
-            uint8_t read_count;
-            uint8_t write_count;
+            uint8_t img_read_count;
+            uint8_t img_write_count;
         };
-        uint16_t _generation = 0;
+        uint16_t _img_generation = 0;
     };
     uint16_t index = 0xffff;
     Ren::Bitmask<Ren::eStage> stages;
@@ -25,31 +25,24 @@ struct FgResource {
     FgResource() = default;
     FgResource(const eFgResType _type, const uint16_t __generation, const Ren::eResState _desired_state,
                const uint16_t _index, const Ren::Bitmask<Ren::eStage> _stages)
-        : type(_type), desired_state(_desired_state), _generation(__generation), index(_index), stages(_stages) {}
-    FgResource(const eFgResType _type, const uint16_t __generation, const Ren::eResState _desired_state,
-               const uint64_t _opaque_handle, const Ren::Bitmask<Ren::eStage> _stages)
-        : type(_type), desired_state(_desired_state), _generation(__generation), stages(_stages),
-          opaque_handle(_opaque_handle) {}
+        : type(_type), desired_state(_desired_state), _img_generation(__generation), index(_index), stages(_stages) {}
+    FgResource(const eFgResType _type, const Ren::eResState _desired_state, const uint64_t _opaque_handle,
+               const Ren::Bitmask<Ren::eStage> _stages)
+        : type(_type), desired_state(_desired_state), stages(_stages), opaque_handle(_opaque_handle) {}
 
     operator bool() const { return type != eFgResType::Undefined; }
 
     static bool LessThanTypeAndIndex(const FgResource &lhs, const FgResource &rhs) {
-        if ((lhs.opaque_handle != Ren::InvalidHandle) < (rhs.opaque_handle != Ren::InvalidHandle)) {
+        if (lhs.type < rhs.type) {
             return true;
-        } else if ((rhs.opaque_handle != Ren::InvalidHandle) < (lhs.opaque_handle != Ren::InvalidHandle)) {
-            return false;
-        }
-        if (lhs.opaque_handle != Ren::InvalidHandle) {
-            assert(rhs.opaque_handle != Ren::InvalidHandle);
-            if (lhs.type != rhs.type) {
-                return lhs.type < rhs.type;
+        } else if (lhs.type == rhs.type) {
+            if ((lhs.opaque_handle >> 32) < (rhs.opaque_handle >> 32)) {
+                return true;
+            } else if ((lhs.opaque_handle >> 32) == (rhs.opaque_handle >> 32)) {
+                return lhs.index < rhs.index;
             }
-            return lhs.opaque_handle < rhs.opaque_handle;
         }
-        if (lhs.type != rhs.type) {
-            return lhs.type < rhs.type;
-        }
-        return lhs.index < rhs.index;
+        return false;
     }
 };
 static_assert(sizeof(FgResource) == 16 + 8);
@@ -71,13 +64,19 @@ struct FgResRef {
 
     FgResRef() = default;
     FgResRef(const FgResource &res)
-        : type(res.type), _generation(res._generation), index(res.index), opaque_handle(res.opaque_handle) {}
+        : type(res.type), _generation(res._img_generation), index(res.index), opaque_handle(res.opaque_handle) {}
 
     bool operator<(const FgResRef rhs) const {
-        if (type != rhs.type) {
-            return type < rhs.type;
+        if (type < rhs.type) {
+            return true;
+        } else if (type == rhs.type) {
+            if ((opaque_handle >> 32) < (rhs.opaque_handle >> 32)) {
+                return true;
+            } else if ((opaque_handle >> 32) == (rhs.opaque_handle >> 32)) {
+                return index < rhs.index;
+            }
         }
-        return index < rhs.index;
+        return false;
     }
 };
 static_assert(sizeof(FgResRef) == 16);

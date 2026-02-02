@@ -6,7 +6,7 @@
 #include "../Renderer_Structs.h"
 
 Eng::ExDepthHierarchy::ExDepthHierarchy(ShaderLoader &sh, const view_state_t *view_state, const FgResRef depth_tex,
-                                        const FgBufHandle atomic_counter, const FgResRef output_tex) {
+                                        const FgBufRWHandle atomic_counter, const FgResRef output_tex) {
     view_state_ = view_state;
 
     depth_tex_ = depth_tex;

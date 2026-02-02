@@ -27,20 +27,20 @@ void Eng::ExRTShadows::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
 }
 
 void Eng::ExRTShadows::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
     const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
     const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
-    const Ren::BufferHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.blas_buf);
-    const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::BufferHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
-    const Ren::BufferHandle tile_list_buf = fg.AccessROBuffer(args_->tile_list_buf);
-    const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
+    const Ren::BufferROHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.blas_buf);
+    const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
+    const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(args_->tile_list_buf);
+    const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
 
     const Ren::Image &out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
 

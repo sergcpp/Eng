@@ -38,7 +38,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
                                      const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                                      const AccelerationStructureData &acc_struct_data,
                                      const BindlessTextureData &bindless, const FgResRef depth_hierarchy,
-                                     const FgBufHandle rt_geo_instances_res, const FgBufHandle rt_obj_instances_res,
+                                     const FgBufROHandle rt_geo_instances_res, const FgBufROHandle rt_obj_instances_res,
                                      FrameTextures &frame_textures) {
     using Stg = Ren::eStage;
     using Trg = Ren::eBindTarget;
@@ -49,7 +49,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         auto &probe_sample = fg_builder_.AddNode("PROBE SAMPLE");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef depth_tex;
             FgResRef normals_tex;
             FgResRef ssao_tex;
@@ -83,7 +83,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         probe_sample.set_execute_cb([data, &persistent_data, this](const FgContext &fg) {
             using namespace ProbeSample;
 
-            const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
             const Ren::Image &normals_tex = fg.AccessROImage(data->normals_tex);
             const Ren::Image &ssao_tex = fg.AccessROImage(data->ssao_tex);
@@ -134,13 +134,13 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
     const bool EnableStabilization = false;
     //(settings.taa_mode != eTAAMode::Static);
 
-    FgBufHandle ray_counter;
+    FgBufRWHandle ray_counter;
 
     { // Prepare atomic counter and ray length texture
         auto &gi_prepare = fg_builder_.AddNode("GI PREPARE");
 
         struct PassData {
-            FgBufHandle ray_counter;
+            FgBufRWHandle ray_counter;
         };
 
         auto *data = gi_prepare.AllocNodeData<PassData>();
@@ -163,7 +163,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
 
     const int tile_count = ((view_state_.ren_res[0] + 7) / 8) * ((view_state_.ren_res[1] + 7) / 8);
 
-    FgBufHandle ray_list, tile_list;
+    FgBufRWHandle ray_list, tile_list;
     FgResRef gi_tex, noise_tex;
 
     { // Classify pixel quads
@@ -173,10 +173,10 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             FgResRef depth;
             FgResRef spec_tex;
             FgResRef variance_history;
-            FgBufHandle bn_pmj_seq;
-            FgBufHandle ray_counter;
-            FgBufHandle ray_list;
-            FgBufHandle tile_list;
+            FgBufROHandle bn_pmj_seq;
+            FgBufRWHandle ray_counter;
+            FgBufRWHandle ray_list;
+            FgBufRWHandle tile_list;
             FgResRef out_gi_tex, out_noise_tex;
         };
 
@@ -229,7 +229,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth);
             const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
             const Ren::Image &variance_tex = fg.AccessROImage(data->variance_history);
-            const Ren::BufferHandle bn_pmj_seq_buf = fg.AccessROBuffer(data->bn_pmj_seq);
+            const Ren::BufferROHandle bn_pmj_seq_buf = fg.AccessROBuffer(data->bn_pmj_seq);
 
             const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(data->ray_counter);
             const Ren::BufferHandle ray_list_buf = fg.AccessRWBuffer(data->ray_list);
@@ -259,14 +259,14 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         });
     }
 
-    FgBufHandle indir_disp_buf;
+    FgBufRWHandle indir_disp_buf;
 
     { // Write indirect arguments
         auto &write_indir = fg_builder_.AddNode("GI INDIR ARGS");
 
         struct PassData {
-            FgBufHandle ray_counter;
-            FgBufHandle indir_disp_buf;
+            FgBufRWHandle ray_counter;
+            FgBufRWHandle indir_disp_buf;
         };
 
         auto *data = write_indir.AllocNodeData<PassData>();
@@ -295,19 +295,20 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         });
     }
 
-    FgBufHandle ray_rt_list;
+    FgBufRWHandle ray_rt_list;
 
     { // Trace screen-space rays
         auto &gi_trace_ss = fg_builder_.AddNode("GI TRACE SS");
 
         struct PassData {
             FgResRef noise_tex;
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef color_tex, normal_tex, depth_hierarchy;
 
-            FgBufHandle in_ray_list, indir_args, inout_ray_counter;
+            FgBufROHandle in_ray_list, indir_args;
+            FgBufRWHandle inout_ray_counter;
             FgResRef out_gi_tex;
-            FgBufHandle out_ray_list;
+            FgBufRWHandle out_ray_list;
         };
 
         auto *data = gi_trace_ss.AllocNodeData<PassData>();
@@ -334,12 +335,12 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             using namespace GITraceSS;
 
             const Ren::Image &noise_tex = fg.AccessROImage(data->noise_tex);
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &color_tex = fg.AccessROImage(data->color_tex);
             const Ren::Image &normal_tex = fg.AccessROImage(data->normal_tex);
             const Ren::Image &depth_hierarchy_tex = fg.AccessROImage(data->depth_hierarchy);
-            const Ren::BufferHandle in_ray_list_buf = fg.AccessROBuffer(data->in_ray_list);
-            const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
+            const Ren::BufferROHandle in_ray_list_buf = fg.AccessROBuffer(data->in_ray_list);
+            const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
             const Ren::Image &out_gi_tex = fg.AccessRWImage(data->out_gi_tex);
             const Ren::BufferHandle inout_ray_counter_buf = fg.AccessRWBuffer(data->inout_ray_counter);
@@ -365,14 +366,14 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
     }
 
     if ((ctx_.capabilities.hwrt || ctx_.capabilities.swrt) && acc_struct_data.rt_tlas_buf && env_map) {
-        FgBufHandle indir_rt_disp_buf;
+        FgBufRWHandle indir_rt_disp_buf;
 
         { // Prepare arguments for indirect RT dispatch
             auto &rt_disp_args = fg_builder_.AddNode("GI RT DISP ARGS");
 
             struct PassData {
-                FgBufHandle ray_counter;
-                FgBufHandle indir_disp_buf;
+                FgBufRWHandle ray_counter;
+                FgBufRWHandle indir_disp_buf;
             };
 
             auto *data = rt_disp_args.AllocNodeData<PassData>();
@@ -403,7 +404,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
 
         const bool two_bounces = (settings.gi_quality == eGIQuality::Ultra);
 
-        FgBufHandle ray_hits;
+        FgBufRWHandle ray_hits;
 
         { // Trace gi rays
             auto &rt_gi = fg_builder_.AddNode(two_bounces ? "RT GI 1ST" : "RT GI");
@@ -452,8 +453,8 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             auto &rt_shade_args = fg_builder_.AddNode(two_bounces ? "GI RT SHADE ARGS 1ST" : "GI RT SHADE ARGS");
 
             struct PassData {
-                FgBufHandle ray_counter;
-                FgBufHandle indir_disp_buf;
+                FgBufRWHandle ray_counter;
+                FgBufRWHandle indir_disp_buf;
             };
 
             auto *data = rt_shade_args.AllocNodeData<PassData>();
@@ -482,38 +483,39 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             });
         }
 
-        FgBufHandle secondary_ray_list;
+        FgBufRWHandle secondary_ray_list;
 
         { // Shade ray hits
             auto &gi_shade = fg_builder_.AddNode(two_bounces ? "GI SHADE 1ST" : "GI SHADE");
 
             struct PassData {
                 FgResRef noise_tex;
-                FgBufHandle shared_data;
+                FgBufROHandle shared_data;
                 FgResRef depth_tex, normal_tex;
                 FgResRef env_tex;
-                FgBufHandle mesh_instances_buf;
-                FgBufHandle geo_data_buf;
-                FgBufHandle materials_buf;
-                FgBufHandle vtx_data0_buf;
-                FgBufHandle ndx_buf;
-                FgBufHandle lights_buf;
+                FgBufROHandle mesh_instances_buf;
+                FgBufROHandle geo_data_buf;
+                FgBufROHandle materials_buf;
+                FgBufROHandle vtx_data0_buf;
+                FgBufROHandle ndx_buf;
+                FgBufROHandle lights_buf;
                 FgResRef shadow_depth_tex;
                 FgResRef shadow_color_tex;
                 FgResRef ltc_luts_tex;
-                FgBufHandle cells_buf;
-                FgBufHandle items_buf;
+                FgBufROHandle cells_buf;
+                FgBufROHandle items_buf;
 
                 FgResRef irradiance_tex;
                 FgResRef distance_tex;
                 FgResRef offset_tex;
 
-                FgBufHandle stoch_lights_buf;
-                FgBufHandle light_nodes_buf;
+                FgBufROHandle stoch_lights_buf;
+                FgBufROHandle light_nodes_buf;
 
-                FgBufHandle in_ray_hits, indir_args, inout_ray_counter;
+                FgBufROHandle in_ray_hits, indir_args;
+                FgBufRWHandle inout_ray_counter;
                 FgResRef out_gi_tex;
-                FgBufHandle out_ray_list_buf;
+                FgBufRWHandle out_ray_list_buf;
             };
 
             auto *data = gi_shade.AllocNodeData<PassData>();
@@ -564,34 +566,34 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
                 using namespace RTGI;
 
                 const Ren::Image &noise_tex = fg.AccessROImage(data->noise_tex);
-                const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+                const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
                 const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
                 const Ren::Image &normal_tex = fg.AccessROImage(data->normal_tex);
                 const Ren::Image &env_tex = fg.AccessROImage(data->env_tex);
-                const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(data->mesh_instances_buf);
-                const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(data->geo_data_buf);
-                const Ren::BufferHandle materials_buf = fg.AccessROBuffer(data->materials_buf);
-                const Ren::BufferHandle vtx_data0_buf = fg.AccessROBuffer(data->vtx_data0_buf);
-                const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(data->ndx_buf);
-                const Ren::BufferHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
+                const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(data->mesh_instances_buf);
+                const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(data->geo_data_buf);
+                const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(data->materials_buf);
+                const Ren::BufferROHandle vtx_data0_buf = fg.AccessROBuffer(data->vtx_data0_buf);
+                const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(data->ndx_buf);
+                const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
                 const Ren::Image &shadow_depth_tex = fg.AccessROImage(data->shadow_depth_tex);
                 const Ren::Image &shadow_color_tex = fg.AccessROImage(data->shadow_color_tex);
                 const Ren::Image &ltc_luts_tex = fg.AccessROImage(data->ltc_luts_tex);
-                const Ren::BufferHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
-                const Ren::BufferHandle items_buf = fg.AccessROBuffer(data->items_buf);
+                const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
+                const Ren::BufferROHandle items_buf = fg.AccessROBuffer(data->items_buf);
 
                 const Ren::Image &irr_tex = fg.AccessROImage(data->irradiance_tex);
                 const Ren::Image &dist_tex = fg.AccessROImage(data->distance_tex);
                 const Ren::Image &off_tex = fg.AccessROImage(data->offset_tex);
 
-                Ren::BufferHandle stoch_lights_buf = {}, light_nodes_buf = {};
+                Ren::BufferROHandle stoch_lights_buf = {}, light_nodes_buf = {};
                 if (data->stoch_lights_buf) {
                     stoch_lights_buf = fg.AccessROBuffer(data->stoch_lights_buf);
                     light_nodes_buf = fg.AccessROBuffer(data->light_nodes_buf);
                 }
 
-                const Ren::BufferHandle in_ray_hits_buf = fg.AccessROBuffer(data->in_ray_hits);
-                const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
+                const Ren::BufferROHandle in_ray_hits_buf = fg.AccessROBuffer(data->in_ray_hits);
+                const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
                 const Ren::BufferHandle inout_ray_counter_buf = fg.AccessRWBuffer(data->inout_ray_counter);
 
                 const Ren::Image &out_gi_tex = fg.AccessRWImage(data->out_gi_tex);
@@ -660,8 +662,8 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
                 auto &rt_disp_args = fg_builder_.AddNode("GI RT DISP ARGS 2ND");
 
                 struct PassData {
-                    FgBufHandle ray_counter;
-                    FgBufHandle indir_disp_buf;
+                    FgBufRWHandle ray_counter;
+                    FgBufRWHandle indir_disp_buf;
                 };
 
                 auto *data = rt_disp_args.AllocNodeData<PassData>();
@@ -690,7 +692,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
                 });
             }
 
-            FgBufHandle secondary_ray_hits;
+            FgBufRWHandle secondary_ray_hits;
 
             { // Trace gi rays
                 auto &rt_gi = fg_builder_.AddNode("RT GI 2ND");
@@ -742,8 +744,8 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
                 auto &rt_shade_args = fg_builder_.AddNode("GI RT SHADE ARGS 2ND");
 
                 struct PassData {
-                    FgBufHandle ray_counter;
-                    FgBufHandle indir_disp_buf;
+                    FgBufRWHandle ray_counter;
+                    FgBufRWHandle indir_disp_buf;
                 };
 
                 auto *data = rt_shade_args.AllocNodeData<PassData>();
@@ -777,20 +779,20 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
 
                 struct PassData {
                     FgResRef noise_tex;
-                    FgBufHandle shared_data;
+                    FgBufROHandle shared_data;
                     FgResRef depth_tex, normal_tex;
                     FgResRef env_tex;
-                    FgBufHandle mesh_instances_buf;
-                    FgBufHandle geo_data_buf;
-                    FgBufHandle materials_buf;
-                    FgBufHandle vtx_data0_buf;
-                    FgBufHandle ndx_buf;
-                    FgBufHandle lights_buf;
+                    FgBufROHandle mesh_instances_buf;
+                    FgBufROHandle geo_data_buf;
+                    FgBufROHandle materials_buf;
+                    FgBufROHandle vtx_data0_buf;
+                    FgBufROHandle ndx_buf;
+                    FgBufROHandle lights_buf;
                     FgResRef shadow_depth_tex;
                     FgResRef shadow_color_tex;
                     FgResRef ltc_luts_tex;
-                    FgBufHandle cells_buf;
-                    FgBufHandle items_buf;
+                    FgBufROHandle cells_buf;
+                    FgBufROHandle items_buf;
 
                     FgResRef irradiance_tex;
                     FgResRef distance_tex;
@@ -799,7 +801,8 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
                     FgResRef stoch_lights_buf;
                     FgResRef light_nodes_buf;
 
-                    FgBufHandle in_ray_list, in_ray_hits, indir_args, inout_ray_counter;
+                    FgBufROHandle in_ray_list, in_ray_hits, indir_args;
+                    FgBufRWHandle inout_ray_counter;
                     FgResRef out_gi_tex;
                 };
 
@@ -836,29 +839,29 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
                     using namespace RTGI;
 
                     const Ren::Image &noise_tex = fg.AccessROImage(data->noise_tex);
-                    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+                    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
                     const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
                     const Ren::Image &normal_tex = fg.AccessROImage(data->normal_tex);
                     const Ren::Image &env_tex = fg.AccessROImage(data->env_tex);
-                    const Ren::BufferHandle mesh_instances_buf = fg.AccessROBuffer(data->mesh_instances_buf);
-                    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(data->geo_data_buf);
-                    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(data->materials_buf);
-                    const Ren::BufferHandle vtx_data0_buf = fg.AccessROBuffer(data->vtx_data0_buf);
-                    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(data->ndx_buf);
-                    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
+                    const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(data->mesh_instances_buf);
+                    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(data->geo_data_buf);
+                    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(data->materials_buf);
+                    const Ren::BufferROHandle vtx_data0_buf = fg.AccessROBuffer(data->vtx_data0_buf);
+                    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(data->ndx_buf);
+                    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
                     const Ren::Image &shadow_depth_tex = fg.AccessROImage(data->shadow_depth_tex);
                     const Ren::Image &shadow_color_tex = fg.AccessROImage(data->shadow_color_tex);
                     const Ren::Image &ltc_luts_tex = fg.AccessROImage(data->ltc_luts_tex);
-                    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
-                    const Ren::BufferHandle items_buf = fg.AccessROBuffer(data->items_buf);
+                    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
+                    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(data->items_buf);
 
                     const Ren::Image &irr_tex = fg.AccessROImage(data->irradiance_tex);
                     const Ren::Image &dist_tex = fg.AccessROImage(data->distance_tex);
                     const Ren::Image &off_tex = fg.AccessROImage(data->offset_tex);
 
-                    const Ren::BufferHandle in_ray_list_buf = fg.AccessROBuffer(data->in_ray_list);
-                    const Ren::BufferHandle in_ray_hits_buf = fg.AccessROBuffer(data->in_ray_hits);
-                    const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
+                    const Ren::BufferROHandle in_ray_list_buf = fg.AccessROBuffer(data->in_ray_list);
+                    const Ren::BufferROHandle in_ray_hits_buf = fg.AccessROBuffer(data->in_ray_hits);
+                    const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
                     const Ren::BufferHandle inout_ray_counter_buf = fg.AccessRWBuffer(data->inout_ray_counter);
                     const Ren::Image &out_gi_tex = fg.AccessRWImage(data->out_gi_tex);
@@ -974,12 +977,12 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         auto &gi_reproject = fg_builder_.AddNode("GI REPROJECT");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef depth_tex, norm_tex, velocity_tex;
             FgResRef depth_hist_tex, norm_hist_tex, gi_hist_tex, variance_hist_tex, sample_count_hist_tex;
             FgResRef gi_tex;
-            FgBufHandle tile_list;
-            FgBufHandle indir_args;
+            FgBufROHandle tile_list;
+            FgBufROHandle indir_args;
             uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
             FgResRef out_reprojected_tex, out_avg_gi_tex;
             FgResRef out_variance_tex, out_sample_count_tex;
@@ -1050,7 +1053,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             gi_reproject.AddHistoryTextureInput(data->out_sample_count_tex, Stg::ComputeShader);
 
         gi_reproject.set_execute_cb([this, data, tile_count](const FgContext &fg) {
-            const Ren::BufferHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
             const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
             const Ren::Image &velocity_tex = fg.AccessROImage(data->velocity_tex);
@@ -1060,8 +1063,8 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             const Ren::Image &variance_hist_tex = fg.AccessROImage(data->variance_hist_tex);
             const Ren::Image &sample_count_hist_tex = fg.AccessROImage(data->sample_count_hist_tex);
             const Ren::Image &gi_tex = fg.AccessROImage(data->gi_tex);
-            const Ren::BufferHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
-            const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
+            const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
+            const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
             const Ren::Image &out_reprojected_tex = fg.AccessRWImage(data->out_reprojected_tex);
             const Ren::Image &out_avg_gi_tex = fg.AccessRWImage(data->out_avg_gi_tex);
@@ -1119,11 +1122,11 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         auto &gi_prefilter = fg_builder_.AddNode("GI PREFILTER");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef depth_tex, spec_tex, norm_tex, gi_tex, avg_gi_tex;
             FgResRef sample_count_tex;
-            FgBufHandle tile_list;
-            FgBufHandle indir_args;
+            FgBufROHandle tile_list;
+            FgBufROHandle indir_args;
             uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
             FgResRef out_gi_tex;
         };
@@ -1154,15 +1157,15 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         }
 
         gi_prefilter.set_execute_cb([this, data, tile_count](const FgContext &fg) {
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
             const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
             const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
             const Ren::Image &gi_tex = fg.AccessROImage(data->gi_tex);
             const Ren::Image &avg_gi_tex = fg.AccessROImage(data->avg_gi_tex);
             const Ren::Image &sample_count_tex = fg.AccessROImage(data->sample_count_tex);
-            const Ren::BufferHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
-            const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
+            const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
+            const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
             const Ren::Image &out_gi_tex = fg.AccessRWImage(data->out_gi_tex);
 
@@ -1210,11 +1213,11 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         auto &gi_temporal = fg_builder_.AddNode("GI TEMPORAL");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef norm_tex, avg_gi_tex, fallback_gi_tex, gi_tex, reproj_gi_tex;
             FgResRef variance_tex, sample_count_tex;
-            FgBufHandle tile_list;
-            FgBufHandle indir_args;
+            FgBufROHandle tile_list;
+            FgBufROHandle indir_args;
             uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
             FgResRef out_gi_tex, out_variance_tex;
         };
@@ -1259,7 +1262,7 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
         }
 
         gi_temporal.set_execute_cb([this, data, tile_count](const FgContext &fg) {
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
             const Ren::Image &avg_gi_tex = fg.AccessROImage(data->avg_gi_tex);
             const Ren::Image &fallback_gi_tex = fg.AccessROImage(data->fallback_gi_tex);
@@ -1267,8 +1270,8 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             const Ren::Image &reproj_gi_tex = fg.AccessROImage(data->reproj_gi_tex);
             const Ren::Image &variance_tex = fg.AccessROImage(data->variance_tex);
             const Ren::Image &sample_count_tex = fg.AccessROImage(data->sample_count_tex);
-            const Ren::BufferHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
-            const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
+            const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
+            const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
             const Ren::Image &out_gi_tex = fg.AccessRWImage(data->out_gi_tex);
             const Ren::Image &out_variance_tex = fg.AccessRWImage(data->out_variance_tex);
@@ -1319,11 +1322,11 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             auto &gi_filter = fg_builder_.AddNode("GI FILTER");
 
             struct PassData {
-                FgBufHandle shared_data;
+                FgBufROHandle shared_data;
                 FgResRef depth_tex, spec_tex, norm_tex, gi_tex;
                 FgResRef sample_count_tex;
-                FgBufHandle tile_list;
-                FgBufHandle indir_args;
+                FgBufROHandle tile_list;
+                FgBufROHandle indir_args;
                 uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
                 FgResRef out_gi_tex;
             };
@@ -1353,15 +1356,15 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             }
 
             gi_filter.set_execute_cb([this, data, tile_count](const FgContext &fg) {
-                const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+                const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
                 const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
                 const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
                 const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
                 const Ren::Image &gi_tex = fg.AccessROImage(data->gi_tex);
                 const Ren::Image &sample_count_tex = fg.AccessROImage(data->sample_count_tex);
                 // const Ren::Image &variance_tex = fg.AccessROImage(data->variance_tex);
-                const Ren::BufferHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
-                const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
+                const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
+                const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
                 const Ren::Image &out_gi_tex = fg.AccessRWImage(data->out_gi_tex);
 
@@ -1409,11 +1412,11 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             auto &gi_post_filter = fg_builder_.AddNode("GI POST FILTER");
 
             struct PassData {
-                FgBufHandle shared_data;
+                FgBufROHandle shared_data;
                 FgResRef depth_tex, spec_tex, norm_tex, gi_tex, raylen_tex;
                 FgResRef sample_count_tex;
-                FgBufHandle tile_list;
-                FgBufHandle indir_args;
+                FgBufROHandle tile_list;
+                FgBufROHandle indir_args;
                 uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
                 FgResRef out_gi_tex;
             };
@@ -1443,15 +1446,15 @@ void Eng::Renderer::AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::
             }
 
             gi_post_filter.set_execute_cb([this, data, tile_count](const FgContext &fg) {
-                const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+                const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
                 const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
                 const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
                 const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
                 const Ren::Image &gi_tex = fg.AccessROImage(data->gi_tex);
                 const Ren::Image &sample_count_tex = fg.AccessROImage(data->sample_count_tex);
                 // const Ren::Image &variance_tex = fg.AccessROImage(data->variance_tex);
-                const Ren::BufferHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
-                const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
+                const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
+                const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
                 const Ren::Image &out_gi_tex = fg.AccessRWImage(data->out_gi_tex);
 

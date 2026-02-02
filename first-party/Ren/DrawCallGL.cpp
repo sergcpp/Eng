@@ -163,7 +163,7 @@ void Ren::DispatchCompute(const PipelineHandle pipeline, const StoragesRef &stor
 }
 
 void Ren::DispatchComputeIndirect(CommandBuffer, const PipelineHandle pipeline, const StoragesRef &storages,
-                                  const BufferHandle indir_buf, const uint32_t indir_buf_offset,
+                                  const BufferROHandle indir_buf, const uint32_t indir_buf_offset,
                                   Span<const Binding> bindings, const void *uniform_data, const int uniform_data_len,
                                   DescrMultiPoolAlloc &descr_alloc, ILog *log) {
     uint32_t occupied[int(eBindTarget::_Count)] = {};

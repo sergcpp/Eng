@@ -16,23 +16,23 @@ Eng::FgResource *Eng::FgNode::FindUsageOf(const eFgResType type, const uint16_t 
     return nullptr;
 }
 
-Eng::FgBufHandle Eng::FgNode::AddTransferInput(const FgBufHandle handle) {
+Eng::FgBufROHandle Eng::FgNode::AddTransferInput(const FgBufROHandle handle) {
     return builder_.ReadBuffer(handle, Ren::eResState::CopySrc, Ren::eStage::Transfer, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddTransferInput(const Ren::BufferHandle handle) {
+Eng::FgBufROHandle Eng::FgNode::AddTransferInput(const Ren::BufferHandle handle) {
     return builder_.ReadBuffer(handle, Ren::eResState::CopySrc, Ren::eStage::Transfer, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddTransferOutput(std::string_view name, const FgBufDesc &desc) {
+Eng::FgBufRWHandle Eng::FgNode::AddTransferOutput(std::string_view name, const FgBufDesc &desc) {
     return builder_.WriteBuffer(name, desc, Ren::eResState::CopyDst, Ren::eStage::Transfer, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddTransferOutput(const FgBufHandle handle) {
+Eng::FgBufRWHandle Eng::FgNode::AddTransferOutput(const FgBufRWHandle handle) {
     return builder_.WriteBuffer(handle, Ren::eResState::CopyDst, Ren::eStage::Transfer, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddTransferOutput(const Ren::BufferHandle handle) {
+Eng::FgBufRWHandle Eng::FgNode::AddTransferOutput(const Ren::BufferHandle handle) {
     return builder_.WriteBuffer(handle, Ren::eResState::CopyDst, Ren::eStage::Transfer, *this);
 }
 
@@ -56,26 +56,26 @@ Eng::FgResRef Eng::FgNode::AddTransferImageOutput(const FgResRef handle) {
     return builder_.WriteImage(handle, Ren::eResState::CopyDst, Ren::eStage::Transfer, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddStorageReadonlyInput(const FgBufHandle handle,
-                                                      const Ren::Bitmask<Ren::eStage> stages) {
+Eng::FgBufROHandle Eng::FgNode::AddStorageReadonlyInput(const FgBufROHandle handle,
+                                                        const Ren::Bitmask<Ren::eStage> stages) {
     return builder_.ReadBuffer(handle, Ren::eResState::ShaderResource, stages, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddStorageReadonlyInput(const Ren::BufferHandle buf,
-                                                      const Ren::Bitmask<Ren::eStage> stages) {
+Eng::FgBufROHandle Eng::FgNode::AddStorageReadonlyInput(const Ren::BufferHandle buf,
+                                                        const Ren::Bitmask<Ren::eStage> stages) {
     return builder_.ReadBuffer(buf, Ren::eResState::ShaderResource, stages, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddStorageOutput(std::string_view name, const FgBufDesc &desc,
-                                               const Ren::Bitmask<Ren::eStage> stages) {
+Eng::FgBufRWHandle Eng::FgNode::AddStorageOutput(std::string_view name, const FgBufDesc &desc,
+                                                 const Ren::Bitmask<Ren::eStage> stages) {
     return builder_.WriteBuffer(name, desc, Ren::eResState::UnorderedAccess, stages, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddStorageOutput(const FgBufHandle handle, const Ren::Bitmask<Ren::eStage> stages) {
+Eng::FgBufRWHandle Eng::FgNode::AddStorageOutput(const FgBufRWHandle handle, const Ren::Bitmask<Ren::eStage> stages) {
     return builder_.WriteBuffer(handle, Ren::eResState::UnorderedAccess, stages, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddStorageOutput(const Ren::BufferHandle buf, const Ren::Bitmask<Ren::eStage> stages) {
+Eng::FgBufRWHandle Eng::FgNode::AddStorageOutput(const Ren::BufferHandle buf, const Ren::Bitmask<Ren::eStage> stages) {
     return builder_.WriteBuffer(buf, Ren::eResState::UnorderedAccess, stages, *this);
 }
 
@@ -120,7 +120,7 @@ Eng::FgResRef Eng::FgNode::AddDepthOutput(const Ren::WeakImgRef &tex) {
     return builder_.WriteImage(tex, Ren::eResState::DepthWrite, Ren::eStage::DepthAttachment, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::ReplaceTransferInput(const int slot_index, const Ren::BufferHandle buf) {
+Eng::FgBufROHandle Eng::FgNode::ReplaceTransferInput(const int slot_index, const Ren::BufferHandle buf) {
     return builder_.ReadBuffer(buf, Ren::eResState::CopySrc, Ren::eStage::Transfer, *this, slot_index);
 }
 
@@ -128,7 +128,8 @@ Eng::FgResRef Eng::FgNode::ReplaceColorOutput(const int slot_index, const Ren::W
     return builder_.WriteImage(tex, Ren::eResState::RenderTarget, Ren::eStage::ColorAttachment, *this, slot_index);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddUniformBufferInput(const FgBufHandle handle, const Ren::Bitmask<Ren::eStage> stages) {
+Eng::FgBufROHandle Eng::FgNode::AddUniformBufferInput(const FgBufROHandle handle,
+                                                      const Ren::Bitmask<Ren::eStage> stages) {
     return builder_.ReadBuffer(handle, Ren::eResState::UniformBuffer, stages, *this);
 }
 
@@ -157,34 +158,34 @@ Eng::FgResRef Eng::FgNode::AddCustomTextureInput(const FgResRef handle, const Re
     return builder_.ReadImage(handle, desired_state, stages, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddVertexBufferInput(const FgBufHandle handle) {
+Eng::FgBufROHandle Eng::FgNode::AddVertexBufferInput(const FgBufROHandle handle) {
     return builder_.ReadBuffer(handle, Ren::eResState::VertexBuffer, Ren::eStage::VertexInput, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddVertexBufferInput(const Ren::BufferHandle handle) {
+Eng::FgBufROHandle Eng::FgNode::AddVertexBufferInput(const Ren::BufferHandle handle) {
     return builder_.ReadBuffer(handle, Ren::eResState::VertexBuffer, Ren::eStage::VertexInput, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddIndexBufferInput(const FgBufHandle handle) {
+Eng::FgBufROHandle Eng::FgNode::AddIndexBufferInput(const FgBufROHandle handle) {
     return builder_.ReadBuffer(handle, Ren::eResState::IndexBuffer, Ren::eStage::VertexInput, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddIndexBufferInput(const Ren::BufferHandle handle) {
+Eng::FgBufROHandle Eng::FgNode::AddIndexBufferInput(const Ren::BufferHandle handle) {
     return builder_.ReadBuffer(handle, Ren::eResState::IndexBuffer, Ren::eStage::VertexInput, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddIndirectBufferInput(const FgBufHandle handle) {
+Eng::FgBufROHandle Eng::FgNode::AddIndirectBufferInput(const FgBufROHandle handle) {
     return builder_.ReadBuffer(handle, Ren::eResState::IndirectArgument, Ren::eStage::DrawIndirect, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddASBuildReadonlyInput(const FgBufHandle handle) {
+Eng::FgBufROHandle Eng::FgNode::AddASBuildReadonlyInput(const FgBufROHandle handle) {
     return builder_.ReadBuffer(handle, Ren::eResState::BuildASRead, Ren::eStage::AccStructureBuild, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddASBuildOutput(const Ren::BufferHandle handle) {
+Eng::FgBufRWHandle Eng::FgNode::AddASBuildOutput(const Ren::BufferHandle handle) {
     return builder_.WriteBuffer(handle, Ren::eResState::BuildASWrite, Ren::eStage::AccStructureBuild, *this);
 }
 
-Eng::FgBufHandle Eng::FgNode::AddASBuildOutput(std::string_view name, const FgBufDesc &desc) {
+Eng::FgBufRWHandle Eng::FgNode::AddASBuildOutput(std::string_view name, const FgBufDesc &desc) {
     return builder_.WriteBuffer(name, desc, Ren::eResState::BuildASWrite, Ren::eStage::AccStructureBuild, *this);
 }

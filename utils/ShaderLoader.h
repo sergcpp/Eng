@@ -25,7 +25,7 @@ class ShaderLoader {
     void LoadPipelineCache(const char *base_path);
     void WritePipelineCache(const char *base_path);
 
-    Ren::VertexInputHandle LoadVertexInput(Ren::Span<const Ren::VtxAttribDesc> attribs, Ren::BufferHandle elem_buf);
+    Ren::VertexInputHandle LoadVertexInput(Ren::Span<const Ren::VtxAttribDesc> attribs, Ren::BufferROHandle elem_buf);
 
     Ren::RenderPassHandle LoadRenderPass(const Ren::RenderTargetInfo &depth_rt,
                                          Ren::Span<const Ren::RenderTargetInfo> color_rts);
@@ -51,11 +51,11 @@ class ShaderLoader {
                                     std::string_view intersection_name);
 #endif
 
-    Ren::PipelineHandle LoadPipeline(const Ren::RastState &rast_state, Ren::ProgramHandle prog,
-                                     Ren::VertexInputHandle vtx_input, Ren::RenderPassHandle render_pass,
+    Ren::PipelineHandle LoadPipeline(const Ren::RastState &rast_state, Ren::ProgramROHandle prog,
+                                     Ren::VertexInputROHandle vtx_input, Ren::RenderPassROHandle render_pass,
                                      uint32_t subpass_index);
 
     Ren::PipelineHandle LoadPipeline(std::string_view cs_name, int subgroup_size = -1);
-    Ren::PipelineHandle LoadPipeline(const Ren::ProgramHandle prog, int subgroup_size = -1);
+    Ren::PipelineHandle LoadPipeline(const Ren::ProgramROHandle prog, int subgroup_size = -1);
 };
 } // namespace Eng

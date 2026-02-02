@@ -9,7 +9,7 @@ class PrimDraw;
 class ExDebugProbes final : public FgExecutor {
   public:
     struct Args {
-        FgBufHandle shared_data;
+        FgBufROHandle shared_data;
         FgResRef offset_tex;
         FgResRef irradiance_tex;
         FgResRef distance_tex;

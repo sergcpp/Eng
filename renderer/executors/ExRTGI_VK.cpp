@@ -10,17 +10,17 @@
 #include "../shaders/rt_gi_interface.h"
 
 void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
-    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
     const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
     const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
-    const Ren::BufferHandle ray_list_buf = fg.AccessROBuffer(args_->ray_list);
-    const Ren::BufferHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
-    [[maybe_unused]] const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferROHandle ray_list_buf = fg.AccessROBuffer(args_->ray_list);
+    const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
+    [[maybe_unused]] const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
     const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(args_->ray_counter);
     const Ren::BufferHandle out_ray_hits_buf = fg.AccessRWBuffer(args_->out_ray_hits_buf);

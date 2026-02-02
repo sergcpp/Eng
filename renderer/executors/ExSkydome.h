@@ -14,7 +14,7 @@ class PrimDraw;
 class ExSkydomeCube final : public FgExecutor {
   public:
     struct Args {
-        FgBufHandle shared_data;
+        FgBufROHandle shared_data;
         FgResRef transmittance_lut;
         FgResRef multiscatter_lut;
         FgResRef moon_tex;
@@ -53,7 +53,7 @@ class ExSkydomeScreen final : public FgExecutor {
     struct Args {
         eSkyQuality sky_quality = eSkyQuality::Medium;
 
-        FgBufHandle shared_data;
+        FgBufROHandle shared_data;
         FgResRef env_tex;
         struct {
             FgResRef transmittance_lut;

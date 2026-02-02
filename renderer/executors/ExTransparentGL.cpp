@@ -12,12 +12,12 @@ namespace ExSharedInternal {
 void _bind_textures_and_samplers(Ren::Context &ctx, const Ren::Material &mat);
 } // namespace ExSharedInternal
 
-void Eng::ExTransparent::DrawTransparent_Simple(const FgContext &fg, const Ren::BufferHandle instances_buf,
-                                                const Ren::BufferHandle instance_indices_buf,
-                                                const Ren::BufferHandle unif_shared_data_buf,
-                                                const Ren::BufferHandle materials_buf,
-                                                const Ren::BufferHandle cells_buf, const Ren::BufferHandle items_buf,
-                                                const Ren::BufferHandle lights_buf, const Ren::BufferHandle decals_buf,
+void Eng::ExTransparent::DrawTransparent_Simple(const FgContext &fg, const Ren::BufferROHandle instances_buf,
+                                                const Ren::BufferROHandle instance_indices_buf,
+                                                const Ren::BufferROHandle unif_shared_data_buf,
+                                                const Ren::BufferROHandle materials_buf,
+                                                const Ren::BufferROHandle cells_buf, const Ren::BufferROHandle items_buf,
+                                                const Ren::BufferROHandle lights_buf, const Ren::BufferROHandle decals_buf,
                                                 const Ren::Image &shad_tex, const Ren::WeakImgRef &color_tex,
                                                 const Ren::Image &ssao_tex) {
     using namespace ExSharedInternal;

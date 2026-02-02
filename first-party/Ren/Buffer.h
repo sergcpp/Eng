@@ -39,43 +39,6 @@ enum class eBufType : uint8_t {
 std::string_view TypeName(eType type);
 eType Type(std::string_view name);
 
-struct BufHandle {
-#if defined(REN_VK_BACKEND)
-    VkBuffer buf = {};
-    SmallVector<std::pair<eFormat, VkBufferView>, 1> views;
-#elif defined(REN_GL_BACKEND)
-    uint32_t buf = 0;
-    SmallVector<std::pair<eFormat, uint32_t>, 1> views;
-#endif
-    uint32_t generation = 0;
-
-    operator bool() const {
-#if defined(REN_VK_BACKEND)
-        return buf != VkBuffer{};
-#elif defined(REN_GL_BACKEND)
-        return buf != 0;
-#endif
-    }
-};
-inline bool operator==(const BufHandle &lhs, const BufHandle &rhs) {
-    return lhs.buf == rhs.buf && lhs.views == rhs.views && lhs.generation == rhs.generation;
-}
-inline bool operator!=(const BufHandle &lhs, const BufHandle &rhs) {
-    return lhs.buf != rhs.buf || lhs.views != rhs.views || lhs.generation != rhs.generation;
-}
-inline bool operator<(const BufHandle &lhs, const BufHandle &rhs) {
-    if (lhs.buf < rhs.buf) {
-        return true;
-    } else if (lhs.buf == rhs.buf) {
-        if (lhs.views < rhs.views) {
-            return true;
-        } else if (lhs.views == rhs.views) {
-            return lhs.generation < rhs.generation;
-        }
-    }
-    return false;
-}
-
 struct SubAllocation {
     uint32_t offset = 0xffffffff;
     uint32_t block = 0xffffffff;
@@ -156,18 +119,18 @@ void Buffer_UpdateSubRegion(const ApiContext &api, BufferMain &buf_main, BufferC
                             CommandBuffer cmd_buf = {});
 bool Buffer_FreeSubRegion(BufferCold &buf_cold, SubAllocation alloc);
 
-void Buffer_Fill(const ApiContext &api, const BufferMain &buf_main, uint32_t dst_offset, uint32_t size, uint32_t data,
+void Buffer_Fill(const ApiContext &api, BufferMain &buf_main, uint32_t dst_offset, uint32_t size, uint32_t data,
                  CommandBuffer cmd_buf);
-void Buffer_UpdateInPlace(const ApiContext &api, const BufferMain &buf_main, uint32_t dst_offset, uint32_t size,
+void Buffer_UpdateInPlace(const ApiContext &api, BufferMain &buf_main, uint32_t dst_offset, uint32_t size,
                           const void *data, CommandBuffer cmd_buf);
 
 #if defined(REN_VK_BACKEND)
 VkDeviceAddress Buffer_GetDeviceAddress(const ApiContext &api, const BufferMain &buf_main);
 #endif
 
-void CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, uint32_t src_offset, const BufferMain &dst,
+void CopyBufferToBuffer(const ApiContext &api, const BufferMain &src, uint32_t src_offset, BufferMain &dst,
                         uint32_t dst_offset, uint32_t size, CommandBuffer cmd_buf);
-void CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, BufferHandle src, uint32_t src_offset,
+void CopyBufferToBuffer(const ApiContext &api, const StoragesRef &storages, BufferROHandle src, uint32_t src_offset,
                         BufferHandle dst, uint32_t dst_offset, uint32_t size, CommandBuffer cmd_buf);
 // Update buffer using stage buffer
 bool UpdateBuffer(const ApiContext &api, const StoragesRef &storages, BufferHandle dst, uint32_t dst_offset,

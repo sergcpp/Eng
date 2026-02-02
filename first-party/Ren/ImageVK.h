@@ -18,6 +18,24 @@ namespace Ren {
 class ILog;
 class MemAllocators;
 
+struct ImageMain {
+    VkImage img = {};
+    SmallVector<VkImageView, 1> views;
+    VkSampler sampler = {};
+    uint32_t generation = 0;
+    mutable eResState resource_state = eResState::Undefined;
+};
+
+struct ImageCold {
+    String name;
+    MemAllocation alloc;
+    ImgParamsPacked params;
+};
+
+bool Image_Init(const ApiContext &api, ImageMain &img_main, ImageCold &img_cold, const ImgParams &p,
+                const BufferMain *sbuf_main, const BufferCold *sbuf_cold, int data_off, CommandBuffer cmd_buf,
+                MemAllocators *mem_allocs, ILog *log);
+
 struct ImgHandle {
     VkImage img = {};
     SmallVector<VkImageView, 1> views;

@@ -21,10 +21,10 @@ uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &
 void Eng::ExOITDepthPeel::DrawTransparent(const FgContext &fg) {
     using namespace ExSharedInternal;
 
-    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
     const Ren::Image &dummy_white = fg.AccessROImage(dummy_white_);
 
     const Ren::BufferHandle out_depth_buf = fg.AccessRWBuffer(out_depth_buf_);

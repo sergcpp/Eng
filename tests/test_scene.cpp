@@ -357,9 +357,15 @@ void run_image_test(TestContext &ren_ctx, Sys::ThreadPool &threads, std::string_
             ren_ctx.ReleaseBuffer(rt_sh_geo_instances_stage_buf);
             ren_ctx.ReleaseBuffer(rt_vol_geo_instances_stage_buf);
 
-            ren_ctx.ReleaseBuffer(rt_obj_instances_stage_buf);
-            ren_ctx.ReleaseBuffer(rt_sh_obj_instances_stage_buf);
-            ren_ctx.ReleaseBuffer(rt_vol_obj_instances_stage_buf);
+            if (rt_obj_instances_stage_buf) {
+                ren_ctx.ReleaseBuffer(rt_obj_instances_stage_buf);
+            }
+            if (rt_sh_obj_instances_stage_buf) {
+                ren_ctx.ReleaseBuffer(rt_sh_obj_instances_stage_buf);
+            }
+            if (rt_vol_obj_instances_stage_buf) {
+                ren_ctx.ReleaseBuffer(rt_vol_obj_instances_stage_buf);
+            }
 
             ren_ctx.ReleaseBuffer(shared_data_stage_buf);
 

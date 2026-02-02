@@ -12,10 +12,10 @@
 void Eng::ExSkinning::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
 
-    const Ren::BufferHandle skin_vtx_buf = fg.AccessROBuffer(skin_vtx_buf_);
-    const Ren::BufferHandle skin_transforms_buf = fg.AccessROBuffer(skin_transforms_buf_);
-    const Ren::BufferHandle shape_keys_buf = fg.AccessROBuffer(shape_keys_buf_);
-    const Ren::BufferHandle delta_buf = fg.AccessROBuffer(delta_buf_);
+    const Ren::BufferROHandle skin_vtx_buf = fg.AccessROBuffer(skin_vtx_buf_);
+    const Ren::BufferROHandle skin_transforms_buf = fg.AccessROBuffer(skin_transforms_buf_);
+    const Ren::BufferROHandle shape_keys_buf = fg.AccessROBuffer(shape_keys_buf_);
+    const Ren::BufferROHandle delta_buf = fg.AccessROBuffer(delta_buf_);
 
     const Ren::BufferHandle vtx_buf1 = fg.AccessRWBuffer(vtx_buf1_);
     const Ren::BufferHandle vtx_buf2 = fg.AccessRWBuffer(vtx_buf2_);

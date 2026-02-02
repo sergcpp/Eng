@@ -20,7 +20,7 @@ const Ren::Vec2i g_sample_positions[16] = {Ren::Vec2i{1, 0}, Ren::Vec2i{3, 2}, R
 void Eng::ExSkydomeCube::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
 
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
     const Ren::Image &transmittance_lut = fg.AccessROImage(args_->transmittance_lut);
     const Ren::Image &multiscatter_lut = fg.AccessROImage(args_->multiscatter_lut);
     const Ren::Image &moon_tex = fg.AccessROImage(args_->moon_tex);
@@ -174,7 +174,7 @@ void Eng::ExSkydomeCube::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
 void Eng::ExSkydomeScreen::Execute(const FgContext &fg) {
     LazyInit(fg.ren_ctx(), fg.sh());
 
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
 
     Ren::WeakImgRef color_tex = fg.AccessRWImageRef(args_->color_tex);
 

@@ -184,18 +184,19 @@ class Context {
 #endif
     ShaderHandle LoadShader(std::string_view name, Span<const uint8_t> spirv_data, eShaderType type);
 
-    ProgramHandle LoadProgram(ShaderHandle vs, ShaderHandle fs, ShaderHandle tcs, ShaderHandle tes, ShaderHandle gs);
-    ProgramHandle LoadProgram(ShaderHandle cs);
+    ProgramHandle LoadProgram(ShaderROHandle vs, ShaderROHandle fs, ShaderROHandle tcs, ShaderROHandle tes,
+                              ShaderROHandle gs);
+    ProgramHandle LoadProgram(ShaderROHandle cs);
 
 #if defined(REN_VK_BACKEND)
-    ProgramHandle LoadProgram2(ShaderHandle raygen, ShaderHandle closesthit, ShaderHandle anyhit, ShaderHandle miss,
-                               ShaderHandle intersection);
+    ProgramHandle LoadProgram2(ShaderROHandle rgs, ShaderROHandle chs, ShaderROHandle ahs, ShaderROHandle ms,
+                               ShaderROHandle is);
 #endif
 
     void ReleasePrograms();
 
     // VertexInput
-    VertexInputHandle FindOrCreateVertexInput(Span<const VtxAttribDesc> attribs, BufferHandle elem_buf);
+    VertexInputHandle FindOrCreateVertexInput(Span<const VtxAttribDesc> attribs, BufferROHandle elem_buf);
     void ReleaseVertexInput(const VertexInputHandle handle);
     void ReleaseVertexInputs();
 
@@ -212,9 +213,10 @@ class Context {
     void ReleaseRenderPasses();
 
     // Pipeline
-    PipelineHandle FindOrCreatePipeline(const ProgramHandle prog, int subgroup_size = -1);
-    PipelineHandle FindOrCreatePipeline(const RastState &rast_state, ProgramHandle prog, VertexInputHandle vtx_input,
-                                        RenderPassHandle render_pass, uint32_t subpass_index);
+    PipelineHandle FindOrCreatePipeline(const ProgramROHandle prog, int subgroup_size = -1);
+    PipelineHandle FindOrCreatePipeline(const RastState &rast_state, ProgramROHandle prog,
+                                        VertexInputROHandle vtx_input, RenderPassROHandle render_pass,
+                                        uint32_t subpass_index);
 
     /*** Image ***/
     ImgRef LoadImage(std::string_view name, const ImgParams &p, MemAllocators *mem_allocs, eImgLoadStatus *load_status);

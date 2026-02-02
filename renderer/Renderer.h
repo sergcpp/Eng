@@ -171,7 +171,7 @@ class Renderer {
     Ren::WeakImgRef env_map_;
     Ren::WeakImgRef lm_direct_, lm_indir_, lm_indir_sh_[4];
     const DrawList *p_list_;
-    Ren::SmallVector<std::variant<FgResRef, FgBufHandle>, 8> backbuffer_sources_;
+    Ren::SmallVector<std::variant<FgResRef, FgBufRWHandle>, 8> backbuffer_sources_;
     float min_exposure_ = 1.0f, max_exposure_ = 1.0f;
     std::optional<float> custom_pre_exposure_;
 
@@ -219,8 +219,8 @@ class Renderer {
         blit_down_depth_prog_, blit_ssr_compose_prog_, blit_fxaa_prog_, blit_vol_compose_prog_;
 
     struct CommonBuffers {
-        FgBufHandle cells, rt_cells, lights, decals, items, rt_items;
-        FgBufHandle skin_transforms, shape_keys, instance_indices, shared_data, atomic_cnt;
+        FgBufRWHandle cells, rt_cells, lights, decals, items, rt_items;
+        FgBufRWHandle skin_transforms, shape_keys, instance_indices, shared_data, atomic_cnt;
     };
 
     struct FrameTextures {
@@ -249,7 +249,7 @@ class Renderer {
         FgResRef gi_cache_distance;
         FgResRef gi_cache_offset;
 
-        FgBufHandle oit_depth_buf;
+        FgBufRWHandle oit_depth_buf;
     };
 
     void AddBuffersUpdatePass(CommonBuffers &common_buffers, const PersistentGpuData &persistent_data);
@@ -272,15 +272,15 @@ class Renderer {
     // GI Cache
     void AddGICachePasses(const Ren::WeakImgRef &env_map, const CommonBuffers &common_buffers,
                           const PersistentGpuData &persistent_data, const AccelerationStructureData &acc_struct_data,
-                          const BindlessTextureData &bindless, FgBufHandle rt_geo_instances_res,
-                          FgBufHandle rt_obj_instances_res, FrameTextures &frame_textures);
+                          const BindlessTextureData &bindless, FgBufROHandle rt_geo_instances_res,
+                          FgBufROHandle rt_obj_instances_res, FrameTextures &frame_textures);
 
     // GI Diffuse
     void AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::WeakImgRef &lm_direct,
                           const Ren::WeakImgRef lm_indir_sh[4], bool debug_denoise, const CommonBuffers &common_buffers,
                           const PersistentGpuData &persistent_data, const AccelerationStructureData &acc_struct_data,
                           const BindlessTextureData &bindless, FgResRef depth_hierarchy,
-                          FgBufHandle rt_geo_instances_res, FgBufHandle rt_obj_instances_res,
+                          FgBufROHandle rt_geo_instances_res, FgBufROHandle rt_obj_instances_res,
                           FrameTextures &frame_textures);
     void AddSSAOPasses(FgResRef depth_down_2x, FgResRef depth_tex, FgResRef &out_ssao);
     FgResRef AddGTAOPasses(eSSAOQuality quality, FgResRef depth_tex, FgResRef velocity_tex, FgResRef norm_tex);
@@ -289,7 +289,7 @@ class Renderer {
     void AddHQSpecularPasses(bool deferred_shading, bool debug_denoise, const CommonBuffers &common_buffers,
                              const PersistentGpuData &persistent_data, const AccelerationStructureData &acc_struct_data,
                              const BindlessTextureData &bindless, FgResRef depth_hierarchy,
-                             FgBufHandle rt_geo_instances_res, FgBufHandle rt_obj_instances_res,
+                             FgBufROHandle rt_geo_instances_res, FgBufROHandle rt_obj_instances_res,
                              FrameTextures &frame_textures);
     void AddLQSpecularPasses(const CommonBuffers &common_buffers, FgResRef depth_down_2x,
                              FrameTextures &frame_textures);
@@ -297,8 +297,8 @@ class Renderer {
     // Sun Shadows
     FgResRef AddHQSunShadowsPasses(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                                    const AccelerationStructureData &acc_struct_data,
-                                   const BindlessTextureData &bindless, FgBufHandle rt_geo_instances_res,
-                                   FgBufHandle rt_obj_instances_res, const FrameTextures &frame_textures,
+                                   const BindlessTextureData &bindless, FgBufROHandle rt_geo_instances_res,
+                                   FgBufROHandle rt_obj_instances_res, const FrameTextures &frame_textures,
                                    bool debug_denoise);
     FgResRef AddLQSunShadowsPass(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                                  const AccelerationStructureData &acc_struct_data, const BindlessTextureData &bindless,
@@ -307,7 +307,7 @@ class Renderer {
     // Transparency
     void AddOITPasses(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                       const AccelerationStructureData &acc_struct_data, const BindlessTextureData &bindless,
-                      FgResRef depth_hierarchy, FgBufHandle rt_geo_instances_res, FgBufHandle rt_obj_instances_res,
+                      FgResRef depth_hierarchy, FgBufROHandle rt_geo_instances_res, FgBufROHandle rt_obj_instances_res,
                       FrameTextures &frame_textures);
     void AddForwardTransparentPass(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                                    const BindlessTextureData &bindless, FrameTextures &frame_textures);
@@ -317,8 +317,8 @@ class Renderer {
     void AddSkydomePass(const CommonBuffers &common_buffers, FrameTextures &frame_textures);
     void AddSunColorUpdatePass(CommonBuffers &common_buffers);
     void AddVolumetricPasses(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
-                             const AccelerationStructureData &acc_struct_data, FgBufHandle rt_geo_instances_res,
-                             FgBufHandle rt_obj_instances_res, FrameTextures &frame_textures);
+                             const AccelerationStructureData &acc_struct_data, FgBufROHandle rt_geo_instances_res,
+                             FgBufROHandle rt_obj_instances_res, FrameTextures &frame_textures);
 
     // Debugging
     FgResRef AddDebugVelocityPass(FgResRef velocity);

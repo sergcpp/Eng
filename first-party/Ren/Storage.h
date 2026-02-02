@@ -462,7 +462,7 @@ template <typename T, typename StorageType> class WeakRef {
 ////
 
 namespace Ren {
-template <typename T> struct Handle {
+template <typename T, int Tag = 0> struct Handle {
     uint32_t index = 0xffffffff;
     uint32_t generation = 0;
 
@@ -484,16 +484,23 @@ template <typename T> struct Handle {
         }
         return false;
     }
+
+    template <int HigherTag, typename = std::enable_if_t<(HigherTag > Tag)>> operator Handle<T, HigherTag>() const {
+        return Handle<T, HigherTag>{index, generation};
+    }
 };
 
 static const uint64_t InvalidHandle = 0xffffffff00000000u;
+
+static const int RWTag = 0;
+static const int ROTag = 1;
 
 // TODO: Optimize the storage (copy SparseArray)
 template <typename T, typename U> class DualStorage {
   protected:
     std::vector<T> data_main_;
     std::vector<U> data_cold_;
-    std::vector<uint32_t> generation_;
+    mutable std::vector<uint32_t> generation_;
 
     std::vector<uint32_t> free_indices_;
 
@@ -521,22 +528,22 @@ template <typename T, typename U> class DualStorage {
         generation_.reserve(size);
     }
 
-    Handle<T> Emplace() {
+    Handle<T, RWTag> Emplace() {
         if (free_indices_.empty()) {
             const uint32_t index = uint32_t(generation_.size());
             data_main_.emplace_back();
             data_cold_.emplace_back();
             generation_.push_back(0);
-            return Handle<T>{index, 0};
+            return Handle<T, RWTag>{index, 0};
         }
 
         const uint32_t index = free_indices_.back();
         free_indices_.pop_back();
 
-        return Handle<T>{index, generation_[index]};
+        return Handle<T, RWTag>{index, generation_[index]};
     }
 
-    void Free(const Handle<T> handle) {
+    void Free(const Handle<T, RWTag> handle) {
         assert(handle.generation == generation_[handle.index]);
         data_main_[handle.index] = {};
         data_cold_[handle.index] = {};
@@ -544,24 +551,12 @@ template <typename T, typename U> class DualStorage {
         free_indices_.push_back(handle.index);
     }
 
-    std::pair<const T &, const U &> Get(const Handle<T> handle) const {
+    std::pair<const T &, const U &> Get(const Handle<T, ROTag> handle) const {
         assert(handle.generation == generation_[handle.index]);
         return {data_main_[handle.index], data_cold_[handle.index]};
     }
 
-    std::pair<T &, U &> Get(const Handle<T> handle) {
-        assert(handle.generation == generation_[handle.index]);
-        return {data_main_[handle.index], data_cold_[handle.index]};
-    }
-
-    std::pair<const T &, const U &> Get(const uint64_t opaque_handle) const {
-        const Handle<T> handle{opaque_handle};
-        assert(handle.generation == generation_[handle.index]);
-        return {data_main_[handle.index], data_cold_[handle.index]};
-    }
-
-    std::pair<T &, U &> Get(const uint64_t opaque_handle) {
-        const Handle<T> handle{opaque_handle};
+    std::pair<T &, U &> Get(const Handle<T, ROTag> handle) {
         assert(handle.generation == generation_[handle.index]);
         return {data_main_[handle.index], data_cold_[handle.index]};
     }
@@ -572,12 +567,22 @@ template <typename T, typename U> class DualStorage {
 
     std::pair<T &, U &> GetUnsafe(const uint32_t index) { return {data_main_[index], data_cold_[index]}; }
 
-    std::pair<T *, U *> TryGet(const Handle<T> handle) {
+    std::pair<T *, U *> TryGet(const Handle<T, RWTag> handle) {
         if (handle.generation == generation_[handle.index]) {
             return {&data_main_[handle.index], &data_cold_[handle.index]};
         }
         return {nullptr, nullptr};
     }
+
+    void Clear() {
+        data_main_.clear();
+        data_cold_.clear();
+        generation_.clear();
+        free_indices_.clear();
+    }
+
+    uint32_t GetGeneration(const uint32_t index) const { return generation_[index]; }
+    void SetGeneration(const uint32_t index, const uint32_t generation) const { generation_[index] = generation; }
 
     uint32_t Size() const { return uint32_t(generation_.size() - free_indices_.size()); }
     uint32_t Capacity() const { return uint32_t(generation_.capacity()); }
@@ -586,46 +591,55 @@ template <typename T, typename U> class DualStorage {
 
 template <typename T, typename U> class NamedDualStorage : public DualStorage<T, U> {
   protected:
-    HashMap32<String, Handle<T>> items_by_name_;
+    HashMap32<String, uint32_t> items_by_name_;
 
   public:
-    const HashMap32<String, Handle<T>> &items_by_name() const { return items_by_name_; }
-    HashMap32<String, Handle<T>> &items_by_name() { return items_by_name_; }
+    const HashMap32<String, uint32_t> &items_by_name() const { return items_by_name_; }
+    HashMap32<String, uint32_t> &items_by_name() { return items_by_name_; }
 
-    Handle<T> Emplace(const String &name) {
-        const Handle<T> ret = DualStorage<T, U>::Emplace();
-        items_by_name_.Set(name, ret);
+    Handle<T, RWTag> Emplace(const String &name) {
+        const Handle<T, RWTag> ret = DualStorage<T, U>::Emplace();
+        items_by_name_.Set(name, ret.index);
         return ret;
     }
 
-    Handle<T> Find(const std::string_view name) {
-        Handle<T> *p_handle = items_by_name_.Find(name);
-        if (p_handle) {
-            return *p_handle;
+    Handle<T, RWTag> Find(const std::string_view name) {
+        uint32_t *p_index = items_by_name_.Find(name);
+        if (p_index) {
+            return {*p_index, this->generation_[*p_index]};
         } else {
             return {};
         }
     }
 
-    void Free(const Handle<T> handle) { DualStorage<T, U>::Free(handle); }
+    void Free(const Handle<T, RWTag> handle) { DualStorage<T, U>::Free(handle); }
 
-    typename HashMap32<String, Handle<T>>::iterator Free(typename HashMap32<String, Handle<T>>::iterator it) {
-        DualStorage<T, U>::Free(it->val);
+    typename HashMap32<String, uint32_t>::iterator Free(typename HashMap32<String, uint32_t>::iterator it) {
+        DualStorage<T, U>::Free(Handle<T>{it->val, this->generation_[it->val]});
         return items_by_name_.erase(it);
     }
 
     void Release(const std::string_view name) {
-        Handle<T> *p_handle = items_by_name_.Find(name);
-        if (p_handle) {
-            DualStorage<T, U>::Free(*p_handle);
+        uint32_t *p_index = items_by_name_.Find(name);
+        if (p_index) {
+            DualStorage<T, U>::Free(Handle<T>{*p_index, this->generation_[*p_index]});
             items_by_name_.Erase(name);
         }
     }
 
+    void Clear() {
+        DualStorage<T, U>::Clear();
+        items_by_name_.clear();
+    }
+
     int ReleaseUnusedStrings() {
+        std::vector<bool> is_free(this->data_main_.size(), false);
+        for (const uint32_t index : this->free_indices_) {
+            is_free[index] = true;
+        }
         int count = 0;
         for (auto it = items_by_name_.begin(); it != items_by_name_.end();) {
-            if (!DualStorage<T, U>::TryGet(it->val).first) {
+            if (is_free[it->val]) {
                 it = items_by_name_.erase(it);
                 ++count;
             } else {

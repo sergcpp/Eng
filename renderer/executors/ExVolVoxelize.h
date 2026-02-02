@@ -12,21 +12,21 @@ namespace Eng {
 class ExVolVoxelize final : public FgExecutor {
   public:
     struct Args {
-        FgBufHandle shared_data;
+        FgBufROHandle shared_data;
         FgResRef stbn_tex;
-        FgBufHandle geo_data;
-        FgBufHandle materials;
-        FgBufHandle tlas_buf;
+        FgBufROHandle geo_data;
+        FgBufROHandle materials;
+        FgBufROHandle tlas_buf;
 
         Ren::IAccStructure *tlas = nullptr;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgBufHandle rt_blas_buf;
-            FgBufHandle prim_ndx_buf;
-            FgBufHandle mesh_instances_buf;
-            FgBufHandle vtx_buf1;
-            FgBufHandle ndx_buf;
+            FgBufROHandle rt_blas_buf;
+            FgBufROHandle prim_ndx_buf;
+            FgBufROHandle mesh_instances_buf;
+            FgBufROHandle vtx_buf1;
+            FgBufROHandle ndx_buf;
         } swrt;
 
         FgResRef out_emission_tex;

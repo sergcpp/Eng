@@ -13,14 +13,14 @@
 void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
     using namespace SampleLights;
 
-    const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::BufferHandle random_seq_buf = fg.AccessROBuffer(args_->random_seq);
+    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
+    const Ren::BufferROHandle random_seq_buf = fg.AccessROBuffer(args_->random_seq);
 
-    const Ren::BufferHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(args_->materials);
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    [[maybe_unused]] const Ren::BufferHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
+    [[maybe_unused]] const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
     const Ren::Image &albedo_tex = fg.AccessROImage(args_->albedo_tex);
     const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
@@ -34,8 +34,8 @@ void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
         return;
     }
 
-    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::BufferHandle nodes_buf = fg.AccessROBuffer(args_->nodes_buf);
+    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::BufferROHandle nodes_buf = fg.AccessROBuffer(args_->nodes_buf);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();

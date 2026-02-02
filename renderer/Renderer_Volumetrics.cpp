@@ -285,7 +285,7 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
             auto &sky_upsample = fg_builder_.AddNode("SKY UPSAMPLE");
 
             struct PassData {
-                FgBufHandle shared_data;
+                FgBufROHandle shared_data;
                 FgResRef env_map;
                 FgResRef sky_temp_tex;
                 FgResRef sky_hist_tex;
@@ -309,7 +309,7 @@ void Eng::Renderer::AddSkydomePass(const CommonBuffers &common_buffers, FrameTex
             data->sky_hist_tex = sky_upsample.AddHistoryTextureInput(sky_upsampled, Stg::ComputeShader);
 
             sky_upsample.set_execute_cb([data, this](const FgContext &fg) {
-                const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+                const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
                 const Ren::Image &env_map_tex = fg.AccessROImage(data->env_map);
                 const Ren::Image &sky_temp_tex = fg.AccessROImage(data->sky_temp_tex);
                 const Ren::Image &sky_hist_tex = fg.AccessROImage(data->sky_hist_tex);
@@ -390,20 +390,20 @@ void Eng::Renderer::AddSunColorUpdatePass(CommonBuffers &common_buffers) {
         return;
     }
 
-    FgBufHandle output;
+    FgBufRWHandle output;
 
     { // Sample sun color
         auto &sun_color = fg_builder_.AddNode("SUN COLOR SAMPLE");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef transmittance_lut;
             FgResRef multiscatter_lut;
             FgResRef moon_tex;
             FgResRef weather_tex;
             FgResRef cirrus_tex;
             FgResRef noise3d_tex;
-            FgBufHandle output_buf;
+            FgBufRWHandle output_buf;
         };
 
         auto *data = sun_color.AllocNodeData<PassData>();
@@ -422,7 +422,7 @@ void Eng::Renderer::AddSunColorUpdatePass(CommonBuffers &common_buffers) {
         output = data->output_buf = sun_color.AddStorageOutput("Sun Brightness Result", desc, Stg::ComputeShader);
 
         sun_color.set_execute_cb([data, this](const FgContext &fg) {
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &transmittance_lut = fg.AccessROImage(data->transmittance_lut);
             const Ren::Image &multiscatter_lut = fg.AccessROImage(data->multiscatter_lut);
             const Ren::Image &moon_tex = fg.AccessROImage(data->moon_tex);
@@ -449,8 +449,8 @@ void Eng::Renderer::AddSunColorUpdatePass(CommonBuffers &common_buffers) {
         auto &sun_color = fg_builder_.AddNode("SUN COLOR UPDATE");
 
         struct PassData {
-            FgBufHandle sample_buf;
-            FgBufHandle shared_data;
+            FgBufROHandle sample_buf;
+            FgBufRWHandle shared_data;
         };
 
         auto *data = sun_color.AllocNodeData<PassData>();
@@ -459,7 +459,7 @@ void Eng::Renderer::AddSunColorUpdatePass(CommonBuffers &common_buffers) {
         common_buffers.shared_data = data->shared_data = sun_color.AddTransferOutput(common_buffers.shared_data);
 
         sun_color.set_execute_cb([data](const FgContext &fg) {
-            const Ren::BufferHandle sample_buf = fg.AccessROBuffer(data->sample_buf);
+            const Ren::BufferROHandle sample_buf = fg.AccessROBuffer(data->sample_buf);
             const Ren::BufferHandle unif_sh_data_buf = fg.AccessRWBuffer(data->shared_data);
 
             CopyBufferToBuffer(fg.ren_ctx().api(), fg.storages(), sample_buf, 0, unif_sh_data_buf,
@@ -472,7 +472,7 @@ void Eng::Renderer::AddSunColorUpdatePass(CommonBuffers &common_buffers) {
 
 void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                                         const AccelerationStructureData &acc_struct_data,
-                                        const FgBufHandle rt_geo_instances_res, const FgBufHandle rt_obj_instances_res,
+                                        const FgBufROHandle rt_geo_instances_res, const FgBufROHandle rt_obj_instances_res,
                                         FrameTextures &frame_textures) {
     if (!ctx_.capabilities.hwrt && !ctx_.capabilities.swrt) {
         return;
@@ -531,11 +531,11 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
         auto &scatter = fg_builder_.AddNode("VOL SCATTER");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef stbn_tex;
             FgResRef shadow_depth_tex, shadow_color_tex;
             FgResRef fr_emission_tex, fr_scatter_tex;
-            FgBufHandle cells_buf, items_buf, lights_buf, decals_buf;
+            FgBufROHandle cells_buf, items_buf, lights_buf, decals_buf;
             FgResRef envmap_tex;
             FgResRef irradiance_tex, distance_tex, offset_tex;
             FgResRef out_emission_tex, out_scatter_tex;
@@ -566,7 +566,7 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
         }
 
         scatter.set_execute_cb([data, this, AllCascades](const FgContext &fg) {
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
 
             const Ren::Image &stbn_tex = fg.AccessROImage(data->stbn_tex);
             const Ren::Image &shad_depth_tex = fg.AccessROImage(data->shadow_depth_tex);
@@ -575,10 +575,10 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
             const Ren::Image &fr_emission_tex = fg.AccessROImage(data->fr_emission_tex);
             const Ren::Image &fr_scatter_tex = fg.AccessROImage(data->fr_scatter_tex);
 
-            const Ren::BufferHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
-            const Ren::BufferHandle items_buf = fg.AccessROBuffer(data->items_buf);
-            const Ren::BufferHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
-            const Ren::BufferHandle decals_buf = fg.AccessROBuffer(data->decals_buf);
+            const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
+            const Ren::BufferROHandle items_buf = fg.AccessROBuffer(data->items_buf);
+            const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
+            const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(data->decals_buf);
             const Ren::Image &envmap_tex = fg.AccessROImage(data->envmap_tex);
 
             const Ren::Image *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
@@ -643,7 +643,7 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
         auto &ray_march = fg_builder_.AddNode("VOL RAY MARCH");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef fr_emission_tex;
             FgResRef fr_scatter_tex;
             FgResRef output_tex;
@@ -668,7 +668,7 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
         }
 
         ray_march.set_execute_cb([data, this](const FgContext &fg) {
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &fr_emission_tex = fg.AccessROImage(data->fr_emission_tex);
             const Ren::Image &fr_scatter_tex = fg.AccessROImage(data->fr_scatter_tex);
 
@@ -701,7 +701,7 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
         auto &apply = fg_builder_.AddNode("VOL APPLY");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef depth_tex;
             FgResRef froxel_tex;
             FgResRef output_tex;
@@ -715,7 +715,7 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
         frame_textures.color = data->output_tex = apply.AddColorOutput(frame_textures.color);
 
         apply.set_execute_cb([data, this](const FgContext &fg) {
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
             const Ren::Image &froxel_tex = fg.AccessROImage(data->froxel_tex);
 

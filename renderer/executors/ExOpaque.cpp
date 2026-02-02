@@ -5,9 +5,9 @@
 #include "../../utils/ShaderLoader.h"
 
 void Eng::ExOpaque::Execute(const FgContext &fg) {
-    const Ren::BufferHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
+    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     Ren::WeakImgRef color_tex = fg.AccessRWImageRef(color_tex_);
     Ren::WeakImgRef normal_tex = fg.AccessRWImageRef(normal_tex_);
@@ -18,8 +18,8 @@ void Eng::ExOpaque::Execute(const FgContext &fg) {
     DrawOpaque(fg);
 }
 
-void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferHandle vtx_buf1,
-                             const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf,
+void Eng::ExOpaque::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
+                             const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
                              const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
                              const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex) {
     const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store},

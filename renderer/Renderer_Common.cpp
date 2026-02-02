@@ -236,7 +236,7 @@ void Eng::Renderer::AddBuffersUpdatePass(CommonBuffers &common_buffers, const Pe
         desc.views.push_back(Ren::eFormat::RG32UI);
         common_buffers.instance_indices = update_bufs.AddTransferOutput("Instance Indices", desc);
     }
-    FgBufHandle shared_data_res;
+    FgBufRWHandle shared_data_res;
     { // create uniform buffer
         FgBufDesc desc = {};
         desc.type = Ren::eBufType::Uniform;
@@ -489,9 +489,8 @@ void Eng::Renderer::AddBuffersUpdatePass(CommonBuffers &common_buffers, const Pe
                          fg.cmd_buf());
         }
 
-        const Ren::BufferMain &atomic_cnt_buf_main = fg.storages().buffers.Get(atomic_cnt_buf).first;
-        Ren::Buffer_Fill(fg.ren_ctx().api(), atomic_cnt_buf_main, 0, sizeof(uint32_t), 0, fg.cmd_buf());
-        // atomic_cnt_buf.Fill(0, sizeof(uint32_t), 0, fg.cmd_buf());
+        Ren::BufferMain &atomic_cnt_buf_main = fg.storages().buffers.Get(atomic_cnt_buf).first;
+        Buffer_Fill(fg.ren_ctx().api(), atomic_cnt_buf_main, 0, sizeof(uint32_t), 0, fg.cmd_buf());
     });
 }
 
@@ -597,11 +596,11 @@ void Eng::Renderer::AddGBufferFillPass(const CommonBuffers &common_buffers, cons
     using Stg = Ren::eStage;
 
     auto &gbuf_fill = fg_builder_.AddNode("GBUFFER FILL");
-    const FgBufHandle vtx_buf1 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgBufHandle vtx_buf2 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgBufHandle ndx_buf = gbuf_fill.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufROHandle vtx_buf1 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
+    const FgBufROHandle vtx_buf2 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
+    const FgBufROHandle ndx_buf = gbuf_fill.AddIndexBufferInput(persistent_data.indices_buf);
 
-    const FgBufHandle materials_buf =
+    const FgBufROHandle materials_buf =
         gbuf_fill.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
 
     const FgResRef noise_tex =
@@ -609,17 +608,17 @@ void Eng::Renderer::AddGBufferFillPass(const CommonBuffers &common_buffers, cons
     const FgResRef dummy_white = gbuf_fill.AddTextureInput(dummy_white_, Stg::FragmentShader);
     const FgResRef dummy_black = gbuf_fill.AddTextureInput(dummy_black_, Stg::FragmentShader);
 
-    const FgBufHandle instances_buf =
+    const FgBufROHandle instances_buf =
         gbuf_fill.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
-    const FgBufHandle instances_indices_buf =
+    const FgBufROHandle instances_indices_buf =
         gbuf_fill.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
-    const FgBufHandle shared_data_buf = gbuf_fill.AddUniformBufferInput(
+    const FgBufROHandle shared_data_buf = gbuf_fill.AddUniformBufferInput(
         common_buffers.shared_data, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
 
-    const FgBufHandle cells_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
-    const FgBufHandle items_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
-    const FgBufHandle decals_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
+    const FgBufROHandle cells_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
+    const FgBufROHandle items_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
+    const FgBufROHandle decals_buf = gbuf_fill.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
 
     frame_textures.albedo = gbuf_fill.AddColorOutput(MAIN_ALBEDO_TEX, frame_textures.albedo_desc);
     frame_textures.normal = gbuf_fill.AddColorOutput(MAIN_NORMAL_TEX, frame_textures.normal_desc);
@@ -637,11 +636,12 @@ void Eng::Renderer::AddForwardOpaquePass(const CommonBuffers &common_buffers, co
     using Stg = Ren::eStage;
 
     auto &opaque = fg_builder_.AddNode("OPAQUE");
-    const FgBufHandle vtx_buf1 = opaque.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgBufHandle vtx_buf2 = opaque.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgBufHandle ndx_buf = opaque.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufROHandle vtx_buf1 = opaque.AddVertexBufferInput(persistent_data.vertex_buf1);
+    const FgBufROHandle vtx_buf2 = opaque.AddVertexBufferInput(persistent_data.vertex_buf2);
+    const FgBufROHandle ndx_buf = opaque.AddIndexBufferInput(persistent_data.indices_buf);
 
-    const FgBufHandle materials_buf = opaque.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
+    const FgBufROHandle materials_buf =
+        opaque.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
     const FgResRef brdf_lut = opaque.AddTextureInput(brdf_lut_, Stg::FragmentShader);
     const FgResRef noise_tex =
         opaque.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
@@ -649,17 +649,17 @@ void Eng::Renderer::AddForwardOpaquePass(const CommonBuffers &common_buffers, co
 
     const FgResRef dummy_black = opaque.AddTextureInput(dummy_black_, Stg::FragmentShader);
 
-    const FgBufHandle instances_buf = opaque.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
-    const FgBufHandle instances_indices_buf =
+    const FgBufROHandle instances_buf = opaque.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+    const FgBufROHandle instances_indices_buf =
         opaque.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
-    const FgBufHandle shader_data_buf =
+    const FgBufROHandle shader_data_buf =
         opaque.AddUniformBufferInput(common_buffers.shared_data, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
 
-    const FgBufHandle cells_buf = opaque.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
-    const FgBufHandle items_buf = opaque.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
-    const FgBufHandle lights_buf = opaque.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
-    const FgBufHandle decals_buf = opaque.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
+    const FgBufROHandle cells_buf = opaque.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
+    const FgBufROHandle items_buf = opaque.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
+    const FgBufROHandle lights_buf = opaque.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
+    const FgBufROHandle decals_buf = opaque.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
 
     const FgResRef shadowmap_tex = opaque.AddTextureInput(frame_textures.shadow_depth, Stg::FragmentShader);
     const FgResRef ssao_tex = opaque.AddTextureInput(frame_textures.ssao, Stg::FragmentShader);
@@ -689,11 +689,11 @@ void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffer
     using Stg = Ren::eStage;
 
     auto &transparent = fg_builder_.AddNode("TRANSPARENT");
-    const FgBufHandle vtx_buf1 = transparent.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgBufHandle vtx_buf2 = transparent.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgBufHandle ndx_buf = transparent.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufROHandle vtx_buf1 = transparent.AddVertexBufferInput(persistent_data.vertex_buf1);
+    const FgBufROHandle vtx_buf2 = transparent.AddVertexBufferInput(persistent_data.vertex_buf2);
+    const FgBufROHandle ndx_buf = transparent.AddIndexBufferInput(persistent_data.indices_buf);
 
-    const FgBufHandle materials_buf =
+    const FgBufROHandle materials_buf =
         transparent.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
     const FgResRef brdf_lut = transparent.AddTextureInput(brdf_lut_, Stg::FragmentShader);
     const FgResRef noise_tex =
@@ -702,18 +702,18 @@ void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffer
 
     const FgResRef dummy_black = transparent.AddTextureInput(dummy_black_, Stg::FragmentShader);
 
-    const FgBufHandle instances_buf =
+    const FgBufROHandle instances_buf =
         transparent.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
-    const FgBufHandle instances_indices_buf =
+    const FgBufROHandle instances_indices_buf =
         transparent.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
-    const FgBufHandle shader_data_buf = transparent.AddUniformBufferInput(
+    const FgBufROHandle shader_data_buf = transparent.AddUniformBufferInput(
         common_buffers.shared_data, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
 
-    const FgBufHandle cells_buf = transparent.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
-    const FgBufHandle items_buf = transparent.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
-    const FgBufHandle lights_buf = transparent.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
-    const FgBufHandle decals_buf = transparent.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
+    const FgBufROHandle cells_buf = transparent.AddStorageReadonlyInput(common_buffers.cells, Stg::FragmentShader);
+    const FgBufROHandle items_buf = transparent.AddStorageReadonlyInput(common_buffers.items, Stg::FragmentShader);
+    const FgBufROHandle lights_buf = transparent.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
+    const FgBufROHandle decals_buf = transparent.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
 
     const FgResRef shadowmap_tex = transparent.AddTextureInput(frame_textures.shadow_depth, Stg::FragmentShader);
     const FgResRef ssao_tex = transparent.AddTextureInput(frame_textures.ssao, Stg::FragmentShader);
@@ -745,8 +745,8 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
     auto &gbuf_shade = fg_builder_.AddNode("GBUFFER SHADE");
 
     struct PassData {
-        FgBufHandle shared_data;
-        FgBufHandle cells_buf, items_buf, lights_buf, decals_buf;
+        FgBufROHandle shared_data;
+        FgBufROHandle cells_buf, items_buf, lights_buf, decals_buf;
         FgResRef shadow_depth_tex, shadow_color_tex, ssao_tex, gi_tex, sun_shadow_tex;
         FgResRef depth_tex, albedo_tex, normal_tex, spec_tex;
         FgResRef ltc_luts_tex, env_tex;
@@ -785,11 +785,11 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
     gbuf_shade.set_execute_cb([this, data](const FgContext &fg) {
         using namespace GBufferShade;
 
-        const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
-        const Ren::BufferHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
-        const Ren::BufferHandle items_buf = fg.AccessROBuffer(data->items_buf);
-        const Ren::BufferHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
-        const Ren::BufferHandle decals_buf = fg.AccessROBuffer(data->decals_buf);
+        const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
+        const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(data->cells_buf);
+        const Ren::BufferROHandle items_buf = fg.AccessROBuffer(data->items_buf);
+        const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
+        const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(data->decals_buf);
 
         const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
         const Ren::Image &albedo_tex = fg.AccessROImage(data->albedo_tex);
@@ -846,22 +846,23 @@ void Eng::Renderer::AddEmissivePass(const CommonBuffers &common_buffers, const P
 
     auto &emissive = fg_builder_.AddNode("EMISSIVE");
 
-    const FgBufHandle vtx_buf1 = emissive.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgBufHandle vtx_buf2 = emissive.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgBufHandle ndx_buf = emissive.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufROHandle vtx_buf1 = emissive.AddVertexBufferInput(persistent_data.vertex_buf1);
+    const FgBufROHandle vtx_buf2 = emissive.AddVertexBufferInput(persistent_data.vertex_buf2);
+    const FgBufROHandle ndx_buf = emissive.AddIndexBufferInput(persistent_data.indices_buf);
 
-    const FgBufHandle materials_buf =
+    const FgBufROHandle materials_buf =
         emissive.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
 
     const FgResRef noise_tex =
         emissive.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
     const FgResRef dummy_white = emissive.AddTextureInput(dummy_white_, Stg::FragmentShader);
 
-    const FgBufHandle instances_buf = emissive.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
-    const FgBufHandle instances_indices_buf =
+    const FgBufROHandle instances_buf =
+        emissive.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+    const FgBufROHandle instances_indices_buf =
         emissive.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
-    const FgBufHandle shared_data_buf = emissive.AddUniformBufferInput(
+    const FgBufROHandle shared_data_buf = emissive.AddUniformBufferInput(
         common_buffers.shared_data, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
 
     frame_textures.color = emissive.AddColorOutput(MAIN_COLOR_TEX, frame_textures.color_desc);
@@ -879,7 +880,7 @@ void Eng::Renderer::AddFillStaticVelocityPass(const CommonBuffers &common_buffer
     auto &static_vel = fg_builder_.AddNode("FILL STATIC VEL");
 
     struct PassData {
-        FgBufHandle shared_data;
+        FgBufROHandle shared_data;
         FgResRef depth_tex;
         FgResRef velocity_tex;
     };
@@ -893,7 +894,7 @@ void Eng::Renderer::AddFillStaticVelocityPass(const CommonBuffers &common_buffer
     inout_velocity_tex = data->velocity_tex = static_vel.AddColorOutput(inout_velocity_tex);
 
     static_vel.set_execute_cb([this, data](const FgContext &fg) {
-        const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
+        const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
         Ren::WeakImgRef depth_tex = fg.AccessROImageRef(data->depth_tex);
 
         Ren::WeakImgRef velocity_tex = fg.AccessRWImageRef(data->velocity_tex);

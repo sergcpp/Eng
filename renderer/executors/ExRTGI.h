@@ -13,30 +13,30 @@ class ExRTGI final : public FgExecutor {
   public:
     struct Args {
         FgResRef noise_tex;
-        FgBufHandle geo_data;
-        FgBufHandle materials;
-        FgBufHandle vtx_buf1;
-        FgBufHandle ndx_buf;
-        FgBufHandle shared_data;
+        FgBufROHandle geo_data;
+        FgBufROHandle materials;
+        FgBufROHandle vtx_buf1;
+        FgBufROHandle ndx_buf;
+        FgBufROHandle shared_data;
         FgResRef depth_tex;
         FgResRef normal_tex;
-        FgBufHandle ray_counter;
-        FgBufHandle ray_list;
-        FgBufHandle indir_args;
-        FgBufHandle tlas_buf; // fake read for now
+        FgBufRWHandle ray_counter;
+        FgBufROHandle ray_list;
+        FgBufROHandle indir_args;
+        FgBufROHandle tlas_buf; // fake read for now
 
         Ren::IAccStructure *tlas = nullptr;
 
         struct {
             uint32_t root_node = 0xffffff;
-            FgBufHandle rt_blas_buf;
-            FgBufHandle prim_ndx_buf;
-            FgBufHandle mesh_instances_buf;
+            FgBufROHandle rt_blas_buf;
+            FgBufROHandle prim_ndx_buf;
+            FgBufROHandle mesh_instances_buf;
         } swrt;
 
         bool second_bounce = false;
 
-        FgBufHandle out_ray_hits_buf;
+        FgBufRWHandle out_ray_hits_buf;
     };
 
     ExRTGI(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args)

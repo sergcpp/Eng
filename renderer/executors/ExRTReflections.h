@@ -14,42 +14,42 @@ class ExRTReflections final : public FgExecutor {
   public:
     struct Args {
         FgResRef noise_tex;
-        FgBufHandle geo_data;
-        FgBufHandle materials;
-        FgBufHandle vtx_buf1;
-        FgBufHandle vtx_buf2;
-        FgBufHandle ndx_buf;
-        FgBufHandle shared_data;
+        FgBufROHandle geo_data;
+        FgBufROHandle materials;
+        FgBufROHandle vtx_buf1;
+        FgBufROHandle vtx_buf2;
+        FgBufROHandle ndx_buf;
+        FgBufROHandle shared_data;
         FgResRef depth_tex;
         FgResRef normal_tex;
         FgResRef env_tex;
-        FgBufHandle lights_buf;
+        FgBufROHandle lights_buf;
         FgResRef shadow_depth_tex, shadow_color_tex;
         FgResRef ltc_luts_tex;
-        FgBufHandle cells_buf;
-        FgBufHandle items_buf;
-        FgBufHandle ray_counter;
-        FgBufHandle ray_list;
-        FgBufHandle indir_args;
-        FgBufHandle tlas_buf;
+        FgBufROHandle cells_buf;
+        FgBufROHandle items_buf;
+        FgBufROHandle ray_counter;
+        FgBufROHandle ray_list;
+        FgBufROHandle indir_args;
+        FgBufROHandle tlas_buf;
 
         FgResRef irradiance_tex;
         FgResRef distance_tex;
         FgResRef offset_tex;
 
-        FgBufHandle stoch_lights_buf;
-        FgBufHandle light_nodes_buf;
+        FgBufROHandle stoch_lights_buf;
+        FgBufROHandle light_nodes_buf;
 
-        FgBufHandle oit_depth_buf;
+        FgBufROHandle oit_depth_buf;
 
         const Ren::IAccStructure *tlas = nullptr;
         const probe_volume_t *probe_volume = nullptr;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgBufHandle rt_blas_buf;
-            FgBufHandle prim_ndx_buf;
-            FgBufHandle mesh_instances_buf;
+            FgBufROHandle rt_blas_buf;
+            FgBufROHandle prim_ndx_buf;
+            FgBufROHandle mesh_instances_buf;
         } swrt;
 
         bool layered = false;
@@ -60,7 +60,7 @@ class ExRTReflections final : public FgExecutor {
 
     explicit ExRTReflections(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args,
                              bool use_rt_pipeline)
-        : view_state_(view_state), bindless_tex_(bindless_tex), use_rt_pipeline_(use_rt_pipeline), args_(args) {}
+        : use_rt_pipeline_(use_rt_pipeline), view_state_(view_state), bindless_tex_(bindless_tex), args_(args) {}
 
     void Execute(const FgContext &fg) override;
 

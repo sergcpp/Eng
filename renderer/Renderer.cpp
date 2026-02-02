@@ -771,10 +771,12 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
     view_state_.pre_exposure = custom_pre_exposure_.value_or(readback_exposure());
     view_state_.prev_pre_exposure = std::min(std::max(view_state_.prev_pre_exposure, min_exposure_), max_exposure_);
 
-    view_state_.skip_volumetrics =
-        (list.env.fog.density == 0.0f ||
-         (Ren::Length2(list.env.fog.scatter_color) == 0.0f) && list.env.fog.absorption == 1.0f) &&
-        Ren::Length2(list.env.fog.emission_color) == 0.0f && list.rt_obj_instances[int(eTLASIndex::Volume)].count == 0;
+    bool has_global_volume = Ren::Length2(list.env.fog.scatter_color) != 0.0f;
+    has_global_volume |= list.env.fog.absorption != 1.0f;
+    has_global_volume |= Ren::Length2(list.env.fog.emission_color) != 0.0f;
+    has_global_volume &= (list.env.fog.density != 0.0f);
+
+    view_state_.skip_volumetrics = !has_global_volume && list.rt_obj_instances[int(eTLASIndex::Volume)].count == 0;
 
     if (list.render_settings.taa_mode != eTAAMode::Off) {
         const int samples_to_use =
@@ -864,18 +866,18 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         { // Skinning
             auto &skinning = fg_builder_.AddNode("SKINNING");
 
-            const FgBufHandle skin_vtx_res =
+            const FgBufROHandle skin_vtx_res =
                 skinning.AddStorageReadonlyInput(persistent_data.skin_vertex_buf, Ren::eStage::ComputeShader);
-            const FgBufHandle in_skin_transforms_res =
+            const FgBufROHandle in_skin_transforms_res =
                 skinning.AddStorageReadonlyInput(common_buffers.skin_transforms, Ren::eStage::ComputeShader);
-            const FgBufHandle in_shape_keys_res =
+            const FgBufROHandle in_shape_keys_res =
                 skinning.AddStorageReadonlyInput(common_buffers.shape_keys, Ren::eStage::ComputeShader);
-            const FgBufHandle delta_buf_res =
+            const FgBufROHandle delta_buf_res =
                 skinning.AddStorageReadonlyInput(persistent_data.delta_buf, Ren::eStage::ComputeShader);
 
-            const FgBufHandle vtx_buf1_res =
+            const FgBufRWHandle vtx_buf1_res =
                 skinning.AddStorageOutput(persistent_data.vertex_buf1, Ren::eStage::ComputeShader);
-            const FgBufHandle vtx_buf2_res =
+            const FgBufRWHandle vtx_buf2_res =
                 skinning.AddStorageOutput(persistent_data.vertex_buf2, Ren::eStage::ComputeShader);
 
             skinning.make_executor<ExSkinning>(p_list_, skin_vtx_res, in_skin_transforms_res, in_shape_keys_res,
@@ -888,13 +890,13 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         auto &acc_struct_data = *fg_builder_.AllocNodeData<AccelerationStructureData>();
         for (int i = 0; i < int(eTLASIndex::_Count); ++i) {
             acc_struct_data.rt_tlas_buf[i] = persistent_data.rt_tlas_buf[i];
-            if (persistent_data.rt_tlas) {
+            if (persistent_data.rt_tlas[i]) {
                 acc_struct_data.rt_tlases[i] = persistent_data.rt_tlas[i].get();
             }
         }
         acc_struct_data.hwrt.rt_tlas_build_scratch_size = persistent_data.hwrt.rt_tlas_build_scratch_size;
 
-        FgBufHandle rt_geo_instances_res[int(eTLASIndex::_Count)], rt_obj_instances_res[int(eTLASIndex::_Count)];
+        FgBufRWHandle rt_geo_instances_res[int(eTLASIndex::_Count)], rt_obj_instances_res[int(eTLASIndex::_Count)];
 
         if (ctx_.capabilities.hwrt) {
             auto &update_rt_bufs = fg_builder_.AddNode("UPDATE ACC BUFS");
@@ -923,13 +925,12 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             auto &build_acc_structs = fg_builder_.AddNode("BUILD ACC STRUCTS");
 
-            rt_obj_instances_res[int(eTLASIndex::Main)] =
+            const FgBufROHandle rt_obj_instances_main_res =
                 build_acc_structs.AddASBuildReadonlyInput(rt_obj_instances_res[int(eTLASIndex::Main)]);
-            FgBufHandle rt_tlas_res =
+            const FgBufRWHandle rt_tlas_res =
                 build_acc_structs.AddASBuildOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Main)]);
 
-            FgBufHandle rt_tlas_build_scratch_res;
-
+            FgBufRWHandle rt_tlas_build_scratch_res;
             { // scratch buffer
                 FgBufDesc desc;
                 desc.type = Ren::eBufType::Storage;
@@ -938,11 +939,11 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             }
 
             build_acc_structs.make_executor<ExBuildAccStructures>(
-                p_list_, 0, rt_obj_instances_res[int(eTLASIndex::Main)], &acc_struct_data,
+                p_list_, 0, rt_obj_instances_main_res, &acc_struct_data,
                 Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                         persistent_data.swrt.rt_meshes.capacity()},
                 rt_tlas_res, rt_tlas_build_scratch_res);
-        } else if (ctx_.capabilities.swrt && acc_struct_data.rt_tlas_buf) {
+        } else if (ctx_.capabilities.swrt && acc_struct_data.rt_tlas_buf[int(eTLASIndex::Main)]) {
             auto &update_rt_bufs = fg_builder_.AddNode("UPDATE ACC BUFS");
 
             { // geo instances buffer
@@ -955,7 +956,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             }
 
             update_rt_bufs.make_executor<ExUpdateAccBuffers>(
-                p_list_, int(eTLASIndex::Main), rt_geo_instances_res[int(eTLASIndex::Main)], FgBufHandle{});
+                p_list_, int(eTLASIndex::Main), rt_geo_instances_res[int(eTLASIndex::Main)], FgBufRWHandle{});
 
             auto &build_acc_structs = fg_builder_.AddNode("BUILD ACC STRUCTS");
 
@@ -969,14 +970,14 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                     build_acc_structs.AddTransferOutput("RT Obj Instances", desc);
             }
 
-            const FgBufHandle rt_tlas_res =
+            const FgBufRWHandle rt_tlas_res =
                 build_acc_structs.AddTransferOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Main)]);
 
             build_acc_structs.make_executor<ExBuildAccStructures>(
                 p_list_, 0, rt_obj_instances_res[int(eTLASIndex::Main)], &acc_struct_data,
                 Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                         persistent_data.swrt.rt_meshes.capacity()},
-                rt_tlas_res, FgBufHandle{});
+                rt_tlas_res, FgBufRWHandle{});
         }
 
         if (deferred_shading && list.render_settings.shadows_quality == eShadowsQuality::Raytraced) {
@@ -1008,13 +1009,12 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 ////
 
                 auto &build_acc_structs = fg_builder_.AddNode("SH ACC STRUCTS");
-                rt_obj_instances_res[int(eTLASIndex::Shadow)] =
+                const FgBufROHandle rt_obj_instances_shadow_res =
                     build_acc_structs.AddASBuildReadonlyInput(rt_obj_instances_res[int(eTLASIndex::Shadow)]);
-                const FgBufHandle rt_sh_tlas_res =
+                const FgBufRWHandle rt_sh_tlas_res =
                     build_acc_structs.AddASBuildOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Shadow)]);
 
-                FgBufHandle rt_sh_tlas_build_scratch_res;
-
+                FgBufRWHandle rt_sh_tlas_build_scratch_res;
                 { // scratch buffer
                     FgBufDesc desc;
                     desc.type = Ren::eBufType::Storage;
@@ -1023,7 +1023,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 }
 
                 build_acc_structs.make_executor<ExBuildAccStructures>(
-                    p_list_, 1, rt_obj_instances_res[int(eTLASIndex::Shadow)], &acc_struct_data,
+                    p_list_, 1, rt_obj_instances_shadow_res, &acc_struct_data,
                     Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                             persistent_data.swrt.rt_meshes.capacity()},
                     rt_sh_tlas_res, rt_sh_tlas_build_scratch_res);
@@ -1040,7 +1040,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 }
 
                 update_rt_bufs.make_executor<ExUpdateAccBuffers>(
-                    p_list_, 1, rt_geo_instances_res[int(eTLASIndex::Shadow)], FgBufHandle{});
+                    p_list_, 1, rt_geo_instances_res[int(eTLASIndex::Shadow)], FgBufRWHandle{});
 
                 auto &build_acc_structs = fg_builder_.AddNode("BUILD SH ACC STRUCTS");
 
@@ -1054,14 +1054,14 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                         build_acc_structs.AddTransferOutput("RT SH Obj Instances", desc);
                 }
 
-                const FgBufHandle rt_sh_tlas_res =
+                const FgBufRWHandle rt_sh_tlas_res =
                     build_acc_structs.AddTransferOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Shadow)]);
 
                 build_acc_structs.make_executor<ExBuildAccStructures>(
                     p_list_, int(eTLASIndex::Shadow), rt_obj_instances_res[int(eTLASIndex::Shadow)], &acc_struct_data,
                     Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                             persistent_data.swrt.rt_meshes.capacity()},
-                    rt_sh_tlas_res, FgBufHandle{});
+                    rt_sh_tlas_res, FgBufRWHandle{});
             }
         }
 
@@ -1094,12 +1094,12 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 ////
 
                 auto &build_acc_structs = fg_builder_.AddNode("VOL ACC STRUCTS");
-                rt_obj_instances_res[int(eTLASIndex::Volume)] =
+                const FgBufROHandle rt_obj_instances_volume_res =
                     build_acc_structs.AddASBuildReadonlyInput(rt_obj_instances_res[int(eTLASIndex::Volume)]);
-                const FgBufHandle rt_vol_tlas_res =
+                const FgBufRWHandle rt_vol_tlas_res =
                     build_acc_structs.AddASBuildOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Volume)]);
 
-                FgBufHandle rt_vol_tlas_build_scratch_res;
+                FgBufRWHandle rt_vol_tlas_build_scratch_res;
                 { // scratch buffer
                     FgBufDesc desc;
                     desc.type = Ren::eBufType::Storage;
@@ -1108,7 +1108,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 }
 
                 build_acc_structs.make_executor<ExBuildAccStructures>(
-                    p_list_, int(eTLASIndex::Volume), rt_obj_instances_res[int(eTLASIndex::Volume)], &acc_struct_data,
+                    p_list_, int(eTLASIndex::Volume), rt_obj_instances_volume_res, &acc_struct_data,
                     Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                             persistent_data.swrt.rt_meshes.capacity()},
                     rt_vol_tlas_res, rt_vol_tlas_build_scratch_res);
@@ -1125,7 +1125,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                 }
 
                 update_rt_bufs.make_executor<ExUpdateAccBuffers>(
-                    p_list_, int(eTLASIndex::Volume), rt_geo_instances_res[int(eTLASIndex::Volume)], FgBufHandle{});
+                    p_list_, int(eTLASIndex::Volume), rt_geo_instances_res[int(eTLASIndex::Volume)], FgBufRWHandle{});
 
                 auto &build_acc_structs = fg_builder_.AddNode("BUILD VOL ACC STRUCTS");
 
@@ -1139,14 +1139,14 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
                         build_acc_structs.AddTransferOutput("RT VOL Obj Instances", desc);
                 }
 
-                const FgBufHandle rt_vol_tlas_res =
+                const FgBufRWHandle rt_vol_tlas_res =
                     build_acc_structs.AddTransferOutput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Volume)]);
 
                 build_acc_structs.make_executor<ExBuildAccStructures>(
                     p_list_, int(eTLASIndex::Volume), rt_obj_instances_res[int(eTLASIndex::Volume)], &acc_struct_data,
                     Ren::Span<const mesh_t>{persistent_data.swrt.rt_meshes.data(),
                                             persistent_data.swrt.rt_meshes.capacity()},
-                    rt_vol_tlas_res, FgBufHandle{});
+                    rt_vol_tlas_res, FgBufRWHandle{});
             }
         }
 
@@ -1154,18 +1154,18 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
         { // Shadow depth
             auto &shadow_depth = fg_builder_.AddNode("SHADOW DEPTH");
-            const FgBufHandle vtx_buf1_res = shadow_depth.AddVertexBufferInput(persistent_data.vertex_buf1);
-            const FgBufHandle vtx_buf2_res = shadow_depth.AddVertexBufferInput(persistent_data.vertex_buf2);
-            const FgBufHandle ndx_buf_res = shadow_depth.AddIndexBufferInput(persistent_data.indices_buf);
+            const FgBufROHandle vtx_buf1_res = shadow_depth.AddVertexBufferInput(persistent_data.vertex_buf1);
+            const FgBufROHandle vtx_buf2_res = shadow_depth.AddVertexBufferInput(persistent_data.vertex_buf2);
+            const FgBufROHandle ndx_buf_res = shadow_depth.AddIndexBufferInput(persistent_data.indices_buf);
 
-            const FgBufHandle shared_data_res = shadow_depth.AddUniformBufferInput(
+            const FgBufROHandle shared_data_res = shadow_depth.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
-            const FgBufHandle instances_res =
+            const FgBufROHandle instances_res =
                 shadow_depth.AddStorageReadonlyInput(persistent_data.instance_buf, Ren::eStage::VertexShader);
-            const FgBufHandle instance_indices_res =
+            const FgBufROHandle instance_indices_res =
                 shadow_depth.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
-            const FgBufHandle materials_buf =
+            const FgBufROHandle materials_buf =
                 shadow_depth.AddStorageReadonlyInput(persistent_data.materials_buf, Ren::eStage::VertexShader);
             const FgResRef noise_tex_res = shadow_depth.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
 
@@ -1178,18 +1178,18 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         }
         { // Shadow color
             auto &shadow_color = fg_builder_.AddNode("SHADOW COLOR");
-            const FgBufHandle vtx_buf1_res = shadow_color.AddVertexBufferInput(persistent_data.vertex_buf1);
-            const FgBufHandle vtx_buf2_res = shadow_color.AddVertexBufferInput(persistent_data.vertex_buf2);
-            const FgBufHandle ndx_buf_res = shadow_color.AddIndexBufferInput(persistent_data.indices_buf);
+            const FgBufROHandle vtx_buf1_res = shadow_color.AddVertexBufferInput(persistent_data.vertex_buf1);
+            const FgBufROHandle vtx_buf2_res = shadow_color.AddVertexBufferInput(persistent_data.vertex_buf2);
+            const FgBufROHandle ndx_buf_res = shadow_color.AddIndexBufferInput(persistent_data.indices_buf);
 
-            const FgBufHandle shared_data_res = shadow_color.AddUniformBufferInput(
+            const FgBufROHandle shared_data_res = shadow_color.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
-            const FgBufHandle instances_res =
+            const FgBufROHandle instances_res =
                 shadow_color.AddStorageReadonlyInput(persistent_data.instance_buf, Ren::eStage::VertexShader);
-            const FgBufHandle instance_indices_res =
+            const FgBufROHandle instance_indices_res =
                 shadow_color.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
-            const FgBufHandle materials_buf =
+            const FgBufROHandle materials_buf =
                 shadow_color.AddStorageReadonlyInput(persistent_data.materials_buf, Ren::eStage::VertexShader);
             const FgResRef noise_tex_res = shadow_color.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
 
@@ -1256,18 +1256,18 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         if (!list.render_settings.debug_culling) {
             auto &depth_fill = fg_builder_.AddNode("DEPTH FILL");
 
-            const FgBufHandle vtx_buf1 = depth_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
-            const FgBufHandle vtx_buf2 = depth_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
-            const FgBufHandle ndx_buf = depth_fill.AddIndexBufferInput(persistent_data.indices_buf);
+            const FgBufROHandle vtx_buf1 = depth_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
+            const FgBufROHandle vtx_buf2 = depth_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
+            const FgBufROHandle ndx_buf = depth_fill.AddIndexBufferInput(persistent_data.indices_buf);
 
-            const FgBufHandle shared_data_res = depth_fill.AddUniformBufferInput(
+            const FgBufROHandle shared_data_res = depth_fill.AddUniformBufferInput(
                 common_buffers.shared_data, Ren::Bitmask{Ren::eStage::VertexShader} | Ren::eStage::FragmentShader);
-            const FgBufHandle instances_res =
+            const FgBufROHandle instances_res =
                 depth_fill.AddStorageReadonlyInput(persistent_data.instance_buf, Ren::eStage::VertexShader);
-            const FgBufHandle instance_indices_res =
+            const FgBufROHandle instance_indices_res =
                 depth_fill.AddStorageReadonlyInput(common_buffers.instance_indices, Ren::eStage::VertexShader);
 
-            const FgBufHandle materials_buf =
+            const FgBufROHandle materials_buf =
                 depth_fill.AddStorageReadonlyInput(persistent_data.materials_buf, Ren::eStage::VertexShader);
             const FgResRef noise_tex_res = depth_fill.AddTextureInput(noise_tex_, Ren::eStage::VertexShader);
 
@@ -1303,7 +1303,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             auto &depth_hierarchy = fg_builder_.AddNode("DEPTH HIERARCHY");
             const FgResRef depth_tex =
                 depth_hierarchy.AddTextureInput(frame_textures.depth, Ren::eStage::ComputeShader);
-            const FgBufHandle atomic_buf =
+            const FgBufRWHandle atomic_buf =
                 depth_hierarchy.AddStorageOutput(common_buffers.atomic_cnt, Ren::eStage::ComputeShader);
 
             { // 32-bit float depth hierarchy
@@ -1454,7 +1454,7 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
 
             auto *data = debug_oit.AllocNodeData<ExDebugOIT::Args>();
             data->layer_index = list.render_settings.debug_oit_layer;
-            frame_textures.oit_depth_buf = data->oit_depth_buf =
+            data->oit_depth_buf =
                 debug_oit.AddStorageReadonlyInput(frame_textures.oit_depth_buf, Ren::eStage::ComputeShader);
             frame_textures.color = data->output_tex =
                 debug_oit.AddStorageImageOutput(frame_textures.color, Ren::eStage::ComputeShader);
@@ -1878,7 +1878,7 @@ void Eng::Renderer::InitBackendInfo() {
         uint32_t heap_size = 0; // dummy for the case when memory heaps are not available
         const auto &all_buffers = fg_buffers.items_by_name();
         for (auto it = std::cbegin(all_buffers); it != std::cend(all_buffers); ++it) {
-            const auto &[fgbuf_main, fgbuf_cold] = fg_buffers.Get(it->val);
+            const auto &[fgbuf_main, fgbuf_cold] = fg_buffers.GetUnsafe(it->val);
             if (fgbuf_cold.external || !fgbuf_main.handle || fgbuf_cold.alias_of != -1 ||
                 !fgbuf_cold.lifetime.is_used() || fgbuf_cold.desc.type == Ren::eBufType::Upload ||
                 fgbuf_cold.desc.type == Ren::eBufType::Readback) {
@@ -1903,10 +1903,10 @@ void Eng::Renderer::InitBackendInfo() {
                 heap_size += buf_cold.size;
             }
 
-            indices[it->val.index] = int(backend_info_.resources_info.size() - 1);
+            indices[it->val] = int(backend_info_.resources_info.size() - 1);
         }
         for (auto it = std::cbegin(all_buffers); it != std::cend(all_buffers); ++it) {
-            const auto &[fgbuf_main, fgbuf_cold] = fg_buffers.Get(it->val);
+            const auto &[fgbuf_main, fgbuf_cold] = fg_buffers.GetUnsafe(it->val);
             if (fgbuf_cold.external || !fgbuf_main.handle || fgbuf_cold.alias_of == -1 ||
                 !fgbuf_cold.lifetime.is_used() || fgbuf_cold.desc.type == Ren::eBufType::Upload ||
                 fgbuf_cold.desc.type == Ren::eBufType::Readback) {
@@ -1942,7 +1942,7 @@ void Eng::Renderer::InitBackendInfo() {
             }
 
             resource_info_t &info = backend_info_.resources_info.emplace_back();
-            info.name = "[Tex] " + it->name;
+            info.name = "[Img] " + it->name;
             fg_builder_.GetResourceFrameLifetime(*it, info.lifetime);
 
             const Ren::MemAllocation &alloc = it->strong_ref->mem_alloc();
@@ -1965,7 +1965,7 @@ void Eng::Renderer::InitBackendInfo() {
             }
 
             resource_info_t &info = backend_info_.resources_info.emplace_back();
-            info.name = "[Tex] " + it->name;
+            info.name = "[Img] " + it->name;
             fg_builder_.GetResourceFrameLifetime(*it, info.lifetime);
 
             const Ren::MemAllocation &alloc = it->strong_ref->mem_alloc();
@@ -2092,7 +2092,7 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
         { // Upload image data
             auto &update_image = fg_builder_.AddNode("UPDATE IMAGE");
 
-            FgBufHandle stage_buf_res = update_image.AddTransferInput(temp_upload_buf);
+            const FgBufROHandle stage_buf_res = update_image.AddTransferInput(temp_upload_buf);
 
             { // output image
                 FgImgDesc desc;
@@ -2105,7 +2105,7 @@ void Eng::Renderer::BlitPixelsTonemap(const uint8_t *px_data, const int w, const
             }
 
             update_image.set_execute_cb([stage_buf_res, output_tex_res](const FgContext &fg) {
-                const Ren::BufferHandle stage_buf = fg.AccessROBuffer(stage_buf_res);
+                const Ren::BufferROHandle stage_buf = fg.AccessROBuffer(stage_buf_res);
                 const Ren::Image &output_image = fg.AccessRWImage(output_tex_res);
 
                 const int w = output_image.params.w;

@@ -24,13 +24,13 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
     //
     // Prepare descriptor sets
     //
-    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::BufferHandle items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::BufferHandle decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(cells_buf_);
+    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
+    const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
     const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
     const Ren::Image &dummy_black = fg.AccessROImage(dummy_black_);

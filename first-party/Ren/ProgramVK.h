@@ -22,7 +22,7 @@ namespace Ren {
 class ILog;
 
 struct ProgramMain {
-    std::array<ShaderHandle, int(eShaderType::_Count)> shaders;
+    std::array<ShaderROHandle, int(eShaderType::_Count)> shaders;
     SmallVector<VkDescriptorSetLayout, 1> descr_set_layouts;
     SmallVector<VkPushConstantRange, 1> pc_ranges;
 
@@ -71,13 +71,13 @@ struct ProgramCold {
 };
 
 bool Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders, ProgramMain &prog_main,
-                  ProgramCold &prog_cold, ShaderHandle vs, ShaderHandle fs, ShaderHandle tcs, ShaderHandle tes,
-                  ShaderHandle gs, ILog *log);
+                  ProgramCold &prog_cold, ShaderROHandle vs, ShaderROHandle fs, ShaderROHandle tcs, ShaderROHandle tes,
+                  ShaderROHandle gs, ILog *log);
 bool Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders, ProgramMain &prog_main,
-                  ProgramCold &prog_cold, ShaderHandle cs, ILog *log);
+                  ProgramCold &prog_cold, ShaderROHandle cs, ILog *log);
 bool Program_Init2(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders, ProgramMain &prog_main,
-                   ProgramCold &prog_cold, ShaderHandle rgs, ShaderHandle chs, ShaderHandle ahs, ShaderHandle ms,
-                   ShaderHandle is, ILog *log);
+                   ProgramCold &prog_cold, ShaderROHandle rgs, ShaderROHandle chs, ShaderROHandle ahs,
+                   ShaderROHandle ms, ShaderROHandle is, ILog *log);
 void Program_Destroy(const ApiContext &api, ProgramMain &prog_main, ProgramCold &prog_cold);
 } // namespace Ren
 

@@ -66,14 +66,14 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
                      uint32_t i, uint64_t mask);
 } // namespace ExSharedInternal
 
-void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferHandle vtx_buf1,
-                                 const Ren::BufferHandle vtx_buf2, const Ren::BufferHandle ndx_buf) {
+void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle vtx_buf1,
+                                 const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf) {
     using namespace ExSharedInternal;
 
-    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
     const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();

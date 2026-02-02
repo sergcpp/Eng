@@ -13,25 +13,25 @@ class PrimDraw;
 class ExRTShadows final : public FgExecutor {
   public:
     struct Args {
-        FgBufHandle geo_data;
-        FgBufHandle materials;
-        FgBufHandle vtx_buf1;
-        FgBufHandle ndx_buf;
-        FgBufHandle shared_data;
+        FgBufROHandle geo_data;
+        FgBufROHandle materials;
+        FgBufROHandle vtx_buf1;
+        FgBufROHandle ndx_buf;
+        FgBufROHandle shared_data;
         FgResRef noise_tex;
         FgResRef depth_tex;
         FgResRef normal_tex;
-        FgBufHandle tlas_buf;
-        FgBufHandle tile_list_buf;
-        FgBufHandle indir_args;
+        FgBufROHandle tlas_buf;
+        FgBufROHandle tile_list_buf;
+        FgBufROHandle indir_args;
 
         const Ren::IAccStructure *tlas = nullptr;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgBufHandle blas_buf;
-            FgBufHandle prim_ndx_buf;
-            FgBufHandle mesh_instances_buf;
+            FgBufROHandle blas_buf;
+            FgBufROHandle prim_ndx_buf;
+            FgBufROHandle mesh_instances_buf;
         } swrt;
 
         FgResRef out_shadow_tex;

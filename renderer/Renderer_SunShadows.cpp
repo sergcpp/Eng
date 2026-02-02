@@ -16,21 +16,21 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
                                                    const PersistentGpuData &persistent_data,
                                                    const AccelerationStructureData &acc_struct_data,
                                                    const BindlessTextureData &bindless,
-                                                   const FgBufHandle rt_geo_instances_res,
-                                                   const FgBufHandle rt_obj_instances_res,
+                                                   const FgBufROHandle rt_geo_instances_res,
+                                                   const FgBufROHandle rt_obj_instances_res,
                                                    const FrameTextures &frame_textures, const bool debug_denoise) {
     using Stg = Ren::eStage;
     using Trg = Ren::eBindTarget;
 
     const bool EnableFilter = (settings.taa_mode != eTAAMode::Static);
 
-    FgBufHandle indir_args;
+    FgBufRWHandle indir_args;
 
     { // Prepare atomic counter
         auto &rt_sh_prepare = fg_builder_.AddNode("RT SH PREPARE");
 
         struct PassData {
-            FgBufHandle tile_counter;
+            FgBufRWHandle tile_counter;
         };
 
         auto *data = rt_sh_prepare.AllocNodeData<PassData>();
@@ -54,11 +54,10 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             const auto &[buf_main, buf_cold] = fg.storages().buffers.Get(tile_counter_buf);
             Ren::Buffer_UpdateInPlace(fg.ren_ctx().api(), buf_main, 0, sizeof(indirect_cmd), &indirect_cmd,
                                       fg.cmd_buf());
-            // tile_counter_buf.UpdateInPlace(0, sizeof(indirect_cmd), &indirect_cmd, fg.cmd_buf());
         });
     }
 
-    FgBufHandle tile_list;
+    FgBufRWHandle tile_list;
     FgResRef ray_hits_tex, noise_tex;
 
     { // Classify tiles
@@ -67,10 +66,10 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
         struct PassData {
             FgResRef depth;
             FgResRef normal;
-            FgBufHandle shared_data;
-            FgBufHandle tile_counter;
-            FgBufHandle tile_list;
-            FgBufHandle bn_pmj_seq;
+            FgBufROHandle shared_data;
+            FgBufROHandle bn_pmj_seq;
+            FgBufRWHandle tile_counter;
+            FgBufRWHandle tile_list;
             FgResRef out_ray_hits_tex, out_noise_tex;
         };
 
@@ -110,8 +109,8 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
         sh_classify.set_execute_cb([this, data](const FgContext &fg) {
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth);
             const Ren::Image &norm_tex = fg.AccessROImage(data->normal);
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::BufferHandle bn_pmj_seq = fg.AccessROBuffer(data->bn_pmj_seq);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle bn_pmj_seq = fg.AccessROBuffer(data->bn_pmj_seq);
 
             const Ren::BufferHandle tile_counter_buf = fg.AccessRWBuffer(data->tile_counter);
             const Ren::BufferHandle tile_list_buf = fg.AccessRWBuffer(data->tile_list);
@@ -218,14 +217,14 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
         return data->out_result_img;
     }
 
-    FgBufHandle shadow_mask;
+    FgBufRWHandle shadow_mask;
 
     { // Prepare shadow mask
         auto &rt_prep_mask = fg_builder_.AddNode("RT SH PREPARE");
 
         struct PassData {
             FgResRef hit_mask_tex;
-            FgBufHandle out_shadow_mask_buf;
+            FgBufRWHandle out_shadow_mask_buf;
         };
 
         auto *data = rt_prep_mask.AllocNodeData<PassData>();
@@ -265,7 +264,7 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
     }
 
     FgResRef repro_results;
-    FgBufHandle tiles_metadata;
+    FgBufRWHandle tiles_metadata;
 
     { // Classify tiles
         auto &rt_classify_tiles = fg_builder_.AddNode("RT SH CLASSIFY TILES");
@@ -277,10 +276,10 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             FgResRef hist;
             FgResRef prev_depth;
             FgResRef prev_moments;
-            FgBufHandle ray_hits;
-            FgBufHandle shared_data;
+            FgBufROHandle ray_hits;
+            FgBufROHandle shared_data;
 
-            FgBufHandle out_tile_metadata_buf;
+            FgBufRWHandle out_tile_metadata_buf;
             FgResRef out_repro_results_img;
             FgResRef out_moments_img;
         };
@@ -336,8 +335,8 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             const Ren::Image &hist_tex = fg.AccessROImage(data->hist);
             const Ren::Image &prev_depth_tex = fg.AccessROImage(data->prev_depth);
             const Ren::Image &prev_moments_tex = fg.AccessROImage(data->prev_moments);
-            const Ren::BufferHandle ray_hits_buf = fg.AccessROBuffer(data->ray_hits);
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle ray_hits_buf = fg.AccessROBuffer(data->ray_hits);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
 
             const Ren::BufferHandle out_tile_metadata_buf = fg.AccessRWBuffer(data->out_tile_metadata_buf);
             const Ren::Image &out_repro_results_img = fg.AccessRWImage(data->out_repro_results_img);
@@ -381,8 +380,8 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             FgResRef depth;
             FgResRef normal;
             FgResRef input;
-            FgBufHandle tile_metadata;
-            FgBufHandle shared_data;
+            FgBufROHandle tile_metadata;
+            FgBufROHandle shared_data;
 
             FgResRef out_history_img;
         };
@@ -409,8 +408,8 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth);
             const Ren::Image &norm_tex = fg.AccessROImage(data->normal);
             const Ren::Image &input_tex = fg.AccessROImage(data->input);
-            const Ren::BufferHandle tile_metadata_buf = fg.AccessROBuffer(data->tile_metadata);
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle tile_metadata_buf = fg.AccessROBuffer(data->tile_metadata);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
 
             const Ren::Image &out_history_img = fg.AccessRWImage(data->out_history_img);
 
@@ -445,8 +444,8 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             FgResRef depth;
             FgResRef normal;
             FgResRef input;
-            FgBufHandle tile_metadata;
-            FgBufHandle shared_data;
+            FgBufROHandle tile_metadata;
+            FgBufROHandle shared_data;
 
             FgResRef out_history_img;
         };
@@ -473,8 +472,8 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth);
             const Ren::Image &norm_tex = fg.AccessROImage(data->normal);
             const Ren::Image &input_tex = fg.AccessROImage(data->input);
-            const Ren::BufferHandle tile_metadata_buf = fg.AccessROBuffer(data->tile_metadata);
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle tile_metadata_buf = fg.AccessROBuffer(data->tile_metadata);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
 
             const Ren::Image &out_history_img = fg.AccessRWImage(data->out_history_img);
 
@@ -509,8 +508,8 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             FgResRef depth;
             FgResRef normal;
             FgResRef input;
-            FgBufHandle tile_metadata;
-            FgBufHandle shared_data;
+            FgBufROHandle tile_metadata;
+            FgBufROHandle shared_data;
 
             FgResRef out_history_img;
         };
@@ -537,8 +536,8 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth);
             const Ren::Image &norm_tex = fg.AccessROImage(data->normal);
             const Ren::Image &input_tex = fg.AccessROImage(data->input);
-            const Ren::BufferHandle tile_metadata_buf = fg.AccessROBuffer(data->tile_metadata);
-            const Ren::BufferHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle tile_metadata_buf = fg.AccessROBuffer(data->tile_metadata);
+            const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
 
             const Ren::Image &out_history_img = fg.AccessRWImage(data->out_history_img);
 
@@ -570,7 +569,7 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
         auto &rt_sh_combine = fg_builder_.AddNode("RT SH COMBINE");
 
         struct PassData {
-            FgBufHandle shared_data;
+            FgBufROHandle shared_data;
             FgResRef depth_tex;
             FgResRef normal_tex;
             FgResRef shadow_depth_tex, shadow_color_tex;
@@ -603,7 +602,7 @@ Eng::FgResRef Eng::Renderer::AddHQSunShadowsPasses(const CommonBuffers &common_b
         }
 
         rt_sh_combine.set_execute_cb([this, data](const FgContext &fg) {
-            const Ren::BufferHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
+            const Ren::BufferROHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
             const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
             const Ren::Image &norm_tex = fg.AccessROImage(data->normal_tex);
             const Ren::Image &shadow_depth_tex = fg.AccessROImage(data->shadow_depth_tex);
@@ -653,7 +652,7 @@ Eng::FgResRef Eng::Renderer::AddLQSunShadowsPass(const CommonBuffers &common_buf
     auto &sun_shadows = fg_builder_.AddNode("SUN SHADOWS");
 
     struct PassData {
-        FgBufHandle shared_data;
+        FgBufROHandle shared_data;
         FgResRef depth_tex;
         FgResRef albedo_tex;
         FgResRef normal_tex;
@@ -683,7 +682,7 @@ Eng::FgResRef Eng::Renderer::AddLQSunShadowsPass(const CommonBuffers &common_buf
     }
 
     sun_shadows.set_execute_cb([this, data](const FgContext &fg) {
-        const Ren::BufferHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
+        const Ren::BufferROHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
         const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
         const Ren::Image &albedo_tex = fg.AccessROImage(data->albedo_tex);
         const Ren::Image &norm_tex = fg.AccessROImage(data->normal_tex);

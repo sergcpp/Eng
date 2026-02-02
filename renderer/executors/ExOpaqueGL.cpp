@@ -166,14 +166,14 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     //
     // Bind resources (shadow atlas, lightmap, cells item data)
     //
-    const Ren::BufferHandle instances_buf = fg.AccessROBuffer(instances_buf_);
-    const Ren::BufferHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
-    const Ren::BufferHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
-    const Ren::BufferHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::BufferHandle cells_buf = fg.AccessROBuffer(cells_buf_);
-    const Ren::BufferHandle items_buf = fg.AccessROBuffer(items_buf_);
-    const Ren::BufferHandle lights_buf = fg.AccessROBuffer(lights_buf_);
-    const Ren::BufferHandle decals_buf = fg.AccessROBuffer(decals_buf_);
+    const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
+    const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
+    const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
+    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
+    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(cells_buf_);
+    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
+    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
+    const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
     const Ren::Image &shad_tex = fg.AccessROImage(shad_tex_);
     const Ren::Image &ssao_tex = fg.AccessROImage(ssao_tex_);

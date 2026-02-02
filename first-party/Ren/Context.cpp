@@ -131,9 +131,9 @@ Ren::ShaderHandle Ren::Context::LoadShader(std::string_view name, Span<const uin
     return ret;
 }
 
-Ren::ProgramHandle Ren::Context::LoadProgram(const ShaderHandle vs, const ShaderHandle fs, const ShaderHandle tcs,
-                                             const ShaderHandle tes, const ShaderHandle gs) {
-    std::array<ShaderHandle, int(eShaderType::_Count)> temp_shaders;
+Ren::ProgramHandle Ren::Context::LoadProgram(const ShaderROHandle vs, const ShaderROHandle fs, const ShaderROHandle tcs,
+                                             const ShaderROHandle tes, const ShaderROHandle gs) {
+    std::array<ShaderROHandle, int(eShaderType::_Count)> temp_shaders;
     temp_shaders[int(eShaderType::Vertex)] = vs;
     temp_shaders[int(eShaderType::Fragment)] = fs;
     temp_shaders[int(eShaderType::TesselationControl)] = tcs;
@@ -156,8 +156,8 @@ Ren::ProgramHandle Ren::Context::LoadProgram(const ShaderHandle vs, const Shader
     return ret;
 }
 
-Ren::ProgramHandle Ren::Context::LoadProgram(const ShaderHandle cs) {
-    std::array<Ren::ShaderHandle, int(Ren::eShaderType::_Count)> temp_shaders;
+Ren::ProgramHandle Ren::Context::LoadProgram(const ShaderROHandle cs) {
+    std::array<Ren::ShaderROHandle, int(Ren::eShaderType::_Count)> temp_shaders;
     temp_shaders[int(Ren::eShaderType::Compute)] = cs;
     ProgramHandle ret = programs_.LowerBound([&](const ProgramMain &p) { return p.shaders < temp_shaders; });
     if (!ret || programs_.Get(ret).first.shaders != temp_shaders) {
@@ -177,24 +177,23 @@ Ren::ProgramHandle Ren::Context::LoadProgram(const ShaderHandle cs) {
 }
 
 #if defined(REN_VK_BACKEND)
-Ren::ProgramHandle Ren::Context::LoadProgram2(const ShaderHandle raygen, const ShaderHandle closesthit,
-                                              const ShaderHandle anyhit, const ShaderHandle miss,
-                                              const ShaderHandle intersection) {
-    std::array<Ren::ShaderHandle, int(Ren::eShaderType::_Count)> temp_shaders;
-    temp_shaders[int(Ren::eShaderType::RayGen)] = raygen;
-    temp_shaders[int(Ren::eShaderType::ClosestHit)] = closesthit;
-    temp_shaders[int(Ren::eShaderType::AnyHit)] = anyhit;
-    temp_shaders[int(Ren::eShaderType::Miss)] = miss;
-    temp_shaders[int(Ren::eShaderType::Intersection)] = intersection;
+Ren::ProgramHandle Ren::Context::LoadProgram2(const ShaderROHandle rgs, const ShaderROHandle chs,
+                                              const ShaderROHandle ahs, const ShaderROHandle ms,
+                                              const ShaderROHandle is) {
+    std::array<Ren::ShaderROHandle, int(Ren::eShaderType::_Count)> temp_shaders;
+    temp_shaders[int(Ren::eShaderType::RayGen)] = rgs;
+    temp_shaders[int(Ren::eShaderType::ClosestHit)] = chs;
+    temp_shaders[int(Ren::eShaderType::AnyHit)] = ahs;
+    temp_shaders[int(Ren::eShaderType::Miss)] = ms;
+    temp_shaders[int(Ren::eShaderType::Intersection)] = is;
     ProgramHandle ret = programs_.LowerBound([&](const ProgramMain &p) { return p.shaders < temp_shaders; });
     if (!ret || programs_.Get(ret).first.shaders != temp_shaders) {
-        assert(raygen);
+        assert(rgs);
 
         ProgramMain prog_main;
         ProgramCold prog_cold;
 
-        if (!Program_Init(*api_, shaders_, prog_main, prog_cold, raygen, closesthit, anyhit, miss, intersection,
-                          log_)) {
+        if (!Program_Init(*api_, shaders_, prog_main, prog_cold, rgs, chs, ahs, ms, is, log_)) {
             return {};
         }
 
@@ -220,7 +219,7 @@ void Ren::Context::ReleasePrograms() {
 }
 
 Ren::VertexInputHandle Ren::Context::FindOrCreateVertexInput(Span<const VtxAttribDesc> attribs,
-                                                             const BufferHandle elem_buf) {
+                                                             const BufferROHandle elem_buf) {
     VertexInputHandle ret = vtx_inputs_.LowerBound([&](const VertexInputMain &vi) {
         if (vi.elem_buf < elem_buf) {
             return true;
@@ -294,7 +293,7 @@ void Ren::Context::ReleaseRenderPasses() {
     // log_->Error("-----------------------------------");
 }
 
-Ren::PipelineHandle Ren::Context::FindOrCreatePipeline(const ProgramHandle prog, const int subgroup_size) {
+Ren::PipelineHandle Ren::Context::FindOrCreatePipeline(const ProgramROHandle prog, const int subgroup_size) {
     PipelineHandle ret = pipelines_.LowerBound([&](const PipelineMain &pi) { return pi.LessThan({}, prog, {}, {}); });
     if (!ret || !pipelines_.Get(ret).first.Equals({}, prog, {}, {})) {
         assert(prog);
@@ -312,9 +311,9 @@ Ren::PipelineHandle Ren::Context::FindOrCreatePipeline(const ProgramHandle prog,
     return ret;
 }
 
-Ren::PipelineHandle Ren::Context::FindOrCreatePipeline(const RastState &rast_state, const ProgramHandle prog,
-                                                       const VertexInputHandle vtx_input,
-                                                       const RenderPassHandle render_pass,
+Ren::PipelineHandle Ren::Context::FindOrCreatePipeline(const RastState &rast_state, const ProgramROHandle prog,
+                                                       const VertexInputROHandle vtx_input,
+                                                       const RenderPassROHandle render_pass,
                                                        const uint32_t subpass_index) {
     PipelineHandle ret = pipelines_.LowerBound(
         [&](const PipelineMain &pi) { return pi.LessThan(rast_state, prog, vtx_input, render_pass); });
@@ -609,7 +608,7 @@ void Ren::Context::ReleaseBuffers() {
     log_->Error("---------REMAINING BUFFERS--------");
     auto &all_buffers = buffers_.items_by_name();
     for (auto it = all_buffers.begin(); it != all_buffers.end();) {
-        const auto &[buf_main, buf_cold] = buffers_.Get(it->val);
+        const auto &[buf_main, buf_cold] = buffers_.GetUnsafe(it->val);
         const String name_str = buf_cold.name;
         log_->Error("%s\t: %u", name_str.c_str(), buf_cold.size);
 

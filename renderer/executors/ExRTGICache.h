@@ -7,35 +7,35 @@ namespace Eng {
 class ExRTGICache final : public FgExecutor {
   public:
     struct Args {
-        FgBufHandle geo_data;
-        FgBufHandle materials;
-        FgBufHandle vtx_buf1;
-        FgBufHandle ndx_buf;
-        FgBufHandle shared_data;
+        FgBufROHandle geo_data;
+        FgBufROHandle materials;
+        FgBufROHandle vtx_buf1;
+        FgBufROHandle ndx_buf;
+        FgBufROHandle shared_data;
         FgResRef env_tex;
-        FgBufHandle lights_buf;
+        FgBufROHandle lights_buf;
         FgResRef shadow_depth_tex, shadow_color_tex;
         FgResRef ltc_luts_tex;
-        FgBufHandle cells_buf;
-        FgBufHandle items_buf;
-        FgBufHandle tlas_buf; // fake read for now
+        FgBufROHandle cells_buf;
+        FgBufROHandle items_buf;
+        FgBufROHandle tlas_buf; // fake read for now
 
         Ren::IAccStructure *tlas = nullptr;
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgBufHandle rt_blas_buf;
-            FgBufHandle prim_ndx_buf;
-            FgBufHandle mesh_instances_buf;
+            FgBufROHandle rt_blas_buf;
+            FgBufROHandle prim_ndx_buf;
+            FgBufROHandle mesh_instances_buf;
         } swrt;
 
         FgResRef irradiance_tex;
         FgResRef distance_tex;
         FgResRef offset_tex;
 
-        FgBufHandle random_seq;
-        FgBufHandle stoch_lights_buf;
-        FgBufHandle light_nodes_buf;
+        FgBufROHandle random_seq;
+        FgBufROHandle stoch_lights_buf;
+        FgBufROHandle light_nodes_buf;
 
         FgResRef out_ray_data_tex;
 

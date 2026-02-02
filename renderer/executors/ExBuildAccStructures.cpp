@@ -16,7 +16,7 @@ void Eng::ExBuildAccStructures::Execute(const FgContext &fg) {
 }
 
 void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferHandle rt_obj_instances_buf = fg.AccessRWBuffer(rt_obj_instances_buf_);
+    const Ren::BufferHandle rt_obj_instances_buf = fg.AccessRWBuffer(rt_obj_instances_buf_rw_);
     const Ren::BufferHandle rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
 
     const auto &rt_obj_instances = p_list_->rt_obj_instances[rt_index_];
@@ -100,7 +100,7 @@ void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
                 fg.log()->Error("ExBuildAccStructures: Failed to map rt obj instance buffer!");
             }
 
-            const Ren::BufferMain &rt_obj_instances_buf_main = storages.buffers.Get(rt_obj_instances_buf).first;
+            Ren::BufferMain &rt_obj_instances_buf_main = storages.buffers.Get(rt_obj_instances_buf).first;
             CopyBufferToBuffer(api, rt_obj_instances_stage_buf_main, fg.backend_frame() * SWRTObjInstancesBufChunkSize,
                                rt_obj_instances_buf_main, 0, rt_obj_instances_mem_size, fg.cmd_buf());
         }
@@ -118,14 +118,14 @@ void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
                 fg.log()->Error("ExBuildAccStructures: Failed to map rt tlas stage buffer!");
             }
 
-            const Ren::BufferMain &rt_tlas_buf_main = storages.buffers.Get(rt_tlas_buf).first;
+            Ren::BufferMain &rt_tlas_buf_main = storages.buffers.Get(rt_tlas_buf).first;
             CopyBufferToBuffer(api, rt_tlas_stage_buf_main, fg.backend_frame() * SWRTTLASNodesBufChunkSize,
                                rt_tlas_buf_main, 0, rt_nodes_mem_size, fg.cmd_buf());
         }
     } else {
         static const gpu_bvh2_node_t dummy_node = {};
 
-        const Ren::BufferMain &rt_tlas_buf_main = storages.buffers.Get(rt_tlas_buf).first;
+        Ren::BufferMain &rt_tlas_buf_main = storages.buffers.Get(rt_tlas_buf).first;
         Buffer_UpdateInPlace(api, rt_tlas_buf_main, 0, sizeof(dummy_node), &dummy_node, fg.cmd_buf());
     }
 }

@@ -13,19 +13,19 @@ class PrimDraw;
 class ExDebugRT final : public FgExecutor {
   public:
     struct Args {
-        FgBufHandle shared_data;
-        FgBufHandle geo_data_buf;
-        FgBufHandle materials_buf;
-        FgBufHandle vtx_buf1;
-        FgBufHandle vtx_buf2;
-        FgBufHandle ndx_buf;
+        FgBufROHandle shared_data;
+        FgBufROHandle geo_data_buf;
+        FgBufROHandle materials_buf;
+        FgBufROHandle vtx_buf1;
+        FgBufROHandle vtx_buf2;
+        FgBufROHandle ndx_buf;
         FgResRef env_tex;
-        FgBufHandle lights_buf;
+        FgBufROHandle lights_buf;
         FgResRef shadow_depth_tex, shadow_color_tex;
         FgResRef ltc_luts_tex;
-        FgBufHandle cells_buf;
-        FgBufHandle items_buf;
-        FgBufHandle tlas_buf;
+        FgBufROHandle cells_buf;
+        FgBufROHandle items_buf;
+        FgBufROHandle tlas_buf;
 
         FgResRef irradiance_tex;
         FgResRef distance_tex;
@@ -36,9 +36,9 @@ class ExDebugRT final : public FgExecutor {
 
         struct {
             uint32_t root_node = 0xffffffff;
-            FgBufHandle rt_blas_buf;
-            FgBufHandle prim_ndx_buf;
-            FgBufHandle mesh_instances_buf;
+            FgBufROHandle rt_blas_buf;
+            FgBufROHandle prim_ndx_buf;
+            FgBufROHandle mesh_instances_buf;
         } swrt;
 
         FgResRef output_tex;

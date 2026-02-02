@@ -25,23 +25,23 @@ class ExOITBlendLayer final : public FgExecutor {
 
     const DrawList **p_list_ = nullptr;
 
-    FgBufHandle vtx_buf1_;
-    FgBufHandle vtx_buf2_;
-    FgBufHandle ndx_buf_;
-    FgBufHandle instances_buf_;
-    FgBufHandle instance_indices_buf_;
-    FgBufHandle shared_data_buf_;
-    FgBufHandle materials_buf_;
-    FgBufHandle cells_buf_;
-    FgBufHandle items_buf_;
-    FgBufHandle lights_buf_;
-    FgBufHandle decals_buf_;
+    FgBufROHandle vtx_buf1_;
+    FgBufROHandle vtx_buf2_;
+    FgBufROHandle ndx_buf_;
+    FgBufROHandle instances_buf_;
+    FgBufROHandle instance_indices_buf_;
+    FgBufROHandle shared_data_buf_;
+    FgBufROHandle materials_buf_;
+    FgBufROHandle cells_buf_;
+    FgBufROHandle items_buf_;
+    FgBufROHandle lights_buf_;
+    FgBufROHandle decals_buf_;
     FgResRef noise_tex_;
     FgResRef dummy_white_;
     FgResRef shadow_map_;
     FgResRef ltc_luts_tex_;
     FgResRef env_tex_;
-    FgBufHandle oit_depth_buf_;
+    FgBufROHandle oit_depth_buf_;
     int depth_layer_index_ = -1;
     FgResRef oit_specular_tex_;
 
@@ -55,18 +55,18 @@ class ExOITBlendLayer final : public FgExecutor {
     FgResRef depth_tex_;
     FgResRef color_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferHandle vtx_buf1, Ren::BufferHandle vtx_buf2,
-                  Ren::BufferHandle ndx_buf, const Ren::WeakImgRef &depth_tex, const Ren::WeakImgRef &color_tex);
+    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
+                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &depth_tex, const Ren::WeakImgRef &color_tex);
     void DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &depth_tex);
 
   public:
-    ExOITBlendLayer(PrimDraw &prim_draw, const DrawList **p_list, const view_state_t *view_state, FgBufHandle vtx_buf1,
-                    FgBufHandle vtx_buf2, FgBufHandle ndx_buf, FgBufHandle materials_buf,
-                    const BindlessTextureData *bindless_tex, FgBufHandle cells_buf, FgBufHandle items_buf,
-                    FgBufHandle lights_buf, FgBufHandle decals_buf, FgResRef noise_tex, FgResRef dummy_white,
-                    FgResRef shadow_map, FgResRef ltc_luts_tex, FgResRef env_tex, FgBufHandle instances_buf,
-                    FgBufHandle instance_indices_buf, FgBufHandle shared_data_buf, FgResRef depth_tex,
-                    FgResRef color_tex, FgBufHandle oit_depth_buf, FgResRef oit_specular_tex, int depth_layer_index,
+    ExOITBlendLayer(PrimDraw &prim_draw, const DrawList **p_list, const view_state_t *view_state,
+                    FgBufROHandle vtx_buf1, FgBufROHandle vtx_buf2, FgBufROHandle ndx_buf, FgBufROHandle materials_buf,
+                    const BindlessTextureData *bindless_tex, FgBufROHandle cells_buf, FgBufROHandle items_buf,
+                    FgBufROHandle lights_buf, FgBufROHandle decals_buf, FgResRef noise_tex, FgResRef dummy_white,
+                    FgResRef shadow_map, FgResRef ltc_luts_tex, FgResRef env_tex, FgBufROHandle instances_buf,
+                    FgBufROHandle instance_indices_buf, FgBufROHandle shared_data_buf, FgResRef depth_tex,
+                    FgResRef color_tex, FgBufROHandle oit_depth_buf, FgResRef oit_specular_tex, int depth_layer_index,
                     FgResRef irradiance_tex, FgResRef distance_tex, FgResRef offset_tex, FgResRef back_color_tex,
                     FgResRef back_depth_tex);
 
