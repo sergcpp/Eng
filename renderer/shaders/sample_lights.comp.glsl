@@ -213,7 +213,7 @@ void main() {
                           ro,                       // origin
                           0.0,                      // tMin
                           L,                        // direction
-                          ls_dist - 0.001           // tMax
+                          max(ls_dist - 0.001, 0.0) // tMax
                           );
 
     int transp_depth = 0;
@@ -262,7 +262,7 @@ void main() {
     inter.obj_index = inter.prim_index = 0;
     inter.geo_index_count = 0;
     inter.tmin = 0.0;
-    inter.tmax = ls_dist - 0.001;
+    inter.tmax = max(ls_dist - 0.001, 0.0);
     inter.u = inter.v = 0.0;
 
     int transp_depth = 0;
