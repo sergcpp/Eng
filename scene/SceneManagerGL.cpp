@@ -23,7 +23,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
 
     if (!scene_data_.persistent_data->textures_buf) {
         scene_data_.persistent_data->textures_buf =
-            ren_ctx_.FindOrCreateBuffer("Textures Buffer", Ren::eBufType::Storage, req_tex_buf_size);
+            ren_ctx_.CreateBuffer(Ren::String{"Textures Buffer"}, Ren::eBufType::Storage, req_tex_buf_size);
     }
 
     const Ren::ApiContext &api = ren_ctx_.api();

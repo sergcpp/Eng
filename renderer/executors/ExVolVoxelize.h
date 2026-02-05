@@ -1,19 +1,17 @@
 #pragma once
 
-#include <Ren/Image.h>
-#include <Ren/VertexInput.h>
-
-#include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"
 
-struct view_state_t;
-
 namespace Eng {
+struct DrawList;
+struct view_state_t;
+class ShaderLoader;
+
 class ExVolVoxelize final : public FgExecutor {
   public:
     struct Args {
         FgBufROHandle shared_data;
-        FgResRef stbn_tex;
+        FgImgROHandle stbn_tex;
         FgBufROHandle geo_data;
         FgBufROHandle materials;
         FgBufROHandle tlas_buf;
@@ -29,8 +27,8 @@ class ExVolVoxelize final : public FgExecutor {
             FgBufROHandle ndx_buf;
         } swrt;
 
-        FgResRef out_emission_tex;
-        FgResRef out_scatter_tex;
+        FgImgRWHandle out_emission_tex;
+        FgImgRWHandle out_scatter_tex;
     };
 
     ExVolVoxelize(const DrawList **p_list, const view_state_t *view_state, const Args *args)
@@ -49,7 +47,7 @@ class ExVolVoxelize final : public FgExecutor {
     const view_state_t *view_state_ = nullptr;
     const Args *args_ = nullptr;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh);
 
     void Execute_HWRT(const FgContext &fg);
     void Execute_SWRT(const FgContext &fg);

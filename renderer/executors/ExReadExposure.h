@@ -7,7 +7,7 @@ namespace Eng {
 class ExReadExposure final : public FgExecutor {
   public:
     struct Args {
-        FgResRef input_tex;
+        FgImgROHandle input_tex;
         FgBufRWHandle output_buf;
     };
 

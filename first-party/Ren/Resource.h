@@ -54,10 +54,28 @@ enum class eResState : uint8_t {
     _Count
 };
 
+enum class eImageLayout : uint8_t {
+    Undefined,
+    General,
+    ColorAttachmentOptimal,
+    DepthStencilAttachmentOptimal,
+    DepthStencilReadOnlyOptimal,
+    ShaderReadOnlyOptimal,
+    TransferSrcOptimal,
+    TransferDstOptimal,
+    _Count
+};
+
+inline bool operator<(const eImageLayout lhs, const eImageLayout rhs) { return uint8_t(lhs) < uint8_t(rhs); }
+
 #if defined(REN_VK_BACKEND)
 int VKImageLayoutForState(eResState state);
 uint32_t VKAccessFlagsForState(eResState state);
 uint32_t VKPipelineStagesForState(eResState state);
+
+inline eImageLayout ImageLayoutForState(const eResState state) { return eImageLayout(VKImageLayoutForState(state)); }
+#else
+inline eImageLayout ImageLayoutForState(const eResState state) { return eImageLayout::Undefined; }
 #endif
 bool IsRWState(eResState state);
 Bitmask<eStage> StagesForState(eResState state);
@@ -65,7 +83,7 @@ Bitmask<eStage> StagesForState(eResState state);
 class Image;
 
 struct TransitionInfo {
-    std::variant<const Image *, BufferHandle> p_res;
+    std::variant<const Image *, BufferHandle, ImageHandle> p_res;
 
     eResState old_state = eResState::Undefined;
     eResState new_state = eResState::Undefined;
@@ -75,6 +93,8 @@ struct TransitionInfo {
     TransitionInfo() = default;
     TransitionInfo(const BufferHandle _buf, const eResState _new_state)
         : p_res(_buf), new_state(_new_state), update_internal_state(true) {}
+    TransitionInfo(const ImageHandle _img, const eResState _new_state)
+        : p_res(_img), new_state(_new_state), update_internal_state(true) {}
     TransitionInfo(const Image *_p_tex, const eResState _new_state)
         : p_res(_p_tex), new_state(_new_state), update_internal_state(true) {}
 };

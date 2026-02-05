@@ -1,19 +1,21 @@
 #pragma once
 
-#include "../Renderer_DrawList.h"
+#include <Ren/Common.h>
+#include <Ren/Framebuffer.h>
+
 #include "../framegraph/FgNode.h"
 
-#include <Ren/VertexInput.h>
-
 namespace Eng {
+struct BindlessTextureData;
+struct DrawList;
 class PrimDraw;
+class ShaderLoader;
+struct view_state_t;
 
 class ExOITDepthPeel final : public FgExecutor {
     Ren::PipelineHandle pi_simple_[3];
 
     // lazily initialized data
-    Ren::Framebuffer main_draw_fb_[Ren::MaxFramesInFlight][2];
-    int fb_to_use_ = 0;
 
     // temp data (valid only between Setup and Execute calls)
     const view_state_t *view_state_ = nullptr;
@@ -28,20 +30,19 @@ class ExOITDepthPeel final : public FgExecutor {
     FgBufROHandle instance_indices_buf_;
     FgBufROHandle shared_data_buf_;
     FgBufROHandle materials_buf_;
-    FgResRef dummy_white_;
+    FgImgROHandle dummy_white_;
 
-    FgResRef depth_tex_;
+    FgImgRWHandle depth_tex_;
     FgBufRWHandle out_depth_buf_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
-                  Ren::BufferROHandle ndx_buf, Ren::WeakImgRef depth_tex);
-    void DrawTransparent(const FgContext &fg);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle depth_tex);
+    void DrawTransparent(const FgContext &fg, Ren::ImageRWHandle depth_tex);
 
   public:
     ExOITDepthPeel(const DrawList **p_list, const view_state_t *view_state, FgBufROHandle vtx_buf1,
                    FgBufROHandle vtx_buf2, FgBufROHandle ndx_buf, FgBufROHandle materials_buf,
-                   const BindlessTextureData *bindless_tex, FgResRef dummy_white, FgBufROHandle instances_buf,
-                   FgBufROHandle instance_indices_buf, FgBufROHandle shared_data_buf, FgResRef depth_tex,
+                   const BindlessTextureData *bindless_tex, FgImgROHandle dummy_white, FgBufROHandle instances_buf,
+                   FgBufROHandle instance_indices_buf, FgBufROHandle shared_data_buf, FgImgRWHandle depth_tex,
                    FgBufRWHandle out_depth_buf);
 
     void Execute(const FgContext &fg) override;

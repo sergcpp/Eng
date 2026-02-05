@@ -4,6 +4,7 @@
 #include <Ren/DrawCall.h>
 
 #include "../../utils/ShaderLoader.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_debug_interface.h"
 
 Eng::ExDebugRT::ExDebugRT(ShaderLoader &sh, const view_state_t *view_state, const BindlessTextureData *bindless_tex,
@@ -14,13 +15,13 @@ Eng::ExDebugRT::ExDebugRT(ShaderLoader &sh, const view_state_t *view_state, cons
 #if defined(REN_VK_BACKEND)
     if (sh.ren_ctx().capabilities.hwrt) {
         Ren::ProgramHandle debug_hwrt_prog =
-            sh.LoadProgram2("internal/rt_debug.rgen.glsl", "internal/rt_debug@GI_CACHE.rchit.glsl",
-                            "internal/rt_debug.rahit.glsl", "internal/rt_debug.rmiss.glsl", {});
-        pi_debug_ = sh.LoadPipeline(debug_hwrt_prog);
+            sh.FindOrCreateProgram2("internal/rt_debug.rgen.glsl", "internal/rt_debug@GI_CACHE.rchit.glsl",
+                                    "internal/rt_debug.rahit.glsl", "internal/rt_debug.rmiss.glsl", {});
+        pi_debug_ = sh.FindOrCreatePipeline(debug_hwrt_prog);
     } else
 #endif
     {
-        pi_debug_ = sh.LoadPipeline("internal/rt_debug_swrt@GI_CACHE.comp.glsl");
+        pi_debug_ = sh.FindOrCreatePipeline("internal/rt_debug_swrt@GI_CACHE.comp.glsl");
     }
 }
 
@@ -44,21 +45,21 @@ void Eng::ExDebugRT::Execute_SWRT(const FgContext &fg) {
     const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
     const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
     const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Image &env_tex = fg.AccessROImage(args_->env_tex);
-    const Ren::Image &shadow_depth_tex = fg.AccessROImage(args_->shadow_depth_tex);
-    const Ren::Image &shadow_color_tex = fg.AccessROImage(args_->shadow_color_tex);
-    const Ren::Image &ltc_luts_tex = fg.AccessROImage(args_->ltc_luts_tex);
+    const Ren::ImageROHandle env_tex = fg.AccessROImage(args_->env_tex);
+    const Ren::ImageROHandle shadow_depth = fg.AccessROImage(args_->shadow_depth);
+    const Ren::ImageROHandle shadow_color = fg.AccessROImage(args_->shadow_color);
+    const Ren::ImageROHandle ltc_luts = fg.AccessROImage(args_->ltc_luts);
     const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
     const Ren::BufferROHandle items_buf = fg.AccessROBuffer(args_->items_buf);
 
-    const Ren::Image *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
+    Ren::ImageROHandle irr_tex, dist_tex, off_tex;
     if (args_->irradiance_tex) {
-        irr_tex = &fg.AccessROImage(args_->irradiance_tex);
-        dist_tex = &fg.AccessROImage(args_->distance_tex);
-        off_tex = &fg.AccessROImage(args_->offset_tex);
+        irr_tex = fg.AccessROImage(args_->irradiance_tex);
+        dist_tex = fg.AccessROImage(args_->distance_tex);
+        off_tex = fg.AccessROImage(args_->offset_tex);
     }
 
-    const Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
+    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(args_->output_tex);
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
@@ -74,20 +75,20 @@ void Eng::ExDebugRT::Execute_SWRT(const FgContext &fg) {
         {Ren::eBindTarget::UTBuf, RTDebug::MESH_INSTANCES_BUF_SLOT, mesh_instances_buf},
         {Ren::eBindTarget::SBufRO, RTDebug::LIGHTS_BUF_SLOT, lights_buf},
         {Ren::eBindTarget::TexSampled, RTDebug::ENV_TEX_SLOT, env_tex},
-        {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_DEPTH_TEX_SLOT, shadow_depth_tex},
-        {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_COLOR_TEX_SLOT, shadow_color_tex},
-        {Ren::eBindTarget::TexSampled, RTDebug::LTC_LUTS_TEX_SLOT, ltc_luts_tex},
+        {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_DEPTH_TEX_SLOT, shadow_depth},
+        {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_COLOR_TEX_SLOT, shadow_color},
+        {Ren::eBindTarget::TexSampled, RTDebug::LTC_LUTS_TEX_SLOT, ltc_luts},
         {Ren::eBindTarget::UTBuf, RTDebug::CELLS_BUF_SLOT, cells_buf},
         {Ren::eBindTarget::UTBuf, RTDebug::ITEMS_BUF_SLOT, items_buf},
         {Ren::eBindTarget::ImageRW, RTDebug::OUT_IMG_SLOT, output_tex}};
     if (irr_tex) {
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::IRRADIANCE_TEX_SLOT, *irr_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::DISTANCE_TEX_SLOT, *dist_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, *off_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::IRRADIANCE_TEX_SLOT, irr_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::DISTANCE_TEX_SLOT, dist_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, off_tex);
     }
 
-    const auto grp_count = Ren::Vec3u{(view_state_->ren_res[0] + RTDebug::GRP_SIZE_X - 1u) / RTDebug::GRP_SIZE_X,
-                                      (view_state_->ren_res[1] + RTDebug::GRP_SIZE_Y - 1u) / RTDebug::GRP_SIZE_Y, 1u};
+    const auto grp_count = Ren::Vec3u(Ren::DivCeil(view_state_->ren_res[0], RTDebug::GRP_SIZE_X),
+                                      Ren::DivCeil(view_state_->ren_res[1], RTDebug::GRP_SIZE_Y), 1u);
 
     RTDebug::Params uniform_params;
     uniform_params.img_size = Ren::Vec2u{view_state_->ren_res};

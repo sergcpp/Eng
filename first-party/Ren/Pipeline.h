@@ -11,8 +11,6 @@
 
 namespace Ren {
 struct ApiContext;
-struct RenderTarget;
-struct RenderTargetInfo;
 
 enum class ePipelineType : uint8_t { Undefined, Graphics, Compute, Raytracing };
 
@@ -31,7 +29,7 @@ struct TraceRaysIndirectCommand {
 struct PipelineMain {
 #if defined(REN_VK_BACKEND)
     VkPipelineLayout layout = {};
-    VkPipeline handle = {};
+    VkPipeline pipeline = {};
 #endif
     RastState rast_state;
     ProgramROHandle prog;
@@ -88,11 +86,12 @@ struct PipelineCold {
 };
 
 bool Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                   const DualStorage<ProgramMain, ProgramCold> &programs,
-                   NamedDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
-                   PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log, int subgroup_size = -1);
+                   const DualStorage<ProgramMain, ProgramCold> &programs, DualStorage<BufferMain, BufferCold> &buffers,
+                   PipelineMain &pipeline_main, PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log,
+                   int subgroup_size = -1);
 bool Pipeline_Init(const ApiContext &api, const StoragesRef &storages, PipelineMain &pipeline_main,
                    PipelineCold &pipeline_cold, const RastState &rast_state, ProgramROHandle prog,
                    VertexInputROHandle vtx_input, RenderPassROHandle render_pass, uint32_t subpass_index, ILog *log);
 void Pipeline_Destroy(const ApiContext &api, PipelineMain &pipeline_main, PipelineCold &pipeline_cold);
+void Pipeline_DestroyImmediately(const ApiContext &api, PipelineMain &pipeline_main, PipelineCold &pipeline_cold);
 } // namespace Ren

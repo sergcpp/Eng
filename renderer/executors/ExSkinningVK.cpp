@@ -6,6 +6,7 @@
 #include <Ren/VKCtx.h>
 
 #include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/skinning_interface.h"
 
 void Eng::ExSkinning::Execute(const FgContext &fg) {
@@ -19,11 +20,13 @@ void Eng::ExSkinning::Execute(const FgContext &fg) {
     const Ren::BufferHandle vtx_buf1 = fg.AccessRWBuffer(vtx_buf1_);
     const Ren::BufferHandle vtx_buf2 = fg.AccessRWBuffer(vtx_buf2_);
 
-    const Ren::PipelineMain &pi = fg.pipelines().Get(pi_skinning_).first;
-    const Ren::ProgramMain &pr = fg.programs().Get(pi.prog).first;
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
+
+    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_skinning_).first;
+    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
 
     if (!p_list_->skin_regions.empty()) {
-        const Ren::ApiContext &api = fg.ren_ctx().api();
         VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
         VkDescriptorSetLayout descr_set_layout = pr.descr_set_layouts[0];
@@ -60,7 +63,7 @@ void Eng::ExSkinning::Execute(const FgContext &fg) {
             api.vkUpdateDescriptorSets(api.device, 1, &descr_write, 0, nullptr);
         }
 
-        api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+        api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.pipeline);
         api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 1, &descr_set, 0, nullptr);
 
         for (uint32_t i = 0; i < uint32_t(p_list_->skin_regions.size()); i++) {

@@ -5,6 +5,7 @@
 
 #include "ApiContext.h"
 #include "Pipeline.h"
+#include "ResizableBuffer.h"
 #include "Utils.h"
 
 #ifdef _MSC_VER
@@ -215,25 +216,25 @@ void pack_vertex_delta(const vtx_delta_t &in_v, packed_vertex_delta_t &out_v) {
 
 Ren::Mesh::Mesh(std::string_view name, const float *positions, const int vtx_count, const uint32_t *indices,
                 const int ndx_count, const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
-                const BufferHandle vertex_buf1, const BufferHandle vertex_buf2, const BufferHandle index_buf,
+                ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
                 eMeshLoadStatus *load_status, ILog *log) {
     name_ = String{name};
     Init(positions, vtx_count, indices, ndx_count, api, buffers, vertex_buf1, vertex_buf2, index_buf, load_status, log);
 }
 
 Ren::Mesh::Mesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
-                const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle vertex_buf1,
-                const BufferHandle vertex_buf2, const BufferHandle index_buf, const BufferHandle skin_vertex_buf,
-                const BufferHandle delta_buf, eMeshLoadStatus *load_status, ILog *log) {
+                const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf,
+                ResizableBuffer &delta_buf, eMeshLoadStatus *load_status, ILog *log) {
     name_ = String{name};
     Init(data, on_mat_load, api, buffers, vertex_buf1, vertex_buf2, index_buf, skin_vertex_buf, delta_buf, load_status,
          log);
 }
 
 void Ren::Mesh::Init(const float *positions, const int vtx_count, const uint32_t *indices, const int ndx_count,
-                     const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
-                     const BufferHandle vertex_buf1, const BufferHandle vertex_buf2, const BufferHandle index_buf,
-                     eMeshLoadStatus *load_status, ILog *log) {
+                     const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                     ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, eMeshLoadStatus *load_status,
+                     ILog *log) {
 
     if (!positions) {
         (*load_status) = eMeshLoadStatus::Error;
@@ -288,22 +289,17 @@ void Ren::Mesh::Init(const float *positions, const int vtx_count, const uint32_t
     { // Copy buffer data
         CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-        const auto &[vtx_buf1_main, vtx_buf1_cold] = buffers.Get(vertex_buf1);
-        attribs_buf1_.sub = Buffer_AllocSubRegion(api, vtx_buf1_main, vtx_buf1_cold, attribs_buf1_.size, 16, {}, log,
-                                                  &upload_buf_main, cmd_buf);
-        attribs_buf1_.buf = vertex_buf1;
+        attribs_buf1_.sub = vertex_buf1.AllocSubRegion(attribs_buf1_.size, 16, {}, log, &upload_buf_main, cmd_buf);
+        attribs_buf1_.buf = vertex_buf1.handle();
 
         // allocate empty data in buffer 2 (for index matching)
-        const auto &[vtx_buf2_main, vtx_buf2_cold] = buffers.Get(vertex_buf2);
-        attribs_buf2_.sub = Buffer_AllocSubRegion(api, vtx_buf2_main, vtx_buf2_cold, attribs_buf2_.size, 16, {}, log);
-        attribs_buf2_.buf = vertex_buf2;
+        attribs_buf2_.sub = vertex_buf2.AllocSubRegion(attribs_buf2_.size, 16, {}, log);
+        attribs_buf2_.buf = vertex_buf2.handle();
 
         assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
 
-        const auto &[index_buf_main, index_buf_cold] = buffers.Get(index_buf);
-        indices_buf_.sub = Buffer_AllocSubRegion(api, index_buf_main, index_buf_cold, indices_buf_.size, 4, {}, log,
-                                                 &upload_buf_main, cmd_buf);
-        indices_buf_.buf = index_buf;
+        indices_buf_.sub = index_buf.AllocSubRegion(indices_buf_.size, 4, {}, log, &upload_buf_main, cmd_buf);
+        indices_buf_.buf = index_buf.handle();
 
         api.EndSingleTimeCommands(cmd_buf);
     }
@@ -314,9 +310,9 @@ void Ren::Mesh::Init(const float *positions, const int vtx_count, const uint32_t
 }
 
 void Ren::Mesh::Init(std::istream *data, const material_load_callback &on_mat_load, const ApiContext &api,
-                     DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle vertex_buf1,
-                     const BufferHandle vertex_buf2, const BufferHandle index_buf, const BufferHandle skin_vertex_buf,
-                     const BufferHandle delta_buf, eMeshLoadStatus *load_status, ILog *log) {
+                     DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                     ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf,
+                     ResizableBuffer &delta_buf, eMeshLoadStatus *load_status, ILog *log) {
 
     if (data) {
         char mesh_type_str[12];
@@ -339,8 +335,8 @@ void Ren::Mesh::Init(std::istream *data, const material_load_callback &on_mat_lo
 }
 
 void Ren::Mesh::InitMeshSimple(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                               DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle vertex_buf1,
-                               const BufferHandle vertex_buf2, const BufferHandle index_buf, ILog *log) {
+                               DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                               ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
     assert(strcmp(mesh_type_str, "STATIC_MESH\0") == 0);
@@ -409,8 +405,8 @@ void Ren::Mesh::InitMeshSimple(std::istream &data, const material_load_callback 
 }
 
 void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                                DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle vertex_buf1,
-                                const BufferHandle vertex_buf2, const BufferHandle index_buf, ILog *log) {
+                                DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                                ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
     assert(strcmp(mesh_type_str, "COLORE_MESH\0") == 0);
@@ -512,20 +508,17 @@ void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback
     { // Copy buffer data
         CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-        const auto &[vertex_buf1_main, vertex_buf1_cold] = buffers.Get(vertex_buf1);
-        attribs_buf1_.sub = Buffer_AllocSubRegion(api, vertex_buf1_main, vertex_buf1_cold, attribs_buf1_.size, 16,
-                                                  name_, log, &upload_buf_main, cmd_buf, 0 /* offset */);
-        attribs_buf1_.buf = vertex_buf1;
+        attribs_buf1_.sub =
+            vertex_buf1.AllocSubRegion(attribs_buf1_.size, 16, name_, log, &upload_buf_main, cmd_buf, 0 /* offset */);
+        attribs_buf1_.buf = vertex_buf1.handle();
 
-        const auto &[vertex_buf2_main, vertex_buf2_cold] = buffers.Get(vertex_buf2);
-        attribs_buf2_.sub = Buffer_AllocSubRegion(api, vertex_buf2_main, vertex_buf2_cold, attribs_buf2_.size, 16,
-                                                  name_, log, &upload_buf_main, cmd_buf, attribs_buf1_.size);
-        attribs_buf2_.buf = vertex_buf2;
+        attribs_buf2_.sub = vertex_buf2.AllocSubRegion(attribs_buf2_.size, 16, name_, log, &upload_buf_main, cmd_buf,
+                                                       attribs_buf1_.size);
+        attribs_buf2_.buf = vertex_buf2.handle();
 
-        const auto &[index_buf_main, index_buf_cold] = buffers.Get(index_buf);
-        indices_buf_.sub = Buffer_AllocSubRegion(api, index_buf_main, index_buf_cold, indices_buf_.size, 4, name_, log,
-                                                 &upload_buf_main, cmd_buf, attribs_buf1_.size + attribs_buf2_.size);
-        indices_buf_.buf = index_buf;
+        indices_buf_.sub = index_buf.AllocSubRegion(indices_buf_.size, 4, name_, log, &upload_buf_main, cmd_buf,
+                                                    attribs_buf1_.size + attribs_buf2_.size);
+        indices_buf_.buf = index_buf.handle();
         assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
 
         api.EndSingleTimeCommands(cmd_buf);
@@ -537,8 +530,8 @@ void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback
 }
 
 void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                                 DualStorage<BufferMain, BufferCold> &buffers, const BufferHandle skin_vertex_buf,
-                                 const BufferHandle delta_buf, const BufferHandle index_buf, ILog *log) {
+                                 DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &skin_vertex_buf,
+                                 ResizableBuffer &delta_buf, ResizableBuffer &index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
     assert(strcmp(mesh_type_str, "SKELET_MESH\0") == 0 || strcmp(mesh_type_str, "SKECOL_MESH\0") == 0);
@@ -723,22 +716,19 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
         CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
         if (shape_data_present) {
-            const auto &[delta_buf_main, delta_buf_cold] = buffers.Get(delta_buf);
-            sk_deltas_buf_.sub = Buffer_AllocSubRegion(api, delta_buf_main, delta_buf_cold, sk_deltas_buf_.size, 16,
-                                                       name_, log, &upload_buf_main, cmd_buf, delta_buf_off);
-            sk_deltas_buf_.buf = delta_buf;
+            sk_deltas_buf_.sub =
+                delta_buf.AllocSubRegion(sk_deltas_buf_.size, 16, name_, log, &upload_buf_main, cmd_buf, delta_buf_off);
+            sk_deltas_buf_.buf = delta_buf.handle();
         }
 
         // allocate untransformed vertices
-        const auto &[skin_buf_main, skin_buf_cold] = buffers.Get(skin_vertex_buf);
-        sk_attribs_buf_.sub = Buffer_AllocSubRegion(api, skin_buf_main, skin_buf_cold, sk_attribs_buf_.size, 16, name_,
-                                                    log, &upload_buf_main, cmd_buf, vertices_off);
-        sk_attribs_buf_.buf = skin_vertex_buf;
+        sk_attribs_buf_.sub = skin_vertex_buf.AllocSubRegion(sk_attribs_buf_.size, 16, name_, log, &upload_buf_main,
+                                                             cmd_buf, vertices_off);
+        sk_attribs_buf_.buf = skin_vertex_buf.handle();
 
-        const auto &[index_buf_main, index_buf_cold] = buffers.Get(index_buf);
-        indices_buf_.sub = Ren::Buffer_AllocSubRegion(api, index_buf_main, index_buf_cold, indices_buf_.size, 4, name_,
-                                                      log, &upload_buf_main, cmd_buf, indices_off);
-        indices_buf_.buf = index_buf;
+        indices_buf_.sub =
+            index_buf.AllocSubRegion(indices_buf_.size, 4, name_, log, &upload_buf_main, cmd_buf, indices_off);
+        indices_buf_.buf = index_buf.handle();
 
         api.EndSingleTimeCommands(cmd_buf);
     }
@@ -749,8 +739,8 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
 }
 
 void Ren::Mesh::InitBufferData(const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
-                               const BufferHandle vertex_buf1, const BufferHandle vertex_buf2,
-                               const BufferHandle index_buf, ILog *log) {
+                               ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
+                               ILog *log) {
     const uint32_t vertex_count = uint32_t(attribs_.size() * sizeof(float)) / sizeof(orig_vertex_t);
 
     attribs_buf1_.size = vertex_count * sizeof(packed_vertex_data1_t);
@@ -788,21 +778,17 @@ void Ren::Mesh::InitBufferData(const ApiContext &api, DualStorage<BufferMain, Bu
     { // Copy buffer data
         CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-        const auto &[vertex_buf1_main, vertex_buf1_cold] = buffers.Get(vertex_buf1);
-        attribs_buf1_.sub = Buffer_AllocSubRegion(api, vertex_buf1_main, vertex_buf1_cold, attribs_buf1_.size, 16,
-                                                  name_, log, &upload_buf_main, cmd_buf, 0 /* offset */);
-        attribs_buf1_.buf = vertex_buf1;
+        attribs_buf1_.sub =
+            vertex_buf1.AllocSubRegion(attribs_buf1_.size, 16, name_, log, &upload_buf_main, cmd_buf, 0 /* offset */);
+        attribs_buf1_.buf = vertex_buf1.handle();
 
-        const auto &[vertex_buf2_main, vertex_buf2_cold] = buffers.Get(vertex_buf2);
-        attribs_buf2_.sub = Buffer_AllocSubRegion(api, vertex_buf2_main, vertex_buf2_cold, attribs_buf2_.size, 16,
-                                                  name_, log, &upload_buf_main, cmd_buf, attribs_buf1_.size);
-        attribs_buf2_.buf = vertex_buf2;
+        attribs_buf2_.sub = vertex_buf2.AllocSubRegion(attribs_buf2_.size, 16, name_, log, &upload_buf_main, cmd_buf,
+                                                       attribs_buf1_.size);
+        attribs_buf2_.buf = vertex_buf2.handle();
 
-        const auto &[index_buf_main, index_buf_cold] = buffers.Get(index_buf);
-        indices_buf_.sub =
-            Ren::Buffer_AllocSubRegion(api, index_buf_main, index_buf_cold, indices_buf_.size, 4, name_, log,
-                                       &upload_buf_main, cmd_buf, attribs_buf1_.size + attribs_buf2_.size);
-        indices_buf_.buf = index_buf;
+        indices_buf_.sub = index_buf.AllocSubRegion(indices_buf_.size, 4, name_, log, &upload_buf_main, cmd_buf,
+                                                    attribs_buf1_.size + attribs_buf2_.size);
+        indices_buf_.buf = index_buf.handle();
         assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
 
         api.EndSingleTimeCommands(cmd_buf);

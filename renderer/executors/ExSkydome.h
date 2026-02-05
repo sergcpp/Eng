@@ -1,29 +1,26 @@
 #pragma once
-#pragma once
 
-#include "../Renderer_DrawList.h"
+#include "../Renderer_Structs.h"
 #include "../framegraph/FgNode.h"
-
-#include <Ren/Pipeline.h>
-#include <Ren/RastState.h>
-#include <Ren/RenderPass.h>
-#include <Ren/VertexInput.h>
 
 namespace Eng {
 class PrimDraw;
+struct view_state_t;
+class ShaderLoader;
+
 class ExSkydomeCube final : public FgExecutor {
   public:
     struct Args {
         FgBufROHandle shared_data;
-        FgResRef transmittance_lut;
-        FgResRef multiscatter_lut;
-        FgResRef moon_tex;
-        FgResRef weather_tex;
-        FgResRef cirrus_tex;
-        FgResRef curl_tex;
-        FgResRef noise3d_tex;
+        FgImgROHandle transmittance_lut;
+        FgImgROHandle multiscatter_lut;
+        FgImgROHandle moon_tex;
+        FgImgROHandle weather_tex;
+        FgImgROHandle cirrus_tex;
+        FgImgROHandle curl_tex;
+        FgImgROHandle noise3d_tex;
 
-        FgResRef color_tex;
+        FgImgRWHandle color_tex;
     };
 
     ExSkydomeCube(PrimDraw &prim_draw, const view_state_t *view_state, const Args *args)
@@ -45,7 +42,7 @@ class ExSkydomeCube final : public FgExecutor {
     Ren::ProgramHandle prog_skydome_phys_;
     Ren::PipelineHandle pi_skydome_downsample_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh);
 };
 
 class ExSkydomeScreen final : public FgExecutor {
@@ -54,19 +51,20 @@ class ExSkydomeScreen final : public FgExecutor {
         eSkyQuality sky_quality = eSkyQuality::Medium;
 
         FgBufROHandle shared_data;
-        FgResRef env_tex;
+        FgImgROHandle env_tex;
         struct {
-            FgResRef transmittance_lut;
-            FgResRef multiscatter_lut;
-            FgResRef moon_tex;
-            FgResRef weather_tex;
-            FgResRef cirrus_tex;
-            FgResRef curl_tex;
-            FgResRef noise3d_tex;
+            FgImgROHandle transmittance_lut;
+            FgImgROHandle multiscatter_lut;
+            FgImgROHandle moon_tex;
+            FgImgROHandle weather_tex;
+            FgImgROHandle cirrus_tex;
+            FgImgROHandle curl_tex;
+            FgImgROHandle noise3d_tex;
         } phys;
 
-        FgResRef color_tex;
-        FgResRef depth_tex;
+        FgImgROHandle depth_ro_tex;
+        FgImgRWHandle depth_rw_tex;
+        FgImgRWHandle color_tex;
     };
 
     ExSkydomeScreen(PrimDraw &prim_draw, const view_state_t *view_state, const Args *args)

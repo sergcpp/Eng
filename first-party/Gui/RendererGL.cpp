@@ -7,6 +7,7 @@
 #include "../Ren/Context.h"
 #include "../Ren/GL.h"
 #include "../Ren/GLCtx.h"
+#include "../Ren/ResizableBuffer.h"
 #include "../Sys/Json.h"
 
 namespace Gui {
@@ -30,6 +31,15 @@ Gui::Renderer::~Renderer() {
     ctx_.ReleaseBuffer(index_stage_buf_, true /* immediately */);
     ctx_.ReleaseBuffer(vertex_buf_, true /* immediately */);
     ctx_.ReleaseBuffer(index_buf_, true /* immediately */);
+
+    ctx_.ReleaseRenderPass(render_pass_);
+
+    ctx_.ReleasePipeline(pipeline_);
+    ctx_.ReleaseProgram(program_);
+    ctx_.ReleaseShader(vs_);
+    ctx_.ReleaseShader(fs_);
+
+    ctx_.ReleaseVertexInput(vtx_input_);
 }
 
 void Gui::Renderer::Draw(const int w, const int h) {
@@ -117,7 +127,8 @@ void Gui::Renderer::Draw(const int w, const int h) {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    glBindVertexArray(VertexInput_GetVAO(vi, ctx_.buffers()));
+    const Ren::BufferROHandle attrib_bufs[] = {vertex_buf_};
+    VertexInput_BindBuffers(ctx_.api(), vi, ctx_.buffers(), attrib_bufs, index_buf_);
     glUseProgram(pr_main.id);
 
     glActiveTexture(GL_TEXTURE0 + TexAtlasSlot);

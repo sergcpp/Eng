@@ -4,6 +4,8 @@
 #include <Ren/DrawCall.h>
 
 #include "../../utils/ShaderLoader.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_gi_cache_interface.h"
 
 void Eng::ExRTGICache::Execute(const FgContext &fg) {
@@ -15,7 +17,7 @@ void Eng::ExRTGICache::Execute(const FgContext &fg) {
     }
 }
 
-void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
+void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, ShaderLoader &sh) {
     if (!initialized_) {
         auto hwrt_select = [&ctx](std::string_view hwrt_shader, std::string_view swrt_shader) {
             return ctx.capabilities.hwrt ? hwrt_shader : swrt_shader;
@@ -24,23 +26,23 @@ void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
             return ctx.capabilities.subgroup ? subgroup_shader : nosubgroup_shader;
         };
 
-        pi_rt_gi_cache_[0][0] = sh.LoadPipeline(hwrt_select(
+        pi_rt_gi_cache_[0][0] = sh.FindOrCreatePipeline(hwrt_select(
             subgroup_select("internal/rt_gi_cache_hwrt.comp.glsl", "internal/rt_gi_cache_hwrt@NO_SUBGROUP.comp.glsl"),
             subgroup_select("internal/rt_gi_cache_swrt.comp.glsl", "internal/rt_gi_cache_swrt@NO_SUBGROUP.comp.glsl")));
         if (!pi_rt_gi_cache_[0][0]) {
             ctx.log()->Error("ExRTGICache: Failed to initialize pipeline!");
         }
 
-        pi_rt_gi_cache_[0][1] =
-            sh.LoadPipeline(hwrt_select(subgroup_select("internal/rt_gi_cache_hwrt@PARTIAL.comp.glsl",
-                                                        "internal/rt_gi_cache_hwrt@PARTIAL;NO_SUBGROUP.comp.glsl"),
-                                        subgroup_select("internal/rt_gi_cache_swrt@PARTIAL.comp.glsl",
-                                                        "internal/rt_gi_cache_swrt@PARTIAL;NO_SUBGROUP.comp.glsl")));
+        pi_rt_gi_cache_[0][1] = sh.FindOrCreatePipeline(
+            hwrt_select(subgroup_select("internal/rt_gi_cache_hwrt@PARTIAL.comp.glsl",
+                                        "internal/rt_gi_cache_hwrt@PARTIAL;NO_SUBGROUP.comp.glsl"),
+                        subgroup_select("internal/rt_gi_cache_swrt@PARTIAL.comp.glsl",
+                                        "internal/rt_gi_cache_swrt@PARTIAL;NO_SUBGROUP.comp.glsl")));
         if (!pi_rt_gi_cache_[0][1]) {
             ctx.log()->Error("ExRTGICache: Failed to initialize pipeline!");
         }
 
-        pi_rt_gi_cache_[1][0] = sh.LoadPipeline(
+        pi_rt_gi_cache_[1][0] = sh.FindOrCreatePipeline(
             hwrt_select(subgroup_select("internal/rt_gi_cache_hwrt@STOCH_LIGHTS.comp.glsl",
                                         "internal/rt_gi_cache_hwrt@STOCH_LIGHTS;NO_SUBGROUP.comp.glsl"),
                         subgroup_select("internal/rt_gi_cache_swrt@STOCH_LIGHTS.comp.glsl",
@@ -49,7 +51,7 @@ void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
             ctx.log()->Error("ExRTGICache: Failed to initialize pipeline!");
         }
 
-        pi_rt_gi_cache_[1][1] = sh.LoadPipeline(
+        pi_rt_gi_cache_[1][1] = sh.FindOrCreatePipeline(
             hwrt_select(subgroup_select("internal/rt_gi_cache_hwrt@STOCH_LIGHTS;PARTIAL.comp.glsl",
                                         "internal/rt_gi_cache_hwrt@STOCH_LIGHTS;PARTIAL;NO_SUBGROUP.comp.glsl"),
                         subgroup_select("internal/rt_gi_cache_swrt@STOCH_LIGHTS;PARTIAL.comp.glsl",
@@ -63,25 +65,25 @@ void Eng::ExRTGICache::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
 }
 
 void Eng::ExRTGICache::Execute_SWRT(const FgContext &fg) {
-    const Ren::BufferROHandle geo_data_buf = fg.AccessROBuffer(args_->geo_data);
-    const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(args_->materials);
+    const Ren::BufferROHandle geo_data = fg.AccessROBuffer(args_->geo_data);
+    const Ren::BufferROHandle materials = fg.AccessROBuffer(args_->materials);
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
-    const Ren::BufferROHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
-    const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Image &env_tex = fg.AccessROImage(args_->env_tex);
-    const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
-    const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
-    const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
-    const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
-    const Ren::Image &shadow_depth_tex = fg.AccessROImage(args_->shadow_depth_tex);
-    const Ren::Image &shadow_color_tex = fg.AccessROImage(args_->shadow_color_tex);
-    const Ren::Image &ltc_luts_tex = fg.AccessROImage(args_->ltc_luts_tex);
-    const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
-    const Ren::BufferROHandle items_buf = fg.AccessROBuffer(args_->items_buf);
-    const Ren::Image &irr_tex = fg.AccessROImage(args_->irradiance_tex);
-    const Ren::Image &dist_tex = fg.AccessROImage(args_->distance_tex);
-    const Ren::Image &off_tex = fg.AccessROImage(args_->offset_tex);
+    const Ren::BufferROHandle rt_blas = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
+    const Ren::BufferROHandle unif_sh_data = fg.AccessROBuffer(args_->shared_data);
+    const Ren::ImageROHandle env_tex = fg.AccessROImage(args_->env_tex);
+    const Ren::BufferROHandle rt_tlas = fg.AccessROBuffer(args_->tlas_buf);
+    const Ren::BufferROHandle prim_ndx = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
+    const Ren::BufferROHandle mesh_instances = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
+    const Ren::BufferROHandle lights = fg.AccessROBuffer(args_->lights_buf);
+    const Ren::ImageROHandle shadow_depth = fg.AccessROImage(args_->shadow_depth);
+    const Ren::ImageROHandle shadow_color = fg.AccessROImage(args_->shadow_color);
+    const Ren::ImageROHandle ltc_luts = fg.AccessROImage(args_->ltc_luts);
+    const Ren::BufferROHandle cells = fg.AccessROBuffer(args_->cells_buf);
+    const Ren::BufferROHandle items = fg.AccessROBuffer(args_->items_buf);
+    const Ren::ImageROHandle irr_tex = fg.AccessROImage(args_->irradiance_tex);
+    const Ren::ImageROHandle dist_tex = fg.AccessROImage(args_->distance_tex);
+    const Ren::ImageROHandle off_tex = fg.AccessROImage(args_->offset_tex);
 
     Ren::BufferROHandle random_seq_buf = {}, stoch_lights_buf = {}, light_nodes_buf = {};
     if (args_->stoch_lights_buf) {
@@ -90,26 +92,26 @@ void Eng::ExRTGICache::Execute_SWRT(const FgContext &fg) {
         light_nodes_buf = fg.AccessROBuffer(args_->light_nodes_buf);
     }
 
-    const Ren::Image &out_ray_data_tex = fg.AccessRWImage(args_->out_ray_data_tex);
+    const Ren::ImageRWHandle out_ray_data_tex = fg.AccessRWImage(args_->out_ray_data_tex);
 
     Ren::SmallVector<Ren::Binding, 16> bindings = {
-        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
+        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data},
         {Ren::eBindTarget::BindlessDescriptors, BIND_BINDLESS_TEX, bindless_tex_->rt_inline_textures},
         {Ren::eBindTarget::TexSampled, RTGICache::ENV_TEX_SLOT, env_tex},
-        {Ren::eBindTarget::UTBuf, RTGICache::BLAS_BUF_SLOT, rt_blas_buf},
-        {Ren::eBindTarget::UTBuf, RTGICache::TLAS_BUF_SLOT, rt_tlas_buf},
-        {Ren::eBindTarget::UTBuf, RTGICache::PRIM_NDX_BUF_SLOT, prim_ndx_buf},
-        {Ren::eBindTarget::UTBuf, RTGICache::MESH_INSTANCES_BUF_SLOT, mesh_instances_buf},
-        {Ren::eBindTarget::SBufRO, RTGICache::GEO_DATA_BUF_SLOT, geo_data_buf},
-        {Ren::eBindTarget::SBufRO, RTGICache::MATERIAL_BUF_SLOT, materials_buf},
+        {Ren::eBindTarget::UTBuf, RTGICache::BLAS_BUF_SLOT, rt_blas},
+        {Ren::eBindTarget::UTBuf, RTGICache::TLAS_BUF_SLOT, rt_tlas},
+        {Ren::eBindTarget::UTBuf, RTGICache::PRIM_NDX_BUF_SLOT, prim_ndx},
+        {Ren::eBindTarget::UTBuf, RTGICache::MESH_INSTANCES_BUF_SLOT, mesh_instances},
+        {Ren::eBindTarget::SBufRO, RTGICache::GEO_DATA_BUF_SLOT, geo_data},
+        {Ren::eBindTarget::SBufRO, RTGICache::MATERIAL_BUF_SLOT, materials},
         {Ren::eBindTarget::UTBuf, RTGICache::VTX_BUF1_SLOT, vtx_buf1},
         {Ren::eBindTarget::UTBuf, RTGICache::NDX_BUF_SLOT, ndx_buf},
-        {Ren::eBindTarget::SBufRO, RTGICache::LIGHTS_BUF_SLOT, lights_buf},
-        {Ren::eBindTarget::TexSampled, RTGICache::SHADOW_DEPTH_TEX_SLOT, shadow_depth_tex},
-        {Ren::eBindTarget::TexSampled, RTGICache::SHADOW_COLOR_TEX_SLOT, shadow_color_tex},
-        {Ren::eBindTarget::TexSampled, RTGICache::LTC_LUTS_TEX_SLOT, ltc_luts_tex},
-        {Ren::eBindTarget::UTBuf, RTGICache::CELLS_BUF_SLOT, cells_buf},
-        {Ren::eBindTarget::UTBuf, RTGICache::ITEMS_BUF_SLOT, items_buf},
+        {Ren::eBindTarget::SBufRO, RTGICache::LIGHTS_BUF_SLOT, lights},
+        {Ren::eBindTarget::TexSampled, RTGICache::SHADOW_DEPTH_TEX_SLOT, shadow_depth},
+        {Ren::eBindTarget::TexSampled, RTGICache::SHADOW_COLOR_TEX_SLOT, shadow_color},
+        {Ren::eBindTarget::TexSampled, RTGICache::LTC_LUTS_TEX_SLOT, ltc_luts},
+        {Ren::eBindTarget::UTBuf, RTGICache::CELLS_BUF_SLOT, cells},
+        {Ren::eBindTarget::UTBuf, RTGICache::ITEMS_BUF_SLOT, items},
         {Ren::eBindTarget::TexSampled, RTGICache::IRRADIANCE_TEX_SLOT, irr_tex},
         {Ren::eBindTarget::TexSampled, RTGICache::DISTANCE_TEX_SLOT, dist_tex},
         {Ren::eBindTarget::TexSampled, RTGICache::OFFSET_TEX_SLOT, off_tex},

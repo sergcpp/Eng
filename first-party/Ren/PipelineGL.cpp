@@ -2,7 +2,7 @@
 
 bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
                         const DualStorage<ProgramMain, ProgramCold> &programs,
-                        NamedDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
+                        DualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
                         PipelineCold &pipeline_cold, const ProgramROHandle prog, ILog *log, const int) {
     pipeline_main.prog = prog;
     pipeline_cold.type = ePipelineType::Compute;
@@ -26,4 +26,8 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
 void Ren::Pipeline_Destroy(const ApiContext &api, PipelineMain &pipeline_main, PipelineCold &pipeline_cold) {
     pipeline_main = {};
     pipeline_cold = {};
+}
+
+void Ren::Pipeline_DestroyImmediately(const ApiContext &api, PipelineMain &pipeline_main, PipelineCold &pipeline_cold) {
+    Pipeline_Destroy(api, pipeline_main, pipeline_cold);
 }

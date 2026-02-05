@@ -3,6 +3,7 @@
 #include <mutex>
 
 #include "DescriptorPool.h"
+#include "ResizableBuffer.h"
 #include "VKCtx.h"
 
 #ifdef _MSC_VER
@@ -73,7 +74,10 @@ Ren::Context::Context() {
 Ren::Context::~Context() {
     std::lock_guard<std::mutex> _(g_device_mtx);
 
-    api_->present_image_refs.clear();
+    for (const ImageHandle img : api_->present_image_handles) {
+        images_.Free(img);
+    }
+    api_->present_image_handles.clear();
     ReleaseAll();
 
     if (api_ && api_->device) {
@@ -268,10 +272,16 @@ bool Ren::Context::Init(const int w, const int h, ILog *log, int validation_leve
         params.usage = Bitmask(eImgUsage::RenderTarget);
         params.flags |= eImgFlags::NoOwnership;
 
-        api_->present_image_refs.emplace_back(images_.Insert(
-            name_buf, api_.get(),
-            ImgHandle{api_->present_images[i], api_->present_image_views[i], VkImageView{}, VkSampler{}, 0}, params,
-            MemAllocation{}, log_));
+        ImageHandle new_img = images_.Emplace();
+        const auto &[img_main, img_cold] = images_.Get(new_img);
+
+        img_main.img = api_->present_images[i];
+        img_main.views.push_back(api_->present_image_views[i]);
+
+        img_cold.name = Ren::String{name_buf};
+        img_cold.params = params;
+
+        api_->present_image_handles.push_back(new_img);
     }
 
     for (int i = 0; i < MaxFramesInFlight; ++i) {
@@ -317,7 +327,11 @@ void Ren::Context::Resize(const int w, const int h) {
     h_ = h;
 
     api_->vkDeviceWaitIdle(api_->device);
-    api_->present_image_refs.clear();
+
+    for (const ImageHandle img : api_->present_image_handles) {
+        images_.Free(img);
+    }
+    api_->present_image_handles.clear();
 
     for (size_t i = 0; i < api_->present_image_views.size(); ++i) {
         api_->vkDestroyImageView(api_->device, api_->present_image_views[i], nullptr);
@@ -351,17 +365,16 @@ void Ren::Context::Resize(const int w, const int h) {
         params.usage = Bitmask(eImgUsage::RenderTarget);
         params.flags |= eImgFlags::NoOwnership;
 
-        ImgRef ref = images_.FindByName(name_buf);
-        if (ref) {
-            ref->Init(ImgHandle{api_->present_images[i], api_->present_image_views[i], VkImageView{}, VkSampler{}, 0},
-                      params, MemAllocation{}, log_);
-            api_->present_image_refs.emplace_back(std::move(ref));
-        } else {
-            api_->present_image_refs.emplace_back(images_.Insert(
-                name_buf, api_.get(),
-                ImgHandle{api_->present_images[i], api_->present_image_views[i], VkImageView{}, VkSampler{}, 0}, params,
-                MemAllocation{}, log_));
-        }
+        ImageHandle new_img = images_.Emplace();
+        const auto &[img_main, img_cold] = images_.Get(new_img);
+
+        img_main.img = api_->present_images[i];
+        img_main.views.push_back(api_->present_image_views[i]);
+
+        img_cold.name = Ren::String{name_buf};
+        img_cold.params = params;
+
+        api_->present_image_handles.push_back(new_img);
     }
 }
 

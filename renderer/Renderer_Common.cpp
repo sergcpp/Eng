@@ -36,182 +36,189 @@ void Eng::Renderer::InitPipelines() {
         return ctx_.capabilities.subgroup ? subgroup_shader : nosubgroup_shader;
     };
 
-    pi_gbuf_shade_[0] = sh_.LoadPipeline(subgroup_select("internal/gbuffer_shade@SS_SHADOW_ONE.comp.glsl",
-                                                         "internal/gbuffer_shade@SS_SHADOW_ONE;NO_SUBGROUP.comp.glsl"));
-    pi_gbuf_shade_[1] =
-        sh_.LoadPipeline(subgroup_select("internal/gbuffer_shade@SHADOW_JITTER;SS_SHADOW_MANY.comp.glsl",
-                                         "internal/gbuffer_shade@SHADOW_JITTER;SS_SHADOW_MANY;NO_SUBGROUP.comp.glsl"));
-    pi_ssr_classify_ = sh_.LoadPipeline(subgroup_select("internal/ssr_classify.comp.glsl", //
-                                                        "internal/ssr_classify@NO_SUBGROUP.comp.glsl"));
-    pi_ssr_write_indirect_[0] = sh_.LoadPipeline("internal/ssr_write_indirect_args@MAIN.comp.glsl");
-    pi_ssr_write_indirect_[1] = sh_.LoadPipeline("internal/ssr_write_indirect_args@RT_DISPATCH.comp.glsl");
-    pi_ssr_trace_hq_[0][0] = sh_.LoadPipeline(subgroup_select("internal/ssr_trace_hq.comp.glsl", //
-                                                              "internal/ssr_trace_hq@NO_SUBGROUP.comp.glsl"));
-    pi_ssr_trace_hq_[0][1] = sh_.LoadPipeline(subgroup_select("internal/ssr_trace_hq@GI_CACHE.comp.glsl",
-                                                              "internal/ssr_trace_hq@GI_CACHE;NO_SUBGROUP.comp.glsl"));
-    pi_ssr_trace_hq_[1][0] = sh_.LoadPipeline(subgroup_select("internal/ssr_trace_hq@LAYERED.comp.glsl",
-                                                              "internal/ssr_trace_hq@LAYERED;NO_SUBGROUP.comp.glsl"));
+    pi_gbuf_shade_[0] =
+        sh_.FindOrCreatePipeline(subgroup_select("internal/gbuffer_shade@SS_SHADOW_ONE.comp.glsl",
+                                                 "internal/gbuffer_shade@SS_SHADOW_ONE;NO_SUBGROUP.comp.glsl"));
+    pi_gbuf_shade_[1] = sh_.FindOrCreatePipeline(
+        subgroup_select("internal/gbuffer_shade@SHADOW_JITTER;SS_SHADOW_MANY.comp.glsl",
+                        "internal/gbuffer_shade@SHADOW_JITTER;SS_SHADOW_MANY;NO_SUBGROUP.comp.glsl"));
+    pi_ssr_classify_ = sh_.FindOrCreatePipeline(subgroup_select("internal/ssr_classify.comp.glsl", //
+                                                                "internal/ssr_classify@NO_SUBGROUP.comp.glsl"));
+    pi_ssr_write_indirect_[0] = sh_.FindOrCreatePipeline("internal/ssr_write_indirect_args@MAIN.comp.glsl");
+    pi_ssr_write_indirect_[1] = sh_.FindOrCreatePipeline("internal/ssr_write_indirect_args@RT_DISPATCH.comp.glsl");
+    pi_ssr_trace_hq_[0][0] = sh_.FindOrCreatePipeline(subgroup_select("internal/ssr_trace_hq.comp.glsl", //
+                                                                      "internal/ssr_trace_hq@NO_SUBGROUP.comp.glsl"));
+    pi_ssr_trace_hq_[0][1] = sh_.FindOrCreatePipeline(subgroup_select(
+        "internal/ssr_trace_hq@GI_CACHE.comp.glsl", "internal/ssr_trace_hq@GI_CACHE;NO_SUBGROUP.comp.glsl"));
+    pi_ssr_trace_hq_[1][0] = sh_.FindOrCreatePipeline(subgroup_select(
+        "internal/ssr_trace_hq@LAYERED.comp.glsl", "internal/ssr_trace_hq@LAYERED;NO_SUBGROUP.comp.glsl"));
     pi_ssr_trace_hq_[1][1] =
-        sh_.LoadPipeline(subgroup_select("internal/ssr_trace_hq@LAYERED;GI_CACHE.comp.glsl",
-                                         "internal/ssr_trace_hq@LAYERED;GI_CACHE;NO_SUBGROUP.comp.glsl"));
+        sh_.FindOrCreatePipeline(subgroup_select("internal/ssr_trace_hq@LAYERED;GI_CACHE.comp.glsl",
+                                                 "internal/ssr_trace_hq@LAYERED;GI_CACHE;NO_SUBGROUP.comp.glsl"));
 
     // Reflections denoising
-    pi_ssr_reproject_ = sh_.LoadPipeline("internal/ssr_reproject.comp.glsl");
-    pi_ssr_temporal_[0] = sh_.LoadPipeline("internal/ssr_temporal.comp.glsl");
-    pi_ssr_temporal_[1] = sh_.LoadPipeline("internal/ssr_temporal@RELAXED.comp.glsl");
-    pi_ssr_filter_[0] = sh_.LoadPipeline("internal/ssr_filter@PRE_FILTER.comp.glsl");
-    pi_ssr_filter_[1] = sh_.LoadPipeline("internal/ssr_filter@PRE_FILTER;RELAXED.comp.glsl");
-    pi_ssr_filter_[2] = sh_.LoadPipeline("internal/ssr_filter.comp.glsl");
-    pi_ssr_filter_[3] = sh_.LoadPipeline("internal/ssr_filter@POST_FILTER.comp.glsl");
-    pi_ssr_stabilization_ = sh_.LoadPipeline("internal/ssr_stabilization.comp.glsl");
-    pi_tile_clear_[0] = sh_.LoadPipeline("internal/tile_clear.comp.glsl");
-    pi_tile_clear_[1] = sh_.LoadPipeline("internal/tile_clear@AVERAGE.comp.glsl");
-    pi_tile_clear_[2] = sh_.LoadPipeline("internal/tile_clear@VARIANCE.comp.glsl");
-    pi_tile_clear_[3] = sh_.LoadPipeline("internal/tile_clear@AVERAGE;VARIANCE.comp.glsl");
+    pi_ssr_reproject_ = sh_.FindOrCreatePipeline("internal/ssr_reproject.comp.glsl");
+    pi_ssr_temporal_[0] = sh_.FindOrCreatePipeline("internal/ssr_temporal.comp.glsl");
+    pi_ssr_temporal_[1] = sh_.FindOrCreatePipeline("internal/ssr_temporal@RELAXED.comp.glsl");
+    pi_ssr_filter_[0] = sh_.FindOrCreatePipeline("internal/ssr_filter@PRE_FILTER.comp.glsl");
+    pi_ssr_filter_[1] = sh_.FindOrCreatePipeline("internal/ssr_filter@PRE_FILTER;RELAXED.comp.glsl");
+    pi_ssr_filter_[2] = sh_.FindOrCreatePipeline("internal/ssr_filter.comp.glsl");
+    pi_ssr_filter_[3] = sh_.FindOrCreatePipeline("internal/ssr_filter@POST_FILTER.comp.glsl");
+    pi_ssr_stabilization_ = sh_.FindOrCreatePipeline("internal/ssr_stabilization.comp.glsl");
+    pi_tile_clear_[0] = sh_.FindOrCreatePipeline("internal/tile_clear.comp.glsl");
+    pi_tile_clear_[1] = sh_.FindOrCreatePipeline("internal/tile_clear@AVERAGE.comp.glsl");
+    pi_tile_clear_[2] = sh_.FindOrCreatePipeline("internal/tile_clear@VARIANCE.comp.glsl");
+    pi_tile_clear_[3] = sh_.FindOrCreatePipeline("internal/tile_clear@AVERAGE;VARIANCE.comp.glsl");
 
     // GI Cache
-    pi_probe_blend_[0][0] = sh_.LoadPipeline("internal/probe_blend@RADIANCE.comp.glsl");
-    pi_probe_blend_[1][0] = sh_.LoadPipeline("internal/probe_blend@RADIANCE;STOCH_LIGHTS.comp.glsl");
-    pi_probe_blend_[2][0] = sh_.LoadPipeline("internal/probe_blend@DISTANCE.comp.glsl");
-    pi_probe_blend_[0][1] = sh_.LoadPipeline("internal/probe_blend@RADIANCE;PARTIAL.comp.glsl");
-    pi_probe_blend_[1][1] = sh_.LoadPipeline("internal/probe_blend@RADIANCE;STOCH_LIGHTS;PARTIAL.comp.glsl");
-    pi_probe_blend_[2][1] = sh_.LoadPipeline("internal/probe_blend@DISTANCE;PARTIAL.comp.glsl");
-    pi_probe_relocate_[0] = sh_.LoadPipeline("internal/probe_relocate.comp.glsl");
-    pi_probe_relocate_[1] = sh_.LoadPipeline("internal/probe_relocate@PARTIAL.comp.glsl");
-    pi_probe_relocate_[2] = sh_.LoadPipeline("internal/probe_relocate@RESET.comp.glsl");
-    pi_probe_classify_[0] = sh_.LoadPipeline("internal/probe_classify.comp.glsl");
-    pi_probe_classify_[1] = sh_.LoadPipeline("internal/probe_classify@PARTIAL.comp.glsl");
-    pi_probe_classify_[2] = sh_.LoadPipeline("internal/probe_classify@VOL.comp.glsl");
-    pi_probe_classify_[3] = sh_.LoadPipeline("internal/probe_classify@VOL;PARTIAL.comp.glsl");
-    pi_probe_classify_[4] = sh_.LoadPipeline("internal/probe_classify@RESET.comp.glsl");
-    pi_probe_sample_ = sh_.LoadPipeline("internal/probe_sample.comp.glsl");
+    pi_probe_blend_[0][0] = sh_.FindOrCreatePipeline("internal/probe_blend@RADIANCE.comp.glsl");
+    pi_probe_blend_[1][0] = sh_.FindOrCreatePipeline("internal/probe_blend@RADIANCE;STOCH_LIGHTS.comp.glsl");
+    pi_probe_blend_[2][0] = sh_.FindOrCreatePipeline("internal/probe_blend@DISTANCE.comp.glsl");
+    pi_probe_blend_[0][1] = sh_.FindOrCreatePipeline("internal/probe_blend@RADIANCE;PARTIAL.comp.glsl");
+    pi_probe_blend_[1][1] = sh_.FindOrCreatePipeline("internal/probe_blend@RADIANCE;STOCH_LIGHTS;PARTIAL.comp.glsl");
+    pi_probe_blend_[2][1] = sh_.FindOrCreatePipeline("internal/probe_blend@DISTANCE;PARTIAL.comp.glsl");
+    pi_probe_relocate_[0] = sh_.FindOrCreatePipeline("internal/probe_relocate.comp.glsl");
+    pi_probe_relocate_[1] = sh_.FindOrCreatePipeline("internal/probe_relocate@PARTIAL.comp.glsl");
+    pi_probe_relocate_[2] = sh_.FindOrCreatePipeline("internal/probe_relocate@RESET.comp.glsl");
+    pi_probe_classify_[0] = sh_.FindOrCreatePipeline("internal/probe_classify.comp.glsl");
+    pi_probe_classify_[1] = sh_.FindOrCreatePipeline("internal/probe_classify@PARTIAL.comp.glsl");
+    pi_probe_classify_[2] = sh_.FindOrCreatePipeline("internal/probe_classify@VOL.comp.glsl");
+    pi_probe_classify_[3] = sh_.FindOrCreatePipeline("internal/probe_classify@VOL;PARTIAL.comp.glsl");
+    pi_probe_classify_[4] = sh_.FindOrCreatePipeline("internal/probe_classify@RESET.comp.glsl");
+    pi_probe_sample_ = sh_.FindOrCreatePipeline("internal/probe_sample.comp.glsl");
 
     // GTAO
-    pi_gtao_main_[0] = sh_.LoadPipeline("internal/gtao_main.comp.glsl");
-    pi_gtao_main_[1] = sh_.LoadPipeline("internal/gtao_main@HALF_RES.comp.glsl");
-    pi_gtao_filter_[0] = sh_.LoadPipeline("internal/gtao_filter.comp.glsl");
-    pi_gtao_filter_[1] = sh_.LoadPipeline("internal/gtao_filter@HALF_RES.comp.glsl");
-    pi_gtao_accumulate_[0] = sh_.LoadPipeline("internal/gtao_accumulate.comp.glsl");
-    pi_gtao_accumulate_[1] = sh_.LoadPipeline("internal/gtao_accumulate@HALF_RES.comp.glsl");
+    pi_gtao_main_[0] = sh_.FindOrCreatePipeline("internal/gtao_main.comp.glsl");
+    pi_gtao_main_[1] = sh_.FindOrCreatePipeline("internal/gtao_main@HALF_RES.comp.glsl");
+    pi_gtao_filter_[0] = sh_.FindOrCreatePipeline("internal/gtao_filter.comp.glsl");
+    pi_gtao_filter_[1] = sh_.FindOrCreatePipeline("internal/gtao_filter@HALF_RES.comp.glsl");
+    pi_gtao_accumulate_[0] = sh_.FindOrCreatePipeline("internal/gtao_accumulate.comp.glsl");
+    pi_gtao_accumulate_[1] = sh_.FindOrCreatePipeline("internal/gtao_accumulate@HALF_RES.comp.glsl");
 
     // GI
-    pi_gi_classify_ = sh_.LoadPipeline(subgroup_select("internal/gi_classify.comp.glsl", //
-                                                       "internal/gi_classify@NO_SUBGROUP.comp.glsl"));
-    pi_gi_write_indirect_[0] = sh_.LoadPipeline("internal/gi_write_indirect_args@MAIN.comp.glsl");
-    pi_gi_write_indirect_[1] = sh_.LoadPipeline("internal/gi_write_indirect_args@RT_DISPATCH.comp.glsl");
-    pi_gi_write_indirect_[2] = sh_.LoadPipeline("internal/gi_write_indirect_args@SHADE.comp.glsl");
-    pi_gi_trace_ss_ = sh_.LoadPipeline(subgroup_select("internal/gi_trace_ss.comp.glsl", //
-                                                       "internal/gi_trace_ss@NO_SUBGROUP.comp.glsl"));
-    pi_gi_shade_[0] = sh_.LoadPipeline("internal/rt_gi_shade@MISS.comp.glsl");
-    pi_gi_shade_[1] = sh_.LoadPipeline("internal/rt_gi_shade@MISS_SECOND.comp.glsl");
-    pi_gi_shade_[2] = sh_.LoadPipeline(subgroup_select("internal/rt_gi_shade@HIT;GI_CACHE.comp.glsl",
-                                                       "internal/rt_gi_shade@HIT;GI_CACHE;NO_SUBGROUP.comp.glsl"));
-    pi_gi_shade_[3] =
-        sh_.LoadPipeline(subgroup_select("internal/rt_gi_shade@HIT;GI_CACHE;STOCH_LIGHTS.comp.glsl",
-                                         "internal/rt_gi_shade@HIT;GI_CACHE;STOCH_LIGHTS;NO_SUBGROUP.comp.glsl"));
+    pi_gi_classify_ = sh_.FindOrCreatePipeline(subgroup_select("internal/gi_classify.comp.glsl", //
+                                                               "internal/gi_classify@NO_SUBGROUP.comp.glsl"));
+    pi_gi_write_indirect_[0] = sh_.FindOrCreatePipeline("internal/gi_write_indirect_args@MAIN.comp.glsl");
+    pi_gi_write_indirect_[1] = sh_.FindOrCreatePipeline("internal/gi_write_indirect_args@RT_DISPATCH.comp.glsl");
+    pi_gi_write_indirect_[2] = sh_.FindOrCreatePipeline("internal/gi_write_indirect_args@SHADE.comp.glsl");
+    pi_gi_trace_ss_ = sh_.FindOrCreatePipeline(subgroup_select("internal/gi_trace_ss.comp.glsl", //
+                                                               "internal/gi_trace_ss@NO_SUBGROUP.comp.glsl"));
+    pi_gi_shade_[0] = sh_.FindOrCreatePipeline("internal/rt_gi_shade@MISS.comp.glsl");
+    pi_gi_shade_[1] = sh_.FindOrCreatePipeline("internal/rt_gi_shade@MISS_SECOND.comp.glsl");
+    pi_gi_shade_[2] = sh_.FindOrCreatePipeline(subgroup_select(
+        "internal/rt_gi_shade@HIT;GI_CACHE.comp.glsl", "internal/rt_gi_shade@HIT;GI_CACHE;NO_SUBGROUP.comp.glsl"));
+    pi_gi_shade_[3] = sh_.FindOrCreatePipeline(
+        subgroup_select("internal/rt_gi_shade@HIT;GI_CACHE;STOCH_LIGHTS.comp.glsl",
+                        "internal/rt_gi_shade@HIT;GI_CACHE;STOCH_LIGHTS;NO_SUBGROUP.comp.glsl"));
     pi_gi_shade_[4] =
-        sh_.LoadPipeline(subgroup_select("internal/rt_gi_shade@HIT_FIRST;GI_CACHE.comp.glsl",
-                                         "internal/rt_gi_shade@HIT_FIRST;GI_CACHE;NO_SUBGROUP.comp.glsl"));
-    pi_gi_shade_[5] =
-        sh_.LoadPipeline(subgroup_select("internal/rt_gi_shade@HIT_FIRST;GI_CACHE;STOCH_LIGHTS.comp.glsl",
-                                         "internal/rt_gi_shade@HIT_FIRST;GI_CACHE;STOCH_LIGHTS;NO_SUBGROUP.comp.glsl"));
+        sh_.FindOrCreatePipeline(subgroup_select("internal/rt_gi_shade@HIT_FIRST;GI_CACHE.comp.glsl",
+                                                 "internal/rt_gi_shade@HIT_FIRST;GI_CACHE;NO_SUBGROUP.comp.glsl"));
+    pi_gi_shade_[5] = sh_.FindOrCreatePipeline(
+        subgroup_select("internal/rt_gi_shade@HIT_FIRST;GI_CACHE;STOCH_LIGHTS.comp.glsl",
+                        "internal/rt_gi_shade@HIT_FIRST;GI_CACHE;STOCH_LIGHTS;NO_SUBGROUP.comp.glsl"));
     pi_gi_shade_[6] =
-        sh_.LoadPipeline(subgroup_select("internal/rt_gi_shade@HIT_SECOND;GI_CACHE.comp.glsl",
-                                         "internal/rt_gi_shade@HIT_SECOND;GI_CACHE;NO_SUBGROUP.comp.glsl"));
-    pi_gi_reproject_ = sh_.LoadPipeline("internal/gi_reproject.comp.glsl");
-    pi_gi_temporal_[0] = sh_.LoadPipeline("internal/gi_temporal.comp.glsl");
-    pi_gi_temporal_[1] = sh_.LoadPipeline("internal/gi_temporal@RELAXED.comp.glsl");
-    pi_gi_filter_[0] = sh_.LoadPipeline("internal/gi_filter@PRE_FILTER.comp.glsl");
-    pi_gi_filter_[1] = sh_.LoadPipeline("internal/gi_filter@PRE_FILTER;RELAXED.comp.glsl");
-    pi_gi_filter_[2] = sh_.LoadPipeline("internal/gi_filter.comp.glsl");
-    pi_gi_filter_[3] = sh_.LoadPipeline("internal/gi_filter@POST_FILTER.comp.glsl");
-    pi_gi_stabilization_ = sh_.LoadPipeline("internal/gi_stabilization.comp.glsl");
+        sh_.FindOrCreatePipeline(subgroup_select("internal/rt_gi_shade@HIT_SECOND;GI_CACHE.comp.glsl",
+                                                 "internal/rt_gi_shade@HIT_SECOND;GI_CACHE;NO_SUBGROUP.comp.glsl"));
+    pi_gi_reproject_ = sh_.FindOrCreatePipeline("internal/gi_reproject.comp.glsl");
+    pi_gi_temporal_[0] = sh_.FindOrCreatePipeline("internal/gi_temporal.comp.glsl");
+    pi_gi_temporal_[1] = sh_.FindOrCreatePipeline("internal/gi_temporal@RELAXED.comp.glsl");
+    pi_gi_filter_[0] = sh_.FindOrCreatePipeline("internal/gi_filter@PRE_FILTER.comp.glsl");
+    pi_gi_filter_[1] = sh_.FindOrCreatePipeline("internal/gi_filter@PRE_FILTER;RELAXED.comp.glsl");
+    pi_gi_filter_[2] = sh_.FindOrCreatePipeline("internal/gi_filter.comp.glsl");
+    pi_gi_filter_[3] = sh_.FindOrCreatePipeline("internal/gi_filter@POST_FILTER.comp.glsl");
+    pi_gi_stabilization_ = sh_.FindOrCreatePipeline("internal/gi_stabilization.comp.glsl");
 
     // Sun Shadow
-    pi_sun_shadows_[0] = sh_.LoadPipeline("internal/sun_shadows@SS_SHADOW.comp.glsl");
-    pi_sun_shadows_[1] = sh_.LoadPipeline("internal/sun_shadows@RT_SHADOW.comp.glsl");
-    pi_sun_brightness_ = sh_.LoadPipeline("internal/sun_brightness.comp.glsl");
-    pi_shadow_classify_ = sh_.LoadPipeline(subgroup_select("internal/rt_shadow_classify.comp.glsl", //
-                                                           "internal/rt_shadow_classify@NO_SUBGROUP.comp.glsl"),
-                                           32);
-    pi_shadow_prepare_mask_ = sh_.LoadPipeline(subgroup_select("internal/rt_shadow_prepare_mask.comp.glsl",
-                                                               "internal/rt_shadow_prepare_mask@NO_SUBGROUP.comp.glsl"),
-                                               32);
+    pi_sun_shadows_[0] = sh_.FindOrCreatePipeline("internal/sun_shadows@SS_SHADOW.comp.glsl");
+    pi_sun_shadows_[1] = sh_.FindOrCreatePipeline("internal/sun_shadows@RT_SHADOW.comp.glsl");
+    pi_sun_brightness_ = sh_.FindOrCreatePipeline("internal/sun_brightness.comp.glsl");
+    pi_shadow_classify_ = sh_.FindOrCreatePipeline(subgroup_select("internal/rt_shadow_classify.comp.glsl", //
+                                                                   "internal/rt_shadow_classify@NO_SUBGROUP.comp.glsl"),
+                                                   32);
+    pi_shadow_prepare_mask_ =
+        sh_.FindOrCreatePipeline(subgroup_select("internal/rt_shadow_prepare_mask.comp.glsl",
+                                                 "internal/rt_shadow_prepare_mask@NO_SUBGROUP.comp.glsl"),
+                                 32);
     pi_shadow_classify_tiles_ =
-        sh_.LoadPipeline(subgroup_select("internal/rt_shadow_classify_tiles.comp.glsl",
-                                         "internal/rt_shadow_classify_tiles@NO_SUBGROUP.comp.glsl"),
-                         32);
-    pi_shadow_filter_[0] = sh_.LoadPipeline("internal/rt_shadow_filter@PASS_0.comp.glsl");
-    pi_shadow_filter_[1] = sh_.LoadPipeline("internal/rt_shadow_filter@PASS_1.comp.glsl");
-    pi_shadow_filter_[2] = sh_.LoadPipeline("internal/rt_shadow_filter.comp.glsl");
-    pi_shadow_debug_ = sh_.LoadPipeline("internal/rt_shadow_debug.comp.glsl");
+        sh_.FindOrCreatePipeline(subgroup_select("internal/rt_shadow_classify_tiles.comp.glsl",
+                                                 "internal/rt_shadow_classify_tiles@NO_SUBGROUP.comp.glsl"),
+                                 32);
+    pi_shadow_filter_[0] = sh_.FindOrCreatePipeline("internal/rt_shadow_filter@PASS_0.comp.glsl");
+    pi_shadow_filter_[1] = sh_.FindOrCreatePipeline("internal/rt_shadow_filter@PASS_1.comp.glsl");
+    pi_shadow_filter_[2] = sh_.FindOrCreatePipeline("internal/rt_shadow_filter.comp.glsl");
+    pi_shadow_debug_ = sh_.FindOrCreatePipeline("internal/rt_shadow_debug.comp.glsl");
 
     // Bloom
-    pi_bloom_downsample_[0][0] = sh_.LoadPipeline("internal/bloom_downsample.comp.glsl");
-    pi_bloom_downsample_[0][1] = sh_.LoadPipeline("internal/bloom_downsample@TONEMAP.comp.glsl");
-    pi_bloom_downsample_[1][0] = sh_.LoadPipeline("internal/bloom_downsample@COMPRESSED.comp.glsl");
-    pi_bloom_downsample_[1][1] = sh_.LoadPipeline("internal/bloom_downsample@COMPRESSED;TONEMAP.comp.glsl");
-    pi_bloom_upsample_[0] = sh_.LoadPipeline("internal/bloom_upsample.comp.glsl");
-    pi_bloom_upsample_[1] = sh_.LoadPipeline("internal/bloom_upsample@COMPRESSED.comp.glsl");
+    pi_bloom_downsample_[0][0] = sh_.FindOrCreatePipeline("internal/bloom_downsample.comp.glsl");
+    pi_bloom_downsample_[0][1] = sh_.FindOrCreatePipeline("internal/bloom_downsample@TONEMAP.comp.glsl");
+    pi_bloom_downsample_[1][0] = sh_.FindOrCreatePipeline("internal/bloom_downsample@COMPRESSED.comp.glsl");
+    pi_bloom_downsample_[1][1] = sh_.FindOrCreatePipeline("internal/bloom_downsample@COMPRESSED;TONEMAP.comp.glsl");
+    pi_bloom_upsample_[0] = sh_.FindOrCreatePipeline("internal/bloom_upsample.comp.glsl");
+    pi_bloom_upsample_[1] = sh_.FindOrCreatePipeline("internal/bloom_upsample@COMPRESSED.comp.glsl");
 
     // Autoexposure
-    pi_histogram_sample_ = sh_.LoadPipeline("internal/histogram_sample.comp.glsl");
-    pi_histogram_exposure_ = sh_.LoadPipeline("internal/histogram_exposure.comp.glsl");
+    pi_histogram_sample_ = sh_.FindOrCreatePipeline("internal/histogram_sample.comp.glsl");
+    pi_histogram_exposure_ = sh_.FindOrCreatePipeline("internal/histogram_exposure.comp.glsl");
 
     // Volumetrics
-    pi_sky_upsample_ = sh_.LoadPipeline("internal/skydome_upsample.comp.glsl");
-    pi_vol_scatter_[0][0] = sh_.LoadPipeline(subgroup_select("internal/vol_scatter.comp.glsl", //
-                                                             "internal/vol_scatter@NO_SUBGROUP.comp.glsl"));
-    pi_vol_scatter_[0][1] = sh_.LoadPipeline(subgroup_select("internal/vol_scatter@GI_CACHE.comp.glsl", //
-                                                             "internal/vol_scatter@GI_CACHE;NO_SUBGROUP.comp.glsl"));
+    pi_sky_upsample_ = sh_.FindOrCreatePipeline("internal/skydome_upsample.comp.glsl");
+    pi_vol_scatter_[0][0] = sh_.FindOrCreatePipeline(subgroup_select("internal/vol_scatter.comp.glsl", //
+                                                                     "internal/vol_scatter@NO_SUBGROUP.comp.glsl"));
+    pi_vol_scatter_[0][1] =
+        sh_.FindOrCreatePipeline(subgroup_select("internal/vol_scatter@GI_CACHE.comp.glsl", //
+                                                 "internal/vol_scatter@GI_CACHE;NO_SUBGROUP.comp.glsl"));
     pi_vol_scatter_[1][0] =
-        sh_.LoadPipeline(subgroup_select("internal/vol_scatter@ALL_CASCADES.comp.glsl", //
-                                         "internal/vol_scatter@ALL_CASCADES;NO_SUBGROUP.comp.glsl"));
+        sh_.FindOrCreatePipeline(subgroup_select("internal/vol_scatter@ALL_CASCADES.comp.glsl", //
+                                                 "internal/vol_scatter@ALL_CASCADES;NO_SUBGROUP.comp.glsl"));
     pi_vol_scatter_[1][1] =
-        sh_.LoadPipeline(subgroup_select("internal/vol_scatter@ALL_CASCADES;GI_CACHE.comp.glsl", //
-                                         "internal/vol_scatter@ALL_CASCADES;GI_CACHE;NO_SUBGROUP.comp.glsl"));
-    pi_vol_ray_march_ = sh_.LoadPipeline("internal/vol_ray_march.comp.glsl");
+        sh_.FindOrCreatePipeline(subgroup_select("internal/vol_scatter@ALL_CASCADES;GI_CACHE.comp.glsl", //
+                                                 "internal/vol_scatter@ALL_CASCADES;GI_CACHE;NO_SUBGROUP.comp.glsl"));
+    pi_vol_ray_march_ = sh_.FindOrCreatePipeline("internal/vol_ray_march.comp.glsl");
 
     // TSR
-    pi_reconstruct_depth_ = sh_.LoadPipeline("internal/reconstruct_depth.comp.glsl");
-    pi_prepare_disocclusion_ = sh_.LoadPipeline("internal/prepare_disocclusion.comp.glsl");
-    pi_sharpen_[0] = sh_.LoadPipeline("internal/sharpen.comp.glsl");
-    pi_sharpen_[1] = sh_.LoadPipeline("internal/sharpen@COMPRESSED.comp.glsl");
+    pi_reconstruct_depth_ = sh_.FindOrCreatePipeline("internal/reconstruct_depth.comp.glsl");
+    pi_prepare_disocclusion_ = sh_.FindOrCreatePipeline("internal/prepare_disocclusion.comp.glsl");
+    pi_sharpen_[0] = sh_.FindOrCreatePipeline("internal/sharpen.comp.glsl");
+    pi_sharpen_[1] = sh_.FindOrCreatePipeline("internal/sharpen@COMPRESSED.comp.glsl");
 
     // Motion blur
-    pi_motion_blur_classify_[0] = sh_.LoadPipeline("internal/motion_blur_classify.comp.glsl");
-    pi_motion_blur_classify_[1] = sh_.LoadPipeline("internal/motion_blur_classify@VERTICAL.comp.glsl");
-    pi_motion_blur_dilate_ = sh_.LoadPipeline("internal/motion_blur_dilate.comp.glsl");
-    pi_motion_blur_filter_ = sh_.LoadPipeline("internal/motion_blur_filter.comp.glsl");
+    pi_motion_blur_classify_[0] = sh_.FindOrCreatePipeline("internal/motion_blur_classify.comp.glsl");
+    pi_motion_blur_classify_[1] = sh_.FindOrCreatePipeline("internal/motion_blur_classify@VERTICAL.comp.glsl");
+    pi_motion_blur_dilate_ = sh_.FindOrCreatePipeline("internal/motion_blur_dilate.comp.glsl");
+    pi_motion_blur_filter_ = sh_.FindOrCreatePipeline("internal/motion_blur_filter.comp.glsl");
 
     // Debugging
-    pi_debug_velocity_ = sh_.LoadPipeline("internal/debug_velocity.comp.glsl");
-    pi_debug_gbuffer_[0] = sh_.LoadPipeline("internal/debug_gbuffer@DEPTH.comp.glsl");
-    pi_debug_gbuffer_[1] = sh_.LoadPipeline("internal/debug_gbuffer@NORMALS.comp.glsl");
-    pi_debug_gbuffer_[2] = sh_.LoadPipeline("internal/debug_gbuffer@ROUGHNESS.comp.glsl");
-    pi_debug_gbuffer_[3] = sh_.LoadPipeline("internal/debug_gbuffer@METALLIC.comp.glsl");
+    pi_debug_velocity_ = sh_.FindOrCreatePipeline("internal/debug_velocity.comp.glsl");
+    pi_debug_gbuffer_[0] = sh_.FindOrCreatePipeline("internal/debug_gbuffer@DEPTH.comp.glsl");
+    pi_debug_gbuffer_[1] = sh_.FindOrCreatePipeline("internal/debug_gbuffer@NORMALS.comp.glsl");
+    pi_debug_gbuffer_[2] = sh_.FindOrCreatePipeline("internal/debug_gbuffer@ROUGHNESS.comp.glsl");
+    pi_debug_gbuffer_[3] = sh_.FindOrCreatePipeline("internal/debug_gbuffer@METALLIC.comp.glsl");
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    blit_static_vel_prog_ = sh_.LoadProgram("internal/blit_static_vel.vert.glsl", "internal/blit_static_vel.frag.glsl");
-    blit_gauss_prog_ = sh_.LoadProgram("internal/blit_gauss.vert.glsl", "internal/blit_gauss.frag.glsl");
-    blit_ao_prog_ = sh_.LoadProgram("internal/blit_ssao.vert.glsl", "internal/blit_ssao.frag.glsl");
-    blit_bilateral_prog_ = sh_.LoadProgram("internal/blit_bilateral.vert.glsl", "internal/blit_bilateral.frag.glsl");
+    blit_static_vel_prog_ =
+        sh_.FindOrCreateProgram("internal/blit_static_vel.vert.glsl", "internal/blit_static_vel.frag.glsl");
+    blit_gauss_prog_ = sh_.FindOrCreateProgram("internal/blit_gauss.vert.glsl", "internal/blit_gauss.frag.glsl");
+    blit_ao_prog_ = sh_.FindOrCreateProgram("internal/blit_ssao.vert.glsl", "internal/blit_ssao.frag.glsl");
+    blit_bilateral_prog_ =
+        sh_.FindOrCreateProgram("internal/blit_bilateral.vert.glsl", "internal/blit_bilateral.frag.glsl");
     blit_tsr_prog_ =
-        sh_.LoadProgram("internal/blit_tsr.vert.glsl",
-                        "internal/blit_tsr@CATMULL_ROM;ROUNDED_NEIBOURHOOD;TONEMAP;YCoCg;LOCKING.frag.glsl");
+        sh_.FindOrCreateProgram("internal/blit_tsr.vert.glsl",
+                                "internal/blit_tsr@CATMULL_ROM;ROUNDED_NEIBOURHOOD;TONEMAP;YCoCg;LOCKING.frag.glsl");
     blit_tsr_static_prog_ =
-        sh_.LoadProgram("internal/blit_tsr.vert.glsl", "internal/blit_tsr@STATIC_ACCUMULATION.frag.glsl");
-    blit_ssr_prog_ = sh_.LoadProgram("internal/blit_ssr.vert.glsl", "internal/blit_ssr.frag.glsl");
-    blit_ssr_dilate_prog_ = sh_.LoadProgram("internal/blit_ssr_dilate.vert.glsl", "internal/blit_ssr_dilate.frag.glsl");
+        sh_.FindOrCreateProgram("internal/blit_tsr.vert.glsl", "internal/blit_tsr@STATIC_ACCUMULATION.frag.glsl");
+    blit_ssr_prog_ = sh_.FindOrCreateProgram("internal/blit_ssr.vert.glsl", "internal/blit_ssr.frag.glsl");
+    blit_ssr_dilate_prog_ =
+        sh_.FindOrCreateProgram("internal/blit_ssr_dilate.vert.glsl", "internal/blit_ssr_dilate.frag.glsl");
     blit_ssr_compose_prog_ =
-        sh_.LoadProgram("internal/blit_ssr_compose.vert.glsl", "internal/blit_ssr_compose.frag.glsl");
-    blit_upscale_prog_ = sh_.LoadProgram("internal/blit_upscale.vert.glsl", "internal/blit_upscale.frag.glsl");
-    blit_down_prog_ = sh_.LoadProgram("internal/blit_down.vert.glsl", "internal/blit_down.frag.glsl");
-    blit_down_depth_prog_ = sh_.LoadProgram("internal/blit_down_depth.vert.glsl", "internal/blit_down_depth.frag.glsl");
-    blit_fxaa_prog_ = sh_.LoadProgram("internal/blit_fxaa.vert.glsl", "internal/blit_fxaa.frag.glsl");
+        sh_.FindOrCreateProgram("internal/blit_ssr_compose.vert.glsl", "internal/blit_ssr_compose.frag.glsl");
+    blit_upscale_prog_ = sh_.FindOrCreateProgram("internal/blit_upscale.vert.glsl", "internal/blit_upscale.frag.glsl");
+    blit_down_prog_ = sh_.FindOrCreateProgram("internal/blit_down.vert.glsl", "internal/blit_down.frag.glsl");
+    blit_down_depth_prog_ =
+        sh_.FindOrCreateProgram("internal/blit_down_depth.vert.glsl", "internal/blit_down_depth.frag.glsl");
+    blit_fxaa_prog_ = sh_.FindOrCreateProgram("internal/blit_fxaa.vert.glsl", "internal/blit_fxaa.frag.glsl");
     blit_vol_compose_prog_ =
-        sh_.LoadProgram("internal/blit_vol_compose.vert.glsl", "internal/blit_vol_compose.frag.glsl");
+        sh_.FindOrCreateProgram("internal/blit_vol_compose.vert.glsl", "internal/blit_vol_compose.frag.glsl");
 }
 
 void Eng::Renderer::AddBuffersUpdatePass(CommonBuffers &common_buffers, const PersistentGpuData &persistent_data) {
@@ -455,7 +462,8 @@ void Eng::Renderer::AddBuffersUpdatePass(CommonBuffers &common_buffers, const Pe
                 Ren::Vec4u{uint32_t(p_list_->lights.size()), uint32_t(p_list_->decals.size()), 0, 0};
             float env_mip_count = 0.0f;
             if (p_list_->env.env_map) {
-                env_mip_count = float(p_list_->env.env_map->params.mip_count);
+                const auto &[env_main, env_cold] = ctx_.images().Get(p_list_->env.env_map);
+                env_mip_count = float(env_cold.params.mip_count);
             }
             shrd_data.ambient_hack = Ren::Vec4f{0.0f, 0.0f, 0.0f, env_mip_count};
 
@@ -591,25 +599,25 @@ void Eng::Renderer::AddLightBuffersUpdatePass(CommonBuffers &common_buffers) {
     });
 }
 
-void Eng::Renderer::AddGBufferFillPass(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
-                                       const BindlessTextureData &bindless, FrameTextures &frame_textures) {
+void Eng::Renderer::AddGBufferFillPass(const CommonBuffers &common_buffers, const BindlessTextureData &bindless,
+                                       FrameTextures &frame_textures) {
     using Stg = Ren::eStage;
 
     auto &gbuf_fill = fg_builder_.AddNode("GBUFFER FILL");
-    const FgBufROHandle vtx_buf1 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgBufROHandle vtx_buf2 = gbuf_fill.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgBufROHandle ndx_buf = gbuf_fill.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufROHandle vtx_buf1 = gbuf_fill.AddVertexBufferInput(common_buffers.vertex_buf1);
+    const FgBufROHandle vtx_buf2 = gbuf_fill.AddVertexBufferInput(common_buffers.vertex_buf2);
+    const FgBufROHandle ndx_buf = gbuf_fill.AddIndexBufferInput(common_buffers.indices_buf);
 
     const FgBufROHandle materials_buf =
-        gbuf_fill.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
+        gbuf_fill.AddStorageReadonlyInput(common_buffers.materials_buf, Stg::VertexShader);
 
-    const FgResRef noise_tex =
-        gbuf_fill.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
-    const FgResRef dummy_white = gbuf_fill.AddTextureInput(dummy_white_, Stg::FragmentShader);
-    const FgResRef dummy_black = gbuf_fill.AddTextureInput(dummy_black_, Stg::FragmentShader);
+    const FgImgROHandle noise_tex =
+        gbuf_fill.AddTextureInput(frame_textures.noise_tex, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
+    const FgImgROHandle dummy_white = gbuf_fill.AddTextureInput(frame_textures.dummy_white, Stg::FragmentShader);
+    const FgImgROHandle dummy_black = gbuf_fill.AddTextureInput(frame_textures.dummy_black, Stg::FragmentShader);
 
     const FgBufROHandle instances_buf =
-        gbuf_fill.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+        gbuf_fill.AddStorageReadonlyInput(common_buffers.instance_buf, Stg::VertexShader);
     const FgBufROHandle instances_indices_buf =
         gbuf_fill.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
@@ -636,20 +644,19 @@ void Eng::Renderer::AddForwardOpaquePass(const CommonBuffers &common_buffers, co
     using Stg = Ren::eStage;
 
     auto &opaque = fg_builder_.AddNode("OPAQUE");
-    const FgBufROHandle vtx_buf1 = opaque.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgBufROHandle vtx_buf2 = opaque.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgBufROHandle ndx_buf = opaque.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufROHandle vtx_buf1 = opaque.AddVertexBufferInput(common_buffers.vertex_buf1);
+    const FgBufROHandle vtx_buf2 = opaque.AddVertexBufferInput(common_buffers.vertex_buf2);
+    const FgBufROHandle ndx_buf = opaque.AddIndexBufferInput(common_buffers.indices_buf);
 
-    const FgBufROHandle materials_buf =
-        opaque.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
-    const FgResRef brdf_lut = opaque.AddTextureInput(brdf_lut_, Stg::FragmentShader);
-    const FgResRef noise_tex =
-        opaque.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
-    const FgResRef cone_rt_lut = opaque.AddTextureInput(cone_rt_lut_, Stg::FragmentShader);
+    const FgBufROHandle materials_buf = opaque.AddStorageReadonlyInput(common_buffers.materials_buf, Stg::VertexShader);
+    const FgImgROHandle brdf_lut = opaque.AddTextureInput(frame_textures.brdf_lut, Stg::FragmentShader);
+    const FgImgROHandle noise_tex =
+        opaque.AddTextureInput(frame_textures.noise_tex, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
+    const FgImgROHandle cone_rt_lut = opaque.AddTextureInput(frame_textures.cone_rt_lut, Stg::FragmentShader);
 
-    const FgResRef dummy_black = opaque.AddTextureInput(dummy_black_, Stg::FragmentShader);
+    const FgImgROHandle dummy_black = opaque.AddTextureInput(frame_textures.dummy_black, Stg::FragmentShader);
 
-    const FgBufROHandle instances_buf = opaque.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+    const FgBufROHandle instances_buf = opaque.AddStorageReadonlyInput(common_buffers.instance_buf, Stg::VertexShader);
     const FgBufROHandle instances_indices_buf =
         opaque.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
@@ -661,13 +668,13 @@ void Eng::Renderer::AddForwardOpaquePass(const CommonBuffers &common_buffers, co
     const FgBufROHandle lights_buf = opaque.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
     const FgBufROHandle decals_buf = opaque.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
 
-    const FgResRef shadowmap_tex = opaque.AddTextureInput(frame_textures.shadow_depth, Stg::FragmentShader);
-    const FgResRef ssao_tex = opaque.AddTextureInput(frame_textures.ssao, Stg::FragmentShader);
+    const FgImgROHandle shadow_depth = opaque.AddTextureInput(frame_textures.shadow_depth, Stg::FragmentShader);
+    const FgImgROHandle ssao_tex = opaque.AddTextureInput(frame_textures.ssao, Stg::FragmentShader);
 
     FgResRef lmap_tex[4];
     for (int i = 0; i < 4; ++i) {
         if (p_list_->env.lm_indir_sh[i]) {
-            lmap_tex[i] = opaque.AddTextureInput(p_list_->env.lm_indir_sh[i], Stg::FragmentShader);
+            // lmap_tex[i] = opaque.AddTextureInput(p_list_->env.lm_indir_sh[i], Stg::FragmentShader);
         }
     }
 
@@ -679,7 +686,7 @@ void Eng::Renderer::AddForwardOpaquePass(const CommonBuffers &common_buffers, co
     opaque.make_executor<ExOpaque>(ctx_.api(), &p_list_, &view_state_, vtx_buf1, vtx_buf2, ndx_buf, materials_buf,
                                    &bindless, brdf_lut, noise_tex, cone_rt_lut, dummy_black, instances_buf,
                                    instances_indices_buf, shader_data_buf, cells_buf, items_buf, lights_buf, decals_buf,
-                                   shadowmap_tex, ssao_tex, lmap_tex, frame_textures.color, frame_textures.normal,
+                                   shadow_depth, ssao_tex, lmap_tex, frame_textures.color, frame_textures.normal,
                                    frame_textures.specular, frame_textures.depth);
 }
 
@@ -689,21 +696,21 @@ void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffer
     using Stg = Ren::eStage;
 
     auto &transparent = fg_builder_.AddNode("TRANSPARENT");
-    const FgBufROHandle vtx_buf1 = transparent.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgBufROHandle vtx_buf2 = transparent.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgBufROHandle ndx_buf = transparent.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufROHandle vtx_buf1 = transparent.AddVertexBufferInput(common_buffers.vertex_buf1);
+    const FgBufROHandle vtx_buf2 = transparent.AddVertexBufferInput(common_buffers.vertex_buf2);
+    const FgBufROHandle ndx_buf = transparent.AddIndexBufferInput(common_buffers.indices_buf);
 
     const FgBufROHandle materials_buf =
-        transparent.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
-    const FgResRef brdf_lut = transparent.AddTextureInput(brdf_lut_, Stg::FragmentShader);
-    const FgResRef noise_tex =
-        transparent.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
-    const FgResRef cone_rt_lut = transparent.AddTextureInput(cone_rt_lut_, Stg::FragmentShader);
+        transparent.AddStorageReadonlyInput(common_buffers.materials_buf, Stg::VertexShader);
+    const FgImgROHandle brdf_lut = transparent.AddTextureInput(frame_textures.brdf_lut, Stg::FragmentShader);
+    const FgImgROHandle noise_tex =
+        transparent.AddTextureInput(frame_textures.noise_tex, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
+    const FgImgROHandle cone_rt_lut = transparent.AddTextureInput(frame_textures.cone_rt_lut, Stg::FragmentShader);
 
-    const FgResRef dummy_black = transparent.AddTextureInput(dummy_black_, Stg::FragmentShader);
+    const FgImgROHandle dummy_black = transparent.AddTextureInput(frame_textures.dummy_black, Stg::FragmentShader);
 
     const FgBufROHandle instances_buf =
-        transparent.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+        transparent.AddStorageReadonlyInput(common_buffers.instance_buf, Stg::VertexShader);
     const FgBufROHandle instances_indices_buf =
         transparent.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
@@ -715,13 +722,13 @@ void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffer
     const FgBufROHandle lights_buf = transparent.AddStorageReadonlyInput(common_buffers.lights, Stg::FragmentShader);
     const FgBufROHandle decals_buf = transparent.AddStorageReadonlyInput(common_buffers.decals, Stg::FragmentShader);
 
-    const FgResRef shadowmap_tex = transparent.AddTextureInput(frame_textures.shadow_depth, Stg::FragmentShader);
-    const FgResRef ssao_tex = transparent.AddTextureInput(frame_textures.ssao, Stg::FragmentShader);
+    const FgImgROHandle shadow_depth = transparent.AddTextureInput(frame_textures.shadow_depth, Stg::FragmentShader);
+    const FgImgROHandle ssao_tex = transparent.AddTextureInput(frame_textures.ssao, Stg::FragmentShader);
 
     FgResRef lmap_tex[4];
     for (int i = 0; i < 4; ++i) {
         if (p_list_->env.lm_indir_sh[i]) {
-            lmap_tex[i] = transparent.AddTextureInput(p_list_->env.lm_indir_sh[i], Stg::FragmentShader);
+            // lmap_tex[i] = transparent.AddTextureInput(p_list_->env.lm_indir_sh[i], Stg::FragmentShader);
         }
     }
 
@@ -733,7 +740,7 @@ void Eng::Renderer::AddForwardTransparentPass(const CommonBuffers &common_buffer
     transparent.make_executor<ExTransparent>(
         ctx_.api(), &p_list_, &view_state_, vtx_buf1, vtx_buf2, ndx_buf, materials_buf, &bindless, brdf_lut, noise_tex,
         cone_rt_lut, dummy_black, instances_buf, instances_indices_buf, shader_data_buf, cells_buf, items_buf,
-        lights_buf, decals_buf, shadowmap_tex, ssao_tex, lmap_tex, frame_textures.color, frame_textures.normal,
+        lights_buf, decals_buf, shadow_depth, ssao_tex, lmap_tex, frame_textures.color, frame_textures.normal,
         frame_textures.specular, frame_textures.depth);
 }
 
@@ -747,13 +754,17 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
     struct PassData {
         FgBufROHandle shared_data;
         FgBufROHandle cells_buf, items_buf, lights_buf, decals_buf;
-        FgResRef shadow_depth_tex, shadow_color_tex, ssao_tex, gi_tex, sun_shadow_tex;
-        FgResRef depth_tex, albedo_tex, normal_tex, spec_tex;
-        FgResRef ltc_luts_tex, env_tex;
-        FgResRef output_tex;
+        FgImgROHandle shadow_depth, shadow_color;
+        FgImgROHandle ssao_tex;
+        FgImgROHandle gi_tex;
+        FgImgROHandle sun_shadow_tex;
+        FgImgROHandle depth_tex, albedo_tex, normal_tex, spec_tex;
+        FgImgROHandle env_tex;
+        FgImgROHandle ltc_luts;
+        FgImgRWHandle output_tex;
     };
 
-    auto *data = gbuf_shade.AllocNodeData<PassData>();
+    auto *data = fg_builder_.AllocTempData<PassData>();
     data->shared_data = gbuf_shade.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
 
     data->cells_buf = gbuf_shade.AddStorageReadonlyInput(common_buffers.cells, Stg::ComputeShader);
@@ -761,13 +772,13 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
     data->lights_buf = gbuf_shade.AddStorageReadonlyInput(common_buffers.lights, Stg::ComputeShader);
     data->decals_buf = gbuf_shade.AddStorageReadonlyInput(common_buffers.decals, Stg::ComputeShader);
 
-    data->shadow_depth_tex = gbuf_shade.AddTextureInput(frame_textures.shadow_depth, Stg::ComputeShader);
-    data->shadow_color_tex = gbuf_shade.AddTextureInput(frame_textures.shadow_color, Stg::ComputeShader);
+    data->shadow_depth = gbuf_shade.AddTextureInput(frame_textures.shadow_depth, Stg::ComputeShader);
+    data->shadow_color = gbuf_shade.AddTextureInput(frame_textures.shadow_color, Stg::ComputeShader);
     data->ssao_tex = gbuf_shade.AddTextureInput(frame_textures.ssao, Stg::ComputeShader);
     if (enable_gi) {
-        data->gi_tex = gbuf_shade.AddTextureInput(frame_textures.gi, Stg::ComputeShader);
+        data->gi_tex = gbuf_shade.AddTextureInput(frame_textures.gi_diffuse, Stg::ComputeShader);
     } else {
-        data->gi_tex = gbuf_shade.AddTextureInput(dummy_black_, Stg::ComputeShader);
+        data->gi_tex = gbuf_shade.AddTextureInput(frame_textures.dummy_black, Stg::ComputeShader);
     }
     data->sun_shadow_tex = gbuf_shade.AddTextureInput(frame_textures.sun_shadow, Stg::ComputeShader);
 
@@ -776,7 +787,7 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
     data->normal_tex = gbuf_shade.AddTextureInput(frame_textures.normal, Stg::ComputeShader);
     data->spec_tex = gbuf_shade.AddTextureInput(frame_textures.specular, Stg::ComputeShader);
 
-    data->ltc_luts_tex = gbuf_shade.AddTextureInput(ltc_luts_, Stg::ComputeShader);
+    data->ltc_luts = gbuf_shade.AddTextureInput(frame_textures.ltc_luts, Stg::ComputeShader);
     data->env_tex = gbuf_shade.AddTextureInput(frame_textures.envmap, Stg::ComputeShader);
 
     frame_textures.color = data->output_tex =
@@ -791,45 +802,44 @@ void Eng::Renderer::AddDeferredShadingPass(const CommonBuffers &common_buffers, 
         const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(data->lights_buf);
         const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(data->decals_buf);
 
-        const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
-        const Ren::Image &albedo_tex = fg.AccessROImage(data->albedo_tex);
-        const Ren::Image &normal_tex = fg.AccessROImage(data->normal_tex);
-        const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
+        const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
+        const Ren::ImageROHandle albedo_tex = fg.AccessROImage(data->albedo_tex);
+        const Ren::ImageROHandle normal_tex = fg.AccessROImage(data->normal_tex);
+        const Ren::ImageROHandle spec_tex = fg.AccessROImage(data->spec_tex);
 
-        const Ren::Image &shad_depth_tex = fg.AccessROImage(data->shadow_depth_tex);
-        const Ren::Image &shad_color_tex = fg.AccessROImage(data->shadow_color_tex);
-        const Ren::Image &ssao_tex = fg.AccessROImage(data->ssao_tex);
-        const Ren::Image &gi_tex = fg.AccessROImage(data->gi_tex);
-        const Ren::Image &sun_shadow_tex = fg.AccessROImage(data->sun_shadow_tex);
+        const Ren::ImageROHandle shadow_depth = fg.AccessROImage(data->shadow_depth);
+        const Ren::ImageROHandle shadow_color = fg.AccessROImage(data->shadow_color);
+        const Ren::ImageROHandle ssao_tex = fg.AccessROImage(data->ssao_tex);
+        const Ren::ImageROHandle gi_tex = fg.AccessROImage(data->gi_tex);
+        const Ren::ImageROHandle sun_shadow_tex = fg.AccessROImage(data->sun_shadow_tex);
 
-        const Ren::Image &ltc_luts = fg.AccessROImage(data->ltc_luts_tex);
-        const Ren::Image &env_tex = fg.AccessROImage(data->env_tex);
+        const Ren::ImageROHandle ltc_luts = fg.AccessROImage(data->ltc_luts);
+        const Ren::ImageROHandle env_tex = fg.AccessROImage(data->env_tex);
 
-        const Ren::Image &out_color_tex = fg.AccessRWImage(data->output_tex);
+        const Ren::ImageRWHandle out_color_tex = fg.AccessRWImage(data->output_tex);
 
-        const Ren::Binding bindings[] = {
-            {Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
-            {Trg::UTBuf, CELLS_BUF_SLOT, cells_buf},
-            {Trg::UTBuf, ITEMS_BUF_SLOT, items_buf},
-            {Trg::UTBuf, LIGHT_BUF_SLOT, lights_buf},
-            {Trg::UTBuf, DECAL_BUF_SLOT, decals_buf},
-            {Trg::TexSampled, DEPTH_TEX_SLOT, {depth_tex, 1}},
-            {Trg::TexSampled, DEPTH_LIN_TEX_SLOT, {depth_tex, linear_sampler_, 1}},
-            {Trg::TexSampled, ALBEDO_TEX_SLOT, albedo_tex},
-            {Trg::TexSampled, NORM_TEX_SLOT, normal_tex},
-            {Trg::TexSampled, SPEC_TEX_SLOT, spec_tex},
-            {Trg::TexSampled, SHADOW_DEPTH_TEX_SLOT, shad_depth_tex},
-            {Trg::TexSampled, SHADOW_DEPTH_VAL_TEX_SLOT, {shad_depth_tex, nearest_sampler_}},
-            {Trg::TexSampled, SHADOW_COLOR_TEX_SLOT, shad_color_tex},
-            {Trg::TexSampled, SSAO_TEX_SLOT, ssao_tex},
-            {Trg::TexSampled, GI_TEX_SLOT, gi_tex},
-            {Trg::TexSampled, SUN_SHADOW_TEX_SLOT, sun_shadow_tex},
-            {Trg::TexSampled, LTC_LUTS_TEX_SLOT, ltc_luts},
-            {Trg::TexSampled, ENV_TEX_SLOT, env_tex},
-            {Trg::ImageRW, OUT_COLOR_IMG_SLOT, out_color_tex}};
+        const Ren::Binding bindings[] = {{Trg::UBuf, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf},
+                                         {Trg::UTBuf, CELLS_BUF_SLOT, cells_buf},
+                                         {Trg::UTBuf, ITEMS_BUF_SLOT, items_buf},
+                                         {Trg::UTBuf, LIGHT_BUF_SLOT, lights_buf},
+                                         {Trg::UTBuf, DECAL_BUF_SLOT, decals_buf},
+                                         {Trg::TexSampled, DEPTH_TEX_SLOT, {depth_tex, 1}},
+                                         {Trg::TexSampled, DEPTH_LIN_TEX_SLOT, {depth_tex, linear_sampler_, 1}},
+                                         {Trg::TexSampled, ALBEDO_TEX_SLOT, albedo_tex},
+                                         {Trg::TexSampled, NORM_TEX_SLOT, normal_tex},
+                                         {Trg::TexSampled, SPEC_TEX_SLOT, spec_tex},
+                                         {Trg::TexSampled, SHADOW_DEPTH_TEX_SLOT, shadow_depth},
+                                         {Trg::TexSampled, SHADOW_DEPTH_VAL_TEX_SLOT, {shadow_depth, nearest_sampler_}},
+                                         {Trg::TexSampled, SHADOW_COLOR_TEX_SLOT, shadow_color},
+                                         {Trg::TexSampled, SSAO_TEX_SLOT, ssao_tex},
+                                         {Trg::TexSampled, GI_TEX_SLOT, gi_tex},
+                                         {Trg::TexSampled, SUN_SHADOW_TEX_SLOT, sun_shadow_tex},
+                                         {Trg::TexSampled, LTC_LUTS_TEX_SLOT, ltc_luts},
+                                         {Trg::TexSampled, ENV_TEX_SLOT, env_tex},
+                                         {Trg::ImageRW, OUT_COLOR_IMG_SLOT, out_color_tex}};
 
-        const Ren::Vec3u grp_count = Ren::Vec3u{(view_state_.ren_res[0] + GRP_SIZE_X - 1u) / GRP_SIZE_X,
-                                                (view_state_.ren_res[1] + GRP_SIZE_Y - 1u) / GRP_SIZE_Y, 1u};
+        const auto grp_count = Ren::Vec3u(Ren::DivCeil(view_state_.ren_res[0], GRP_SIZE_X),
+                                          Ren::DivCeil(view_state_.ren_res[1], GRP_SIZE_Y), 1u);
 
         Params uniform_params;
         uniform_params.img_size = Ren::Vec2u(view_state_.ren_res[0], view_state_.ren_res[1]);
@@ -846,19 +856,19 @@ void Eng::Renderer::AddEmissivePass(const CommonBuffers &common_buffers, const P
 
     auto &emissive = fg_builder_.AddNode("EMISSIVE");
 
-    const FgBufROHandle vtx_buf1 = emissive.AddVertexBufferInput(persistent_data.vertex_buf1);
-    const FgBufROHandle vtx_buf2 = emissive.AddVertexBufferInput(persistent_data.vertex_buf2);
-    const FgBufROHandle ndx_buf = emissive.AddIndexBufferInput(persistent_data.indices_buf);
+    const FgBufROHandle vtx_buf1 = emissive.AddVertexBufferInput(common_buffers.vertex_buf1);
+    const FgBufROHandle vtx_buf2 = emissive.AddVertexBufferInput(common_buffers.vertex_buf2);
+    const FgBufROHandle ndx_buf = emissive.AddIndexBufferInput(common_buffers.indices_buf);
 
     const FgBufROHandle materials_buf =
-        emissive.AddStorageReadonlyInput(persistent_data.materials_buf, Stg::VertexShader);
+        emissive.AddStorageReadonlyInput(common_buffers.materials_buf, Stg::VertexShader);
 
-    const FgResRef noise_tex =
-        emissive.AddTextureInput(noise_tex_, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
-    const FgResRef dummy_white = emissive.AddTextureInput(dummy_white_, Stg::FragmentShader);
+    const FgImgROHandle noise_tex =
+        emissive.AddTextureInput(frame_textures.noise_tex, Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
+    const FgImgROHandle dummy_white = emissive.AddTextureInput(frame_textures.dummy_white, Stg::FragmentShader);
 
     const FgBufROHandle instances_buf =
-        emissive.AddStorageReadonlyInput(persistent_data.instance_buf, Stg::VertexShader);
+        emissive.AddStorageReadonlyInput(common_buffers.instance_buf, Stg::VertexShader);
     const FgBufROHandle instances_indices_buf =
         emissive.AddStorageReadonlyInput(common_buffers.instance_indices, Stg::VertexShader);
 
@@ -873,31 +883,31 @@ void Eng::Renderer::AddEmissivePass(const CommonBuffers &common_buffers, const P
                                        frame_textures.color, frame_textures.depth);
 }
 
-void Eng::Renderer::AddFillStaticVelocityPass(const CommonBuffers &common_buffers, FgResRef depth_tex,
-                                              FgResRef &inout_velocity_tex) {
+void Eng::Renderer::AddFillStaticVelocityPass(const CommonBuffers &common_buffers, const FgImgRWHandle depth_tex,
+                                              FgImgRWHandle &inout_velocity_tex) {
     using Stg = Ren::eStage;
 
     auto &static_vel = fg_builder_.AddNode("FILL STATIC VEL");
 
     struct PassData {
         FgBufROHandle shared_data;
-        FgResRef depth_tex;
-        FgResRef velocity_tex;
+        FgImgROHandle in_depth;
+
+        FgImgRWHandle out_velocity;
     };
 
-    auto *data = static_vel.AllocNodeData<PassData>();
-
+    auto *data = fg_builder_.AllocTempData<PassData>();
     data->shared_data = static_vel.AddUniformBufferInput(common_buffers.shared_data,
                                                          Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
-    data->depth_tex = static_vel.AddCustomTextureInput(depth_tex, Ren::eResState::StencilTestDepthFetch,
-                                                       Ren::Bitmask{Stg::DepthAttachment} | Stg::FragmentShader);
-    inout_velocity_tex = data->velocity_tex = static_vel.AddColorOutput(inout_velocity_tex);
+    data->in_depth = static_vel.AddCustomTextureInput(depth_tex, Ren::eResState::StencilTestDepthFetch,
+                                                      Ren::Bitmask{Stg::DepthAttachment} | Stg::FragmentShader);
+    inout_velocity_tex = data->out_velocity = static_vel.AddColorOutput(inout_velocity_tex);
 
     static_vel.set_execute_cb([this, data](const FgContext &fg) {
         const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(data->shared_data);
-        Ren::WeakImgRef depth_tex = fg.AccessROImageRef(data->depth_tex);
+        const Ren::ImageROHandle in_depth = fg.AccessROImage(data->in_depth);
 
-        Ren::WeakImgRef velocity_tex = fg.AccessRWImageRef(data->velocity_tex);
+        const Ren::ImageRWHandle out_velocity = fg.AccessRWImage(data->out_velocity);
 
         Ren::RastState rast_state;
         rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
@@ -909,34 +919,38 @@ void Eng::Renderer::AddFillStaticVelocityPass(const CommonBuffers &common_buffer
         rast_state.viewport[3] = view_state_.ren_res[1];
 
         const Ren::Binding bindings[] = {
-            {Ren::eBindTarget::TexSampled, BlitStaticVel::DEPTH_TEX_SLOT, {*depth_tex, 1}},
+            {Ren::eBindTarget::TexSampled, BlitStaticVel::DEPTH_TEX_SLOT, {in_depth, 1}},
             {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, 0, sizeof(shared_data_t), unif_shared_data_buf}};
 
-        const Ren::RenderTarget render_targets[] = {{velocity_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
-        const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::None, Ren::eStoreOp::None, Ren::eLoadOp::Load,
-                                                Ren::eStoreOp::None};
+        // TODO: Make this cleaner!
+        Ren::ImageRWHandle depth_rw_handle = {in_depth.index, in_depth.generation};
+
+        const Ren::RenderTarget render_targets[] = {{out_velocity, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
+        const Ren::RenderTarget depth_target = {depth_rw_handle, Ren::eLoadOp::None, Ren::eStoreOp::None,
+                                                Ren::eLoadOp::Load, Ren::eStoreOp::None};
 
         BlitStaticVel::Params uniform_params;
         uniform_params.transform = Ren::Vec4f{0.0f, 0.0f, float(view_state_.ren_res[0]), float(view_state_.ren_res[1])};
 
-        prim_draw_.DrawPrim(PrimDraw::ePrim::Quad, blit_static_vel_prog_, depth_target, render_targets, rast_state,
-                            fg.rast_state(), bindings, &uniform_params, sizeof(BlitStaticVel::Params), 0);
+        prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad, blit_static_vel_prog_, depth_target, render_targets,
+                            rast_state, fg.rast_state(), bindings, &uniform_params, sizeof(BlitStaticVel::Params), 0,
+                            fg.framebuffers());
     });
 }
 
-Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, FrameTextures &frame_textures,
-                                          const bool static_accumulation) {
+Eng::FgImgRWHandle Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, FrameTextures &frame_textures,
+                                               const bool static_accumulation) {
     using Stg = Ren::eStage;
 
-    FgResRef reconstructed_depth;
+    FgImgRWHandle reconstructed_depth;
     { // Clear reconstructed depth
         auto &clear_reconstructed = fg_builder_.AddNode("CLEAR REC. DEPTH");
 
         struct PassData {
-            FgResRef reconstructed_depth;
+            FgImgRWHandle reconstructed_depth;
         };
 
-        auto *data = clear_reconstructed.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         { // Reconstructed previous depth
             FgImgDesc desc;
             desc.w = view_state_.ren_res[0];
@@ -950,30 +964,31 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
         }
 
         clear_reconstructed.set_execute_cb([data](const FgContext &fg) {
-            const Ren::Image &reconstructed_depth = fg.AccessRWImage(data->reconstructed_depth);
+            const Ren::ImageRWHandle reconstructed_depth = fg.AccessRWImage(data->reconstructed_depth);
 
-            Ren::ClearImage(reconstructed_depth, {}, fg.cmd_buf());
+            fg.ren_ctx().CmdClearImage(reconstructed_depth, {}, fg.cmd_buf());
         });
     }
 
-    FgResRef dilated_depth, dilated_velocity;
+    FgImgRWHandle dilated_depth, dilated_velocity;
     { // Reconstruct previous depth
         auto &reconstruct = fg_builder_.AddNode("RECONSTRUCT DEPTH");
 
         struct PassData {
-            FgResRef depth_tex;
-            FgResRef velocity_tex;
+            FgImgROHandle depth_tex;
+            FgImgROHandle velocity_tex;
 
-            FgResRef out_reconstructed_depth_tex;
-            FgResRef out_dilated_depth_tex;
-            FgResRef out_dilated_velocity_tex;
+            FgImgRWHandle out_reconstructed_depth_tex;
+            FgImgRWHandle out_dilated_depth_tex;
+            FgImgRWHandle out_dilated_velocity_tex;
         };
 
-        auto *data = reconstruct.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->depth_tex = reconstruct.AddTextureInput(frame_textures.depth, Stg::ComputeShader);
         data->velocity_tex = reconstruct.AddTextureInput(frame_textures.velocity, Stg::ComputeShader);
 
-        data->out_reconstructed_depth_tex = reconstruct.AddStorageImageOutput(reconstructed_depth, Stg::ComputeShader);
+        reconstructed_depth = data->out_reconstructed_depth_tex =
+            reconstruct.AddStorageImageOutput(reconstructed_depth, Stg::ComputeShader);
         { // Dilated current depth
             FgImgDesc desc;
             desc.w = view_state_.ren_res[0];
@@ -1000,12 +1015,12 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
         reconstruct.set_execute_cb([this, data](const FgContext &fg) {
             using namespace ReconstructDepth;
 
-            const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
-            const Ren::Image &velocity_tex = fg.AccessROImage(data->velocity_tex);
+            const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
+            const Ren::ImageROHandle velocity_tex = fg.AccessROImage(data->velocity_tex);
 
-            const Ren::Image &reconstructed_depth_tex = fg.AccessRWImage(data->out_reconstructed_depth_tex);
-            const Ren::Image &dilated_depth_tex = fg.AccessRWImage(data->out_dilated_depth_tex);
-            const Ren::Image &dilated_velocity_tex = fg.AccessRWImage(data->out_dilated_velocity_tex);
+            const Ren::ImageRWHandle reconstructed_depth_tex = fg.AccessRWImage(data->out_reconstructed_depth_tex);
+            const Ren::ImageRWHandle dilated_depth_tex = fg.AccessRWImage(data->out_dilated_depth_tex);
+            const Ren::ImageRWHandle dilated_velocity_tex = fg.AccessRWImage(data->out_dilated_velocity_tex);
 
             const Ren::Binding bindings[] = {
                 {Ren::eBindTarget::TexSampled, DEPTH_TEX_SLOT, {depth_tex, 1}},
@@ -1014,8 +1029,8 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
                 {Ren::eBindTarget::ImageRW, OUT_DILATED_DEPTH_IMG_SLOT, dilated_depth_tex},
                 {Ren::eBindTarget::ImageRW, OUT_DILATED_VELOCITY_IMG_SLOT, dilated_velocity_tex}};
 
-            const Ren::Vec3u grp_count = Ren::Vec3u{(view_state_.ren_res[0] + GRP_SIZE_X - 1u) / GRP_SIZE_X,
-                                                    (view_state_.ren_res[1] + GRP_SIZE_Y - 1u) / GRP_SIZE_Y, 1u};
+            const auto grp_count = Ren::Vec3u(Ren::DivCeil(view_state_.ren_res[0], GRP_SIZE_X),
+                                              Ren::DivCeil(view_state_.ren_res[1], GRP_SIZE_Y), 1u);
 
             Params uniform_params;
             uniform_params.img_size = view_state_.ren_res;
@@ -1025,19 +1040,20 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
                             sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
+    FgImgRWHandle disocclusion_mask;
     { // Prepare disocclusion
         auto &prep_disocclusion = fg_builder_.AddNode("PREP DISOCCLUSION");
 
         struct PassData {
-            FgResRef dilated_depth_tex;
-            FgResRef dilated_velocity_tex;
-            FgResRef reconstructed_depth_tex;
-            FgResRef velocity_tex;
+            FgImgROHandle dilated_depth_tex;
+            FgImgROHandle dilated_velocity_tex;
+            FgImgROHandle reconstructed_depth_tex;
+            FgImgROHandle velocity_tex;
 
-            FgResRef output_tex;
+            FgImgRWHandle output_tex;
         };
 
-        auto *data = prep_disocclusion.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->dilated_depth_tex = prep_disocclusion.AddTextureInput(dilated_depth, Stg::ComputeShader);
         data->dilated_velocity_tex = prep_disocclusion.AddTextureInput(dilated_velocity, Stg::ComputeShader);
         data->reconstructed_depth_tex = prep_disocclusion.AddTextureInput(reconstructed_depth, Stg::ComputeShader);
@@ -1051,19 +1067,19 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
             desc.sampling.filter = Ren::eFilter::Bilinear;
             desc.sampling.wrap = Ren::eWrap::ClampToBorder;
 
-            frame_textures.disocclusion_mask = data->output_tex =
+            disocclusion_mask = data->output_tex =
                 prep_disocclusion.AddStorageImageOutput("Disocclusion Mask", desc, Stg::ComputeShader);
         }
 
         prep_disocclusion.set_execute_cb([this, data](const FgContext &fg) {
             using namespace PrepareDisocclusion;
 
-            const Ren::Image &dilated_depth_tex = fg.AccessROImage(data->dilated_depth_tex);
-            const Ren::Image &dilated_velocity_tex = fg.AccessROImage(data->dilated_velocity_tex);
-            const Ren::Image &reconstructed_depth_tex = fg.AccessROImage(data->reconstructed_depth_tex);
-            const Ren::Image &velocity_tex = fg.AccessROImage(data->velocity_tex);
+            const Ren::ImageROHandle dilated_depth_tex = fg.AccessROImage(data->dilated_depth_tex);
+            const Ren::ImageROHandle dilated_velocity_tex = fg.AccessROImage(data->dilated_velocity_tex);
+            const Ren::ImageROHandle reconstructed_depth_tex = fg.AccessROImage(data->reconstructed_depth_tex);
+            const Ren::ImageROHandle velocity_tex = fg.AccessROImage(data->velocity_tex);
 
-            const Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
 
             const Ren::Binding bindings[] = {
                 {Ren::eBindTarget::TexSampled, DILATED_DEPTH_TEX_SLOT, dilated_depth_tex},
@@ -1072,8 +1088,8 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
                 {Ren::eBindTarget::TexSampled, VELOCITY_TEX_SLOT, velocity_tex},
                 {Ren::eBindTarget::ImageRW, OUT_IMG_SLOT, output_tex}};
 
-            const Ren::Vec3u grp_count = Ren::Vec3u{(view_state_.ren_res[0] + GRP_SIZE_X - 1u) / GRP_SIZE_X,
-                                                    (view_state_.ren_res[1] + GRP_SIZE_Y - 1u) / GRP_SIZE_Y, 1u};
+            const auto grp_count = Ren::Vec3u(Ren::DivCeil(view_state_.ren_res[0], GRP_SIZE_X),
+                                              Ren::DivCeil(view_state_.ren_res[1], GRP_SIZE_Y), 1u);
 
             Params uniform_params;
             uniform_params.img_size = view_state_.ren_res;
@@ -1085,26 +1101,26 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
                             sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
-    FgResRef resolved_color;
+    FgImgRWHandle resolved_color;
     { // Main TSR pass
         auto &taa = fg_builder_.AddNode("TSR");
 
         struct PassData {
-            FgResRef color_tex;
-            FgResRef history_tex;
-            FgResRef dilated_depth_tex;
-            FgResRef dilated_velocity_tex;
-            FgResRef disocclusion_mask_tex;
+            FgImgROHandle color_tex;
+            FgImgROHandle history_tex;
+            FgImgROHandle dilated_depth_tex;
+            FgImgROHandle dilated_velocity_tex;
+            FgImgROHandle disocclusion_mask_tex;
 
-            FgResRef output_tex;
-            FgResRef output_history_tex;
+            FgImgRWHandle output_tex;
+            FgImgRWHandle output_history_tex;
         };
 
-        auto *data = taa.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->color_tex = taa.AddTextureInput(frame_textures.color, Stg::FragmentShader);
         data->dilated_depth_tex = taa.AddTextureInput(dilated_depth, Stg::FragmentShader);
         data->dilated_velocity_tex = taa.AddTextureInput(dilated_velocity, Stg::FragmentShader);
-        data->disocclusion_mask_tex = taa.AddTextureInput(frame_textures.disocclusion_mask, Stg::FragmentShader);
+        data->disocclusion_mask_tex = taa.AddTextureInput(disocclusion_mask, Stg::FragmentShader);
 
         { // Image that holds resolved color
             FgImgDesc desc;
@@ -1120,14 +1136,14 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
         data->history_tex = taa.AddHistoryTextureInput(data->output_history_tex, Stg::FragmentShader);
 
         taa.set_execute_cb([this, data, static_accumulation](const FgContext &fg) {
-            const Ren::Image &color_tex = fg.AccessROImage(data->color_tex);
-            const Ren::Image &history_tex = fg.AccessROImage(data->history_tex);
-            const Ren::Image &dilated_depth_tex = fg.AccessROImage(data->dilated_depth_tex);
-            const Ren::Image &dilated_velocity_tex = fg.AccessROImage(data->dilated_velocity_tex);
-            const Ren::Image &disocclusion_mask_tex = fg.AccessROImage(data->disocclusion_mask_tex);
+            const Ren::ImageROHandle color_tex = fg.AccessROImage(data->color_tex);
+            const Ren::ImageROHandle history_tex = fg.AccessROImage(data->history_tex);
+            const Ren::ImageROHandle dilated_depth_tex = fg.AccessROImage(data->dilated_depth_tex);
+            const Ren::ImageROHandle dilated_velocity_tex = fg.AccessROImage(data->dilated_velocity_tex);
+            const Ren::ImageROHandle disocclusion_mask_tex = fg.AccessROImage(data->disocclusion_mask_tex);
 
-            Ren::WeakImgRef output_tex = fg.AccessRWImageRef(data->output_tex);
-            Ren::WeakImgRef output_history_tex = fg.AccessRWImageRef(data->output_history_tex);
+            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle output_history_tex = fg.AccessRWImage(data->output_history_tex);
 
             Ren::RastState rast_state;
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
@@ -1162,30 +1178,32 @@ Eng::FgResRef Eng::Renderer::AddTSRPasses(const CommonBuffers &common_buffers, F
             uniform_params.downscale_factor = 1.0f / p_list_->render_settings.resolution_scale;
             ++accumulated_frames_;
 
-            prim_draw_.DrawPrim(PrimDraw::ePrim::Quad, static_accumulation ? blit_tsr_static_prog_ : blit_tsr_prog_, {},
-                                render_targets, rast_state, fg.rast_state(), bindings, &uniform_params,
-                                sizeof(TSR::Params), 0);
+            prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad,
+                                static_accumulation ? blit_tsr_static_prog_ : blit_tsr_prog_, {}, render_targets,
+                                rast_state, fg.rast_state(), bindings, &uniform_params, sizeof(TSR::Params), 0,
+                                fg.framebuffers());
         });
     }
+    frame_textures.disocclusion_mask = disocclusion_mask;
     return resolved_color;
 }
 
-Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextures &frame_textures) {
-    FgResRef tiles_tex;
+Eng::FgImgRWHandle Eng::Renderer::AddMotionBlurPasses(FgImgROHandle input_tex, FrameTextures &frame_textures) {
+    FgImgRWHandle tiles_tex;
     { // Horizontal pass
         auto &classify_h = fg_builder_.AddNode("MB CLASSIFY H");
 
         struct PassData {
-            FgResRef in_velocity_tex;
-            FgResRef out_tiles_tex;
+            FgImgROHandle in_velocity_tex;
+            FgImgRWHandle out_tiles_tex;
         };
 
-        auto *data = classify_h.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->in_velocity_tex = classify_h.AddTextureInput(frame_textures.velocity, Ren::eStage::ComputeShader);
 
         { // Image that holds horizontal tiles
             FgImgDesc desc;
-            desc.w = (view_state_.ren_res[0] + MotionBlur::TILE_RES - 1) / MotionBlur::TILE_RES;
+            desc.w = Ren::DivCeil(view_state_.ren_res[0], MotionBlur::TILE_RES);
             desc.h = view_state_.ren_res[1];
             desc.format = Ren::eFormat::RGBA16F;
             desc.sampling.wrap = Ren::eWrap::ClampToEdge;
@@ -1195,19 +1213,20 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
         }
 
         classify_h.set_execute_cb([this, data](const FgContext &fg) {
-            const Ren::Image &in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
-            const Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
+            const Ren::ImageROHandle in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
+            const Ren::ImageRWHandle out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
 
             const Ren::Binding bindings[] = {
                 {Ren::eBindTarget::TexSampled, MotionBlur::VELOCITY_TEX_SLOT, in_velocity_tex},
                 {Ren::eBindTarget::ImageRW, MotionBlur::OUT_IMG_SLOT, out_tiles_tex}};
 
-            const Ren::Vec3u grp_count =
-                Ren::Vec3u{(in_velocity_tex.params.w + MotionBlur::GRP_SIZE - 1u) / MotionBlur::GRP_SIZE,
-                           in_velocity_tex.params.h, 1u};
+            // TODO: Get rid of this!
+            const Ren::ImageCold &img_cold = fg.storages().images.Get(in_velocity_tex).second;
+            const auto grp_count =
+                Ren::Vec3u{Ren::DivCeil<uint32_t>(img_cold.params.w, MotionBlur::GRP_SIZE), img_cold.params.h, 1u};
 
             MotionBlur::Params uniform_params;
-            uniform_params.img_size = Ren::Vec2u{in_velocity_tex.params.w, in_velocity_tex.params.h};
+            uniform_params.img_size = Ren::Vec2u{img_cold.params.w, img_cold.params.h};
 
             DispatchCompute(fg.cmd_buf(), pi_motion_blur_classify_[0], fg.storages(), grp_count, bindings,
                             &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
@@ -1217,17 +1236,17 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
         auto &classify_v = fg_builder_.AddNode("MB CLASSIFY V");
 
         struct PassData {
-            FgResRef in_velocity_tex;
-            FgResRef out_tiles_tex;
+            FgImgROHandle in_velocity_tex;
+            FgImgRWHandle out_tiles_tex;
         };
 
-        auto *data = classify_v.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->in_velocity_tex = classify_v.AddTextureInput(tiles_tex, Ren::eStage::ComputeShader);
 
         { // Image that holds final tiles
             FgImgDesc desc;
-            desc.w = (view_state_.ren_res[0] + MotionBlur::TILE_RES - 1) / MotionBlur::TILE_RES;
-            desc.h = (view_state_.ren_res[1] + MotionBlur::TILE_RES - 1) / MotionBlur::TILE_RES;
+            desc.w = Ren::DivCeil(view_state_.ren_res[0], MotionBlur::TILE_RES);
+            desc.h = Ren::DivCeil(view_state_.ren_res[1], MotionBlur::TILE_RES);
             desc.format = Ren::eFormat::RGBA16F;
             desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
@@ -1238,17 +1257,19 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
         classify_v.set_execute_cb([this, data](const FgContext &fg) {
             using namespace MotionBlur;
 
-            const Ren::Image &in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
-            const Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
+            const Ren::ImageROHandle in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
+            const Ren::ImageRWHandle out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
 
             const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, VELOCITY_TEX_SLOT, in_velocity_tex},
                                              {Ren::eBindTarget::ImageRW, OUT_IMG_SLOT, out_tiles_tex}};
 
-            const Ren::Vec3u grp_count =
-                Ren::Vec3u{in_velocity_tex.params.w, (in_velocity_tex.params.h + GRP_SIZE - 1) / GRP_SIZE, 1u};
+            const Ren::Vec2u in_res =
+                Ren::Vec2u(Ren::DivCeil(view_state_.ren_res[0], MotionBlur::TILE_RES), view_state_.ren_res[1]);
+
+            const auto grp_count = Ren::Vec3u{in_res[0], Ren::DivCeil<uint32_t>(in_res[1], GRP_SIZE), 1u};
 
             Params uniform_params;
-            uniform_params.img_size = Ren::Vec2u{in_velocity_tex.params.w, in_velocity_tex.params.h};
+            uniform_params.img_size = in_res;
 
             DispatchCompute(fg.cmd_buf(), pi_motion_blur_classify_[1], fg.storages(), grp_count, bindings,
                             &uniform_params, sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
@@ -1258,11 +1279,11 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
         auto &dilate = fg_builder_.AddNode("MB DILATE");
 
         struct PassData {
-            FgResRef in_tiles_tex;
-            FgResRef out_tiles_tex;
+            FgImgROHandle in_tiles_tex;
+            FgImgRWHandle out_tiles_tex;
         };
 
-        auto *data = dilate.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->in_tiles_tex = dilate.AddTextureInput(tiles_tex, Ren::eStage::ComputeShader);
 
         { // Image that holds dilated tiles
@@ -1280,35 +1301,37 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
         dilate.set_execute_cb([this, data](const FgContext &fg) {
             using namespace MotionBlur;
 
-            const Ren::Image &in_tiles_tex = fg.AccessROImage(data->in_tiles_tex);
-            const Ren::Image &out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
+            const Ren::ImageROHandle in_tiles_tex = fg.AccessROImage(data->in_tiles_tex);
+            const Ren::ImageRWHandle out_tiles_tex = fg.AccessRWImage(data->out_tiles_tex);
 
             const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, TILES_TEX_SLOT, in_tiles_tex},
                                              {Ren::eBindTarget::ImageRW, OUT_IMG_SLOT, out_tiles_tex}};
 
-            const Ren::Vec3u grp_count = Ren::Vec3u{(in_tiles_tex.params.w + GRP_SIZE_X - 1u) / GRP_SIZE_X,
-                                                    (in_tiles_tex.params.h + GRP_SIZE_Y - 1u) / GRP_SIZE_Y, 1u};
+            const auto res = Ren::Vec2u(Ren::DivCeil(view_state_.ren_res[0], MotionBlur::TILE_RES),
+                                        Ren::DivCeil(view_state_.ren_res[1], MotionBlur::TILE_RES));
+
+            const auto grp_count = Ren::Vec3u(Ren::DivCeil(res[0], GRP_SIZE_X), Ren::DivCeil(res[1], GRP_SIZE_Y), 1u);
 
             Params uniform_params;
-            uniform_params.img_size = Ren::Vec2u{in_tiles_tex.params.w, in_tiles_tex.params.h};
+            uniform_params.img_size = res;
 
             DispatchCompute(fg.cmd_buf(), pi_motion_blur_dilate_, fg.storages(), grp_count, bindings, &uniform_params,
                             sizeof(uniform_params), ctx_.default_descr_alloc(), ctx_.log());
         });
     }
-    FgResRef output_tex;
+    FgImgRWHandle output_tex;
     { // Filter pass
         auto &filter = fg_builder_.AddNode("MB FILTER");
 
         struct PassData {
-            FgResRef in_color_tex;
-            FgResRef in_depth_tex;
-            FgResRef in_velocity_tex;
-            FgResRef in_tiles_tex;
-            FgResRef output_tex;
+            FgImgROHandle in_color_tex;
+            FgImgROHandle in_depth_tex;
+            FgImgROHandle in_velocity_tex;
+            FgImgROHandle in_tiles_tex;
+            FgImgRWHandle output_tex;
         };
 
-        auto *data = filter.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->in_color_tex = filter.AddTextureInput(input_tex, Ren::eStage::ComputeShader);
         data->in_depth_tex = filter.AddTextureInput(frame_textures.depth, Ren::eStage::ComputeShader);
         data->in_velocity_tex = filter.AddTextureInput(frame_textures.velocity, Ren::eStage::ComputeShader);
@@ -1327,12 +1350,12 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
         filter.set_execute_cb([this, data](const FgContext &fg) {
             using namespace MotionBlur;
 
-            const Ren::Image &in_color_tex = fg.AccessROImage(data->in_color_tex);
-            const Ren::Image &in_depth_tex = fg.AccessROImage(data->in_depth_tex);
-            const Ren::Image &in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
-            const Ren::Image &in_tiles_tex = fg.AccessROImage(data->in_tiles_tex);
+            const Ren::ImageROHandle in_color_tex = fg.AccessROImage(data->in_color_tex);
+            const Ren::ImageROHandle in_depth_tex = fg.AccessROImage(data->in_depth_tex);
+            const Ren::ImageROHandle in_velocity_tex = fg.AccessROImage(data->in_velocity_tex);
+            const Ren::ImageROHandle in_tiles_tex = fg.AccessROImage(data->in_tiles_tex);
 
-            const Ren::Image &output_tex = fg.AccessRWImage(data->output_tex);
+            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
 
             const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, COLOR_TEX_SLOT, in_color_tex},
                                              {Ren::eBindTarget::TexSampled, DEPTH_TEX_SLOT, {in_depth_tex, 1}},
@@ -1340,11 +1363,12 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
                                              {Ren::eBindTarget::TexSampled, TILES_TEX_SLOT, in_tiles_tex},
                                              {Ren::eBindTarget::ImageRW, OUT_IMG_SLOT, output_tex}};
 
-            const Ren::Vec3u grp_count = Ren::Vec3u{(in_color_tex.params.w + GRP_SIZE_X - 1u) / GRP_SIZE_X,
-                                                    (in_color_tex.params.h + GRP_SIZE_Y - 1u) / GRP_SIZE_Y, 1u};
+            const Ren::ImageCold &img_cold = fg.storages().images.Get(in_color_tex).second;
+            const auto grp_count = Ren::Vec3u{Ren::DivCeil<uint32_t>(img_cold.params.w, GRP_SIZE_X),
+                                              Ren::DivCeil<uint32_t>(img_cold.params.h, GRP_SIZE_Y), 1u};
 
             Params uniform_params;
-            uniform_params.img_size = Ren::Vec2u{in_color_tex.params.w, in_color_tex.params.h};
+            uniform_params.img_size = Ren::Vec2u{img_cold.params.w, img_cold.params.h};
             uniform_params.inv_ren_res = 1.0f / Ren::Vec2f{view_state_.ren_res};
             uniform_params.clip_info = view_state_.clip_info;
 
@@ -1355,18 +1379,18 @@ Eng::FgResRef Eng::Renderer::AddMotionBlurPasses(FgResRef input_tex, FrameTextur
     return output_tex;
 }
 
-void Eng::Renderer::AddDownsampleDepthPass(const CommonBuffers &common_buffers, FgResRef depth_tex,
-                                           FgResRef &out_depth_down_2x) {
+Eng::FgImgRWHandle Eng::Renderer::AddDownsampleDepthPass(const CommonBuffers &common_buffers, FgImgROHandle depth_tex) {
     auto &downsample_depth = fg_builder_.AddNode("DOWN DEPTH");
 
     struct PassData {
-        FgResRef in_depth_tex;
-        FgResRef out_depth_tex;
+        FgImgROHandle in_depth_tex;
+        FgImgRWHandle out_depth_tex;
     };
 
-    auto *data = downsample_depth.AllocNodeData<PassData>();
+    auto *data = fg_builder_.AllocTempData<PassData>();
     data->in_depth_tex = downsample_depth.AddTextureInput(depth_tex, Ren::eStage::FragmentShader);
 
+    FgImgRWHandle ret;
     { // Image that holds 2x downsampled linear depth
         FgImgDesc desc;
         desc.w = view_state_.ren_res[0] / 2;
@@ -1374,12 +1398,12 @@ void Eng::Renderer::AddDownsampleDepthPass(const CommonBuffers &common_buffers, 
         desc.format = Ren::eFormat::R32F;
         desc.sampling.wrap = Ren::eWrap::ClampToEdge;
 
-        out_depth_down_2x = data->out_depth_tex = downsample_depth.AddColorOutput("Depth Down 2X", desc);
+        ret = data->out_depth_tex = downsample_depth.AddColorOutput("Depth Down 2X", desc);
     }
 
     downsample_depth.set_execute_cb([this, data](const FgContext &fg) {
-        const Ren::Image &depth_tex = fg.AccessROImage(data->in_depth_tex);
-        Ren::WeakImgRef output_tex = fg.AccessRWImageRef(data->out_depth_tex);
+        const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->in_depth_tex);
+        const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->out_depth_tex);
 
         Ren::RastState rast_state;
 
@@ -1395,23 +1419,26 @@ void Eng::Renderer::AddDownsampleDepthPass(const CommonBuffers &common_buffers, 
 
         const Ren::RenderTarget render_targets[] = {{output_tex, Ren::eLoadOp::DontCare, Ren::eStoreOp::Store}};
 
-        prim_draw_.DrawPrim(PrimDraw::ePrim::Quad, blit_down_depth_prog_, {}, render_targets, rast_state,
-                            fg.rast_state(), bindings, &uniform_params, sizeof(DownDepth::Params), 0);
+        prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad, blit_down_depth_prog_, {}, render_targets, rast_state,
+                            fg.rast_state(), bindings, &uniform_params, sizeof(DownDepth::Params), 0,
+                            fg.framebuffers());
     });
+
+    return ret;
 }
 
-Eng::FgResRef Eng::Renderer::AddDebugVelocityPass(const FgResRef velocity) {
+Eng::FgImgRWHandle Eng::Renderer::AddDebugVelocityPass(const FgImgROHandle velocity) {
     auto &debug_motion = fg_builder_.AddNode("DEBUG MOTION");
 
     struct PassData {
-        FgResRef in_velocity_tex;
-        FgResRef out_color_tex;
+        FgImgROHandle in_velocity_tex;
+        FgImgRWHandle out_color_tex;
     };
 
-    auto *data = debug_motion.AllocNodeData<PassData>();
+    auto *data = fg_builder_.AllocTempData<PassData>();
     data->in_velocity_tex = debug_motion.AddTextureInput(velocity, Ren::eStage::ComputeShader);
 
-    FgResRef output_tex;
+    FgImgRWHandle output_tex;
     { // Output texture
         FgImgDesc desc;
         desc.w = view_state_.out_res[0];
@@ -1424,15 +1451,15 @@ Eng::FgResRef Eng::Renderer::AddDebugVelocityPass(const FgResRef velocity) {
     }
 
     debug_motion.set_execute_cb([this, data](const FgContext &fg) {
-        const Ren::Image &velocity_tex = fg.AccessROImage(data->in_velocity_tex);
-        const Ren::Image &output_tex = fg.AccessRWImage(data->out_color_tex);
+        const Ren::ImageROHandle velocity_tex = fg.AccessROImage(data->in_velocity_tex);
+        const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->out_color_tex);
 
         const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, DebugVelocity::VELOCITY_TEX_SLOT, velocity_tex},
                                          {Ren::eBindTarget::ImageRW, DebugVelocity::OUT_IMG_SLOT, output_tex}};
 
-        const Ren::Vec3u grp_count =
-            Ren::Vec3u{(view_state_.out_res[0] + DebugVelocity::GRP_SIZE_X - 1u) / DebugVelocity::GRP_SIZE_X,
-                       (view_state_.out_res[1] + DebugVelocity::GRP_SIZE_Y - 1u) / DebugVelocity::GRP_SIZE_Y, 1u};
+        const auto grp_count =
+            Ren::Vec3u{Ren::DivCeil<uint32_t>(view_state_.out_res[0], DebugVelocity::GRP_SIZE_X),
+                       Ren::DivCeil<uint32_t>(view_state_.out_res[1], DebugVelocity::GRP_SIZE_Y), 1u};
 
         DebugVelocity::Params uniform_params;
         uniform_params.img_size = Ren::Vec2u{view_state_.out_res};
@@ -1444,24 +1471,24 @@ Eng::FgResRef Eng::Renderer::AddDebugVelocityPass(const FgResRef velocity) {
     return output_tex;
 }
 
-Eng::FgResRef Eng::Renderer::AddDebugGBufferPass(const FrameTextures &frame_textures, const int pi_index) {
+Eng::FgImgRWHandle Eng::Renderer::AddDebugGBufferPass(const FrameTextures &frame_textures, const int pi_index) {
     auto &debug_gbuffer = fg_builder_.AddNode("DEBUG GBUFFER");
 
     struct PassData {
-        FgResRef in_depth_tex;
-        FgResRef in_albedo_tex;
-        FgResRef in_normals_tex;
-        FgResRef in_specular_tex;
-        FgResRef out_color_tex;
+        FgImgROHandle in_depth_tex;
+        FgImgROHandle in_albedo_tex;
+        FgImgROHandle in_normals_tex;
+        FgImgROHandle in_specular_tex;
+        FgImgRWHandle out_color_tex;
     };
 
-    auto *data = debug_gbuffer.AllocNodeData<PassData>();
+    auto *data = fg_builder_.AllocTempData<PassData>();
     data->in_depth_tex = debug_gbuffer.AddTextureInput(frame_textures.depth, Ren::eStage::ComputeShader);
     data->in_albedo_tex = debug_gbuffer.AddTextureInput(frame_textures.albedo, Ren::eStage::ComputeShader);
     data->in_normals_tex = debug_gbuffer.AddTextureInput(frame_textures.normal, Ren::eStage::ComputeShader);
     data->in_specular_tex = debug_gbuffer.AddTextureInput(frame_textures.specular, Ren::eStage::ComputeShader);
 
-    FgResRef output_tex;
+    FgImgRWHandle output_tex;
     { // Output texture
         FgImgDesc desc;
         desc.w = view_state_.out_res[0];
@@ -1474,12 +1501,12 @@ Eng::FgResRef Eng::Renderer::AddDebugGBufferPass(const FrameTextures &frame_text
     }
 
     debug_gbuffer.set_execute_cb([this, data, pi_index](const FgContext &fg) {
-        const Ren::Image &depth_tex = fg.AccessROImage(data->in_depth_tex);
-        const Ren::Image &albedo_tex = fg.AccessROImage(data->in_albedo_tex);
-        const Ren::Image &normals_tex = fg.AccessROImage(data->in_normals_tex);
-        const Ren::Image &specular_tex = fg.AccessROImage(data->in_specular_tex);
+        const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->in_depth_tex);
+        const Ren::ImageROHandle albedo_tex = fg.AccessROImage(data->in_albedo_tex);
+        const Ren::ImageROHandle normals_tex = fg.AccessROImage(data->in_normals_tex);
+        const Ren::ImageROHandle specular_tex = fg.AccessROImage(data->in_specular_tex);
 
-        const Ren::Image &output_tex = fg.AccessRWImage(data->out_color_tex);
+        const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->out_color_tex);
 
         const Ren::Binding bindings[] = {{Ren::eBindTarget::TexSampled, DebugGBuffer::DEPTH_TEX_SLOT, {depth_tex, 1}},
                                          {Ren::eBindTarget::TexSampled, DebugGBuffer::ALBEDO_TEX_SLOT, albedo_tex},
@@ -1487,9 +1514,8 @@ Eng::FgResRef Eng::Renderer::AddDebugGBufferPass(const FrameTextures &frame_text
                                          {Ren::eBindTarget::TexSampled, DebugGBuffer::SPEC_TEX_SLOT, specular_tex},
                                          {Ren::eBindTarget::ImageRW, DebugGBuffer::OUT_IMG_SLOT, output_tex}};
 
-        const Ren::Vec3u grp_count =
-            Ren::Vec3u{(view_state_.out_res[0] + DebugGBuffer::GRP_SIZE_X - 1u) / DebugGBuffer::GRP_SIZE_X,
-                       (view_state_.out_res[1] + DebugGBuffer::GRP_SIZE_Y - 1u) / DebugGBuffer::GRP_SIZE_Y, 1u};
+        const auto grp_count = Ren::Vec3u{Ren::DivCeil<uint32_t>(view_state_.out_res[0], DebugGBuffer::GRP_SIZE_X),
+                                          Ren::DivCeil<uint32_t>(view_state_.out_res[1], DebugGBuffer::GRP_SIZE_Y), 1u};
 
         DebugGBuffer::Params uniform_params;
         uniform_params.img_size[0] = view_state_.out_res[0];

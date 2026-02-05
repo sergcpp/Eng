@@ -82,8 +82,10 @@ class Renderer {
 
     Ren::RenderPassHandle render_pass_;
     Ren::VertexInputHandle vtx_input_;
+    Ren::ShaderHandle vs_, fs_;
+    Ren::ProgramHandle program_;
     Ren::PipelineHandle pipeline_;
-    SmallVector<Ren::Framebuffer, Ren::MaxFramesInFlight> framebuffers_;
+    SmallVector<Ren::FramebufferHandle, Ren::MaxFramesInFlight> framebuffers_;
 
     // buffers for the case if persistent mapping is not available
     std::unique_ptr<vertex_t[]> stage_vtx_data_;

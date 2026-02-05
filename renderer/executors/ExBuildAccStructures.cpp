@@ -5,6 +5,9 @@
 #include <Phy/BVHSplit.h>
 #include <Ren/Context.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
+
 void Eng::ExBuildAccStructures::Execute(const FgContext &fg) {
     if (fg.ren_ctx().capabilities.hwrt) {
 #if !defined(REN_GL_BACKEND)

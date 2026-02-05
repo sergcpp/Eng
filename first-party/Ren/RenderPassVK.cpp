@@ -141,18 +141,23 @@ bool Ren::RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const 
     if (res != VK_SUCCESS) {
         log->Error("Failed to create render pass!");
         return false;
-#ifdef VERBOSE_LOGGING
-    } else {
-        log->Info("RenderPass %p created", rp_main.handle);
-#endif
     }
-
+#ifdef VERBOSE_LOGGING
+    log->Info("RenderPass %p created", rp_main.handle);
+#endif
     return true;
 }
 
 void Ren::RenderPass_Destroy(const ApiContext &api, RenderPassMain &rp_main) {
     if (rp_main.handle != VK_NULL_HANDLE) {
         api.render_passes_to_destroy[api.backend_frame].push_back(rp_main.handle);
+    }
+    rp_main = {};
+}
+
+void Ren::RenderPass_DestroyImmediately(const ApiContext& api, RenderPassMain& rp_main) {
+    if (rp_main.handle != VK_NULL_HANDLE) {
+        api.vkDestroyRenderPass(api.device, rp_main.handle, nullptr);
     }
     rp_main = {};
 }

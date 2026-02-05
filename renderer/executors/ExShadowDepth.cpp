@@ -4,21 +4,16 @@
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 
 void Eng::ExShadowDepth::Execute(const FgContext &fg) {
-    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+    const Ren::ImageRWHandle shadow_depth = fg.AccessRWImage(shadow_depth_);
 
-    Ren::WeakImgRef shadow_depth_tex = fg.AccessRWImageRef(shadow_depth_tex_);
-
-    LazyInit(fg.ren_ctx(), fg.sh(), vtx_buf1, vtx_buf2, ndx_buf, shadow_depth_tex);
-    DrawShadowMaps(fg);
+    LazyInit(fg.ren_ctx(), fg.sh(), shadow_depth);
+    DrawShadowMaps(fg, shadow_depth);
 }
 
-void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
-                                  const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
-                                  const Ren::WeakImgRef &shadow_depth_tex) {
+void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle shadow_depth) {
     if (!initialized) {
 #if defined(REN_GL_BACKEND)
         const bool bindless = ctx.capabilities.bindless_texture;
@@ -31,49 +26,49 @@ void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
         Ren::VertexInputHandle vi_depth_pass_solid, vi_depth_pass_vege_solid, vi_depth_pass_alpha,
             vi_depth_pass_vege_alpha;
         { // VertexInput for solid shadow pass (uses position attribute only)
-            const Ren::VtxAttribDesc attribs[] = {{vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0}};
-            vi_depth_pass_solid = sh.LoadVertexInput(attribs, ndx_buf);
+            const Ren::VtxAttribDesc attribs[] = {{0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0}};
+            vi_depth_pass_solid = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for for solid shadow pass of vegetation (uses position and secondary uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
-            vi_depth_pass_vege_solid = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {1, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 0, 6 * sizeof(uint16_t)}};
+            vi_depth_pass_vege_solid = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for for alpha-tested shadow pass (uses position and uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)}};
-            vi_depth_pass_alpha = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)}};
+            vi_depth_pass_alpha = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for for alpha-tested shadow pass of vegetation (uses position, primary and
           // secondary uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)},
-                {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
-            vi_depth_pass_vege_alpha = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)},
+                {1, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 0, 6 * sizeof(uint16_t)}};
+            vi_depth_pass_vege_alpha = sh.FindOrCreateVertexInput(attribs);
         }
 
         const Ren::ProgramHandle shadow_solid_prog =
-            sh.LoadProgram("internal/shadow_depth.vert.glsl", "internal/shadow_depth.frag.glsl");
-        const Ren::ProgramHandle shadow_vege_solid_prog = sh.LoadProgram(
+            sh.FindOrCreateProgram("internal/shadow_depth.vert.glsl", "internal/shadow_depth.frag.glsl");
+        const Ren::ProgramHandle shadow_vege_solid_prog = sh.FindOrCreateProgram(
             bindless ? "internal/shadow_depth_vege.vert.glsl" : "internal/shadow_depth_vege@NO_BINDLESS.vert.glsl",
             "internal/shadow_depth.frag.glsl");
         const Ren::ProgramHandle shadow_alpha_prog =
-            sh.LoadProgram(bindless ? "internal/shadow_depth@ALPHATEST.vert.glsl"
-                                    : "internal/shadow_depth@ALPHATEST;NO_BINDLESS.vert.glsl",
-                           bindless ? "internal/shadow_depth@ALPHATEST.frag.glsl"
-                                    : "internal/shadow_depth@ALPHATEST;NO_BINDLESS.frag.glsl");
+            sh.FindOrCreateProgram(bindless ? "internal/shadow_depth@ALPHATEST.vert.glsl"
+                                            : "internal/shadow_depth@ALPHATEST;NO_BINDLESS.vert.glsl",
+                                   bindless ? "internal/shadow_depth@ALPHATEST.frag.glsl"
+                                            : "internal/shadow_depth@ALPHATEST;NO_BINDLESS.frag.glsl");
         const Ren::ProgramHandle shadow_vege_alpha_prog =
-            sh.LoadProgram(bindless ? "internal/shadow_depth_vege@ALPHATEST.vert.glsl"
-                                    : "internal/shadow_depth_vege@ALPHATEST;NO_BINDLESS.vert.glsl",
-                           bindless ? "internal/shadow_depth@ALPHATEST.frag.glsl"
-                                    : "internal/shadow_depth@ALPHATEST;NO_BINDLESS.frag.glsl");
+            sh.FindOrCreateProgram(bindless ? "internal/shadow_depth_vege@ALPHATEST.vert.glsl"
+                                            : "internal/shadow_depth_vege@ALPHATEST;NO_BINDLESS.vert.glsl",
+                                   bindless ? "internal/shadow_depth@ALPHATEST.frag.glsl"
+                                            : "internal/shadow_depth@ALPHATEST;NO_BINDLESS.frag.glsl");
 
-        const Ren::RenderTarget depth_target = {shadow_depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
+        const Ren::RenderTarget depth_target = {shadow_depth, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
 
-        const Ren::RenderPassHandle rp_depth_only = sh.LoadRenderPass(depth_target, {});
+        const Ren::RenderPassHandle rp_depth_only = sh.FindOrCreateRenderPass(depth_target, {});
 
         { // solid/alpha-tested
             Ren::RastState rast_state;
@@ -84,32 +79,30 @@ void Eng::ExShadowDepth::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
             rast_state.depth.compare_op = unsigned(Ren::eCompareOp::Greater);
             rast_state.scissor.enabled = true;
 
-            pi_solid_[2] = sh.LoadPipeline(rast_state, shadow_solid_prog, vi_depth_pass_solid, rp_depth_only, 0);
-            pi_alpha_[2] = sh.LoadPipeline(rast_state, shadow_alpha_prog, vi_depth_pass_alpha, rp_depth_only, 0);
+            pi_solid_[2] =
+                sh.FindOrCreatePipeline(rast_state, shadow_solid_prog, vi_depth_pass_solid, rp_depth_only, 0);
+            pi_alpha_[2] =
+                sh.FindOrCreatePipeline(rast_state, shadow_alpha_prog, vi_depth_pass_alpha, rp_depth_only, 0);
 
             pi_vege_solid_ =
-                sh.LoadPipeline(rast_state, shadow_vege_solid_prog, vi_depth_pass_vege_solid, rp_depth_only, 0);
+                sh.FindOrCreatePipeline(rast_state, shadow_vege_solid_prog, vi_depth_pass_vege_solid, rp_depth_only, 0);
             pi_vege_alpha_ =
-                sh.LoadPipeline(rast_state, shadow_vege_alpha_prog, vi_depth_pass_vege_alpha, rp_depth_only, 0);
+                sh.FindOrCreatePipeline(rast_state, shadow_vege_alpha_prog, vi_depth_pass_vege_alpha, rp_depth_only, 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Front);
 
-            pi_solid_[0] = sh.LoadPipeline(rast_state, shadow_solid_prog, vi_depth_pass_solid, rp_depth_only, 0);
-            pi_alpha_[0] = sh.LoadPipeline(rast_state, shadow_alpha_prog, vi_depth_pass_alpha, rp_depth_only, 0);
+            pi_solid_[0] =
+                sh.FindOrCreatePipeline(rast_state, shadow_solid_prog, vi_depth_pass_solid, rp_depth_only, 0);
+            pi_alpha_[0] =
+                sh.FindOrCreatePipeline(rast_state, shadow_alpha_prog, vi_depth_pass_alpha, rp_depth_only, 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
-            pi_solid_[1] = sh.LoadPipeline(rast_state, shadow_solid_prog, vi_depth_pass_solid, rp_depth_only, 0);
-            pi_alpha_[1] = sh.LoadPipeline(rast_state, shadow_alpha_prog, vi_depth_pass_alpha, rp_depth_only, 0);
+            pi_solid_[1] =
+                sh.FindOrCreatePipeline(rast_state, shadow_solid_prog, vi_depth_pass_solid, rp_depth_only, 0);
+            pi_alpha_[1] =
+                sh.FindOrCreatePipeline(rast_state, shadow_alpha_prog, vi_depth_pass_alpha, rp_depth_only, 0);
         }
         initialized = true;
-    }
-
-    const Ren::PipelineMain &pi_solid_main = ctx.pipelines().Get(pi_solid_[0]).first;
-    const Ren::RenderPassMain &rp_main = ctx.render_passes().Get(pi_solid_main.render_pass).first;
-
-    if (!shadow_fb_.Setup(&ctx.api(), rp_main, w_, h_, shadow_depth_tex, {}, Ren::Span<const Ren::WeakImgRef>{}, false,
-                          ctx.log())) {
-        ctx.log()->Error("ExShadowMaps: shadow_fb_ init failed!");
     }
 }

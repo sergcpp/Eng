@@ -1,35 +1,39 @@
 #include "ExTransparent.h"
 
-#include "../PrimDraw.h"
-#include "../Renderer_Structs.h"
-
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
 #include <Ren/RastState.h>
 #include <Ren/VKCtx.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
+
 void Eng::ExTransparent::DrawTransparent_Simple(
     const FgContext &fg, const Ren::BufferROHandle instances_buf, const Ren::BufferROHandle instance_indices_buf,
     const Ren::BufferROHandle unif_shared_data_buf, const Ren::BufferROHandle materials_buf,
     const Ren::BufferROHandle cells_buf, const Ren::BufferROHandle items_buf, const Ren::BufferROHandle lights_buf,
-    const Ren::BufferROHandle decals_buf, const Ren::Image &shad_tex, const Ren::WeakImgRef &color_tex,
-    const Ren::Image &ssao_tex) {
+    const Ren::BufferROHandle decals_buf, const Ren::ImageROHandle shad_tex, const Ren::ImageRWHandle color_tex,
+    const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex, const Ren::ImageRWHandle depth_tex,
+    const Ren::ImageROHandle ssao_tex) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    [[maybe_unused]] const Ren::Image &brdf_lut = fg.AccessROImage(brdf_lut_);
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
-    [[maybe_unused]] const Ren::Image &cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
-    const Ren::Image &dummy_black = fg.AccessROImage(dummy_black_);
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
-    const Ren::Image *lm_tex[4];
+    [[maybe_unused]] const Ren::ImageROHandle brdf_lut = fg.AccessROImage(brdf_lut_);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    [[maybe_unused]] const Ren::ImageROHandle cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
+    const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
+
+    /*const Ren::Image *lm_tex[4];
     for (int i = 0; i < 4; ++i) {
         if (lm_tex_[i]) {
             lm_tex[i] = &fg.AccessROImage(lm_tex_[i]);
         } else {
             lm_tex[i] = &dummy_black;
         }
-    }
+    }*/
 
     if (/*!(*p_list_)->probe_storage ||*/ (*p_list_)->alpha_blend_start_index == -1) {
         return;
@@ -43,23 +47,28 @@ void Eng::ExTransparent::DrawTransparent_Simple(
     const VkDescriptorSet res_descr_set = fg.descr_alloc().Alloc(descr_sizes, descr_set_layout_);
 
     { // update descriptor set
-        const VkDescriptorImageInfo shad_info = shad_tex.vk_desc_image_info();
+        const Ren::ImageMain &dummy_black_main = storages.images.Get(dummy_black).first;
+        const Ren::ImageMain &ssao_main = storages.images.Get(ssao_tex).first;
+        const Ren::ImageMain &noise_main = storages.images.Get(noise_tex).first;
+        const Ren::ImageMain &shad_main = storages.images.Get(shad_tex).first;
+
+        const VkDescriptorImageInfo shad_info = Image_GetDescriptorImageInfo(api, shad_main);
         VkDescriptorImageInfo lm_infos[4];
 
-        if ((*p_list_)->render_settings.enable_lightmap && (*p_list_)->env.lm_direct) {
-            for (int sh_l = 0; sh_l < 4; sh_l++) {
-                lm_infos[sh_l] = lm_tex[sh_l]->vk_desc_image_info();
-            }
+        if (false && (*p_list_)->render_settings.enable_lightmap && (*p_list_)->env.lm_direct) {
+            // for (int sh_l = 0; sh_l < 4; sh_l++) {
+            //     lm_infos[sh_l] = lm_tex[sh_l]->vk_desc_image_info();
+            // }
         } else {
             for (int sh_l = 0; sh_l < 4; sh_l++) {
-                lm_infos[sh_l] = dummy_black.vk_desc_image_info();
+                lm_infos[sh_l] = Image_GetDescriptorImageInfo(api, dummy_black_main);
             }
         }
 
-        const VkDescriptorImageInfo decal_info = dummy_black.vk_desc_image_info();
-        const VkDescriptorImageInfo ssao_info = ssao_tex.vk_desc_image_info();
+        const VkDescriptorImageInfo decal_info = Image_GetDescriptorImageInfo(api, dummy_black_main);
+        const VkDescriptorImageInfo ssao_info = Image_GetDescriptorImageInfo(api, ssao_main);
 
-        const VkDescriptorImageInfo noise_info = noise_tex.vk_desc_image_info();
+        const VkDescriptorImageInfo noise_info = Image_GetDescriptorImageInfo(api, noise_main);
         /*const VkDescriptorImageInfo env_info = {(*p_list_)->probe_storage->handle().sampler,
                                                 (*p_list_)->probe_storage->handle().views[0],
                                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};*/
@@ -269,16 +278,18 @@ void Eng::ExTransparent::DrawTransparent_Simple(
         uint64_t cur_mat_id = 0xffffffffffffffff;
         uint32_t bound_descr_id = 0xffffffff;
 
-        const Ren::RenderPassMain &rp_transparent_main = storages.render_passes.Get(rp_transparent_).first;
+        const Ren::ImageRWHandle color_targets[] = {color_tex, normal_tex, spec_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_transparent_, depth_tex, depth_tex, color_targets);
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = rp_transparent_main.handle;
-        rp_begin_info.framebuffer = transparent_draw_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_transparent_).first.handle;
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vi_main = storages.vtx_inputs.Get(draw_pass_vi_).first;
-        VertexInput_BindBuffers(api, vi_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(draw_pass_vi_).first;
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         for (int j = int((*p_list_)->custom_batch_indices.size()) - 1; j >= (*p_list_)->alpha_blend_start_index; j--) {
             const auto &batch = (*p_list_)->custom_batches[(*p_list_)->custom_batch_indices[j]];
@@ -296,7 +307,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
 
                 if (cur_pipe_id != pipe_id) {
                     api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                          storages.pipelines.GetUnsafe(pipe_id).first.handle);
+                                          storages.pipelines.GetUnsafe(pipe_id).first.pipeline);
                     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                                 storages.pipelines.GetUnsafe(pipe_id).first.layout, 0, 1,
                                                 &res_descr_set, 0, nullptr);
@@ -339,7 +350,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
 
                 if (cur_pipe_id != pipe_id) {
                     api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                          storages.pipelines.GetUnsafe(pipe_id).first.handle);
+                                          storages.pipelines.GetUnsafe(pipe_id).first.pipeline);
                     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                                 storages.pipelines.GetUnsafe(pipe_id).first.layout, 0, 1,
                                                 &res_descr_set, 0, nullptr);

@@ -5,6 +5,7 @@
 #include "DescriptorPool.h"
 #include "GL.h"
 #include "GLCtx.h"
+#include "ResizableBuffer.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -36,7 +37,10 @@ Ren::Context::Context() {
 }
 
 Ren::Context::~Context() {
-    api_->present_image_refs.clear();
+    for (const ImageHandle h : api_->present_image_handles) {
+        images_.Free(h);
+    }
+    api_->present_image_handles.clear();
     for (int i = 0; i < MaxFramesInFlight; i++) {
         glDeleteQueries(MaxTimestampQueries, api_->queries[i]);
     }
@@ -179,8 +183,12 @@ bool Ren::Context::Init(const int w, const int h, ILog *log, const int validatio
         params.flags = eImgFlags::NoOwnership;
         params.usage = Bitmask(eImgUsage::RenderTarget);
 
-        api_->present_image_refs.emplace_back(
-            images_.Insert(name_buf, api_.get(), ImgHandle{}, params, MemAllocation{}, log_));
+        ImageHandle new_img = images_.Emplace();
+        const auto &[img_main, img_cold] = images_.Get(new_img);
+
+        img_cold.params = params;
+
+        api_->present_image_handles.emplace_back(new_img);
     }
 
     image_atlas_ =

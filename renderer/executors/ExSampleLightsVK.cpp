@@ -1,13 +1,14 @@
 #include "ExSampleLights.h"
 
 #include <Ren/Context.h>
+#include <Ren/DrawCall.h>
 #include <Ren/Image.h>
 #include <Ren/RastState.h>
 #include <Ren/VKCtx.h>
 
 #include "../../utils/ShaderLoader.h"
-#include "../PrimDraw.h"
 #include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/sample_lights_interface.h"
 
 void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
@@ -22,13 +23,13 @@ void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
     [[maybe_unused]] const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
 
-    const Ren::Image &albedo_tex = fg.AccessROImage(args_->albedo_tex);
-    const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::Image &norm_tex = fg.AccessROImage(args_->norm_tex);
-    const Ren::Image &spec_tex = fg.AccessROImage(args_->spec_tex);
+    const Ren::ImageROHandle albedo_tex = fg.AccessROImage(args_->albedo_tex);
+    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
+    const Ren::ImageROHandle norm_tex = fg.AccessROImage(args_->norm_tex);
+    const Ren::ImageROHandle spec_tex = fg.AccessROImage(args_->spec_tex);
 
-    const Ren::Image &out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
-    const Ren::Image &out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
+    const Ren::ImageRWHandle out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
+    const Ren::ImageRWHandle out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
 
     if (!args_->lights_buf) {
         return;
@@ -70,12 +71,12 @@ void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
     const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
 
     VkDescriptorSet descr_sets[2];
-    descr_sets[0] = PrepareDescriptorSet(api, &storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
+    descr_sets[0] = PrepareDescriptorSet(api, storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->rt_inline_textures.descr_set;
 
     VkCommandBuffer cmd_buf = fg.cmd_buf();
 
-    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.pipeline);
     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 2, descr_sets, 0, nullptr);
 
     api.vkCmdPushConstants(cmd_buf, pi.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uniform_params), &uniform_params);

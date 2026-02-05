@@ -1,9 +1,13 @@
 #pragma once
 
-#include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"
 
 namespace Eng {
+struct BindlessTextureData;
+struct view_state_t;
+struct probe_volume_t;
+class ShaderLoader;
+
 class ExRTGICache final : public FgExecutor {
   public:
     struct Args {
@@ -12,10 +16,10 @@ class ExRTGICache final : public FgExecutor {
         FgBufROHandle vtx_buf1;
         FgBufROHandle ndx_buf;
         FgBufROHandle shared_data;
-        FgResRef env_tex;
+        FgImgROHandle env_tex;
         FgBufROHandle lights_buf;
-        FgResRef shadow_depth_tex, shadow_color_tex;
-        FgResRef ltc_luts_tex;
+        FgImgROHandle shadow_depth, shadow_color;
+        FgImgROHandle ltc_luts;
         FgBufROHandle cells_buf;
         FgBufROHandle items_buf;
         FgBufROHandle tlas_buf; // fake read for now
@@ -29,15 +33,15 @@ class ExRTGICache final : public FgExecutor {
             FgBufROHandle mesh_instances_buf;
         } swrt;
 
-        FgResRef irradiance_tex;
-        FgResRef distance_tex;
-        FgResRef offset_tex;
+        FgImgROHandle irradiance_tex;
+        FgImgROHandle distance_tex;
+        FgImgROHandle offset_tex;
 
         FgBufROHandle random_seq;
         FgBufROHandle stoch_lights_buf;
         FgBufROHandle light_nodes_buf;
 
-        FgResRef out_ray_data_tex;
+        FgImgRWHandle out_ray_data_tex;
 
         const view_state_t *view_state = nullptr;
         bool partial_update = false;
@@ -61,7 +65,7 @@ class ExRTGICache final : public FgExecutor {
 
     const Args *args_ = nullptr;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh);
 
     void Execute_HWRT(const FgContext &fg);
     void Execute_SWRT(const FgContext &fg);

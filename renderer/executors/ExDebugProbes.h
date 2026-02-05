@@ -1,27 +1,30 @@
 #pragma once
 
-#include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"
 
 namespace Eng {
+struct DrawList;
 class PrimDraw;
+struct probe_volume_t;
+class ShaderLoader;
+struct view_state_t;
 
 class ExDebugProbes final : public FgExecutor {
   public:
     struct Args {
         FgBufROHandle shared_data;
-        FgResRef offset_tex;
-        FgResRef irradiance_tex;
-        FgResRef distance_tex;
-        FgResRef depth_tex;
-        FgResRef output_tex;
+        FgImgROHandle irradiance_tex;
+        FgImgROHandle distance_tex;
+        FgImgROHandle offset_tex;
+
+        FgImgRWHandle depth_tex;
+        FgImgRWHandle output_tex;
 
         int volume_to_debug = 0;
         Ren::Span<const probe_volume_t> probe_volumes;
     };
 
-    ExDebugProbes(PrimDraw &prim_draw, ShaderLoader &sh, const DrawList &list, const view_state_t *view_state,
-                  const Args *args);
+    ExDebugProbes(PrimDraw &prim_draw, ShaderLoader &sh, const view_state_t *view_state, const Args *args);
 
     void Execute(const FgContext &fg) override;
 

@@ -9,7 +9,7 @@
 #include "Sampler.h"
 #include "VKCtx.h"
 
-VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesRef *storages,
+VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesRef &storages,
                                           VkDescriptorSetLayout layout, Span<const Binding> bindings,
                                           DescrMultiPoolAlloc &descr_alloc, ILog *log) {
     VkDescriptorImageInfo sampler_infos[16] = {};
@@ -26,15 +26,29 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
     for (const auto &b : bindings) {
         if (b.trg == eBindTarget::Tex || b.trg == eBindTarget::TexSampled) {
             auto &info = img_sampler_infos[descr_sizes.img_sampler_count++];
-            if (b.trg == eBindTarget::TexSampled) {
-                if (b.handle.sampler) {
-                    info.sampler = storages->samplers.Get(b.handle.sampler).first.handle;
-                } else {
-                    info.sampler = b.handle.img->handle().sampler;
+            if (b.handle.img_new) {
+                const auto &[img_main, img_cold] = storages.images.Get(b.handle.img_new);
+
+                if (b.trg == eBindTarget::TexSampled) {
+                    if (b.handle.sampler) {
+                        info.sampler = storages.samplers.Get(b.handle.sampler).first.handle;
+                    } else {
+                        info.sampler = img_main.sampler;
+                    }
                 }
+                info.imageView = img_main.views[b.handle.view_index];
+                info.imageLayout = VkImageLayout(VKImageLayoutForState(img_main.resource_state));
+            } else {
+                if (b.trg == eBindTarget::TexSampled) {
+                    if (b.handle.sampler) {
+                        info.sampler = storages.samplers.Get(b.handle.sampler).first.handle;
+                    } else {
+                        info.sampler = b.handle.img->handle().sampler;
+                    }
+                }
+                info.imageView = b.handle.img->handle().views[b.handle.view_index];
+                info.imageLayout = VkImageLayout(VKImageLayoutForState(b.handle.img->resource_state));
             }
-            info.imageView = b.handle.img->handle().views[b.handle.view_index];
-            info.imageLayout = VkImageLayout(VKImageLayoutForState(b.handle.img->resource_state));
 
             auto &new_write = descr_writes.emplace_back();
             new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -48,7 +62,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             assert((used_bindings & (1ull << (b.loc + b.offset))) == 0 && "Bindings overlap detected!");
             used_bindings |= (1ull << (b.loc + b.offset));
         } else if (b.trg == eBindTarget::UBuf) {
-            const auto &[buf_main, buf_cold] = storages->buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
 
             auto &ubuf = ubuf_infos[descr_sizes.ubuf_count++];
             ubuf.buffer = buf_main.buf;
@@ -68,7 +82,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
         } else if (b.trg == eBindTarget::UTBuf) {
             ++descr_sizes.utbuf_count;
 
-            const auto &[buf_main, buf_cold] = storages->buffers.Get(b.handle.buf);
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
 
             auto &new_write = descr_writes.emplace_back();
             new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -81,7 +95,8 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             assert((used_bindings & (1ull << b.loc)) == 0 && "Bindings overlap detected!");
             used_bindings |= (1ull << b.loc);
         } else if (b.trg == eBindTarget::SBufRO || b.trg == eBindTarget::SBufRW) {
-            const auto &[buf_main, buf_cold] = storages->buffers.Get(b.handle.buf);
+            assert(b.trg == eBindTarget::SBufRO || !b.handle.readonly);
+            const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.buf);
 
             auto &sbuf = sbuf_infos[descr_sizes.sbuf_count++];
             sbuf.buffer = buf_main.buf;
@@ -99,9 +114,10 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             assert((used_bindings & (1ull << b.loc)) == 0 && "Bindings overlap detected!");
             used_bindings |= (1ull << b.loc);
         } else if (b.trg == eBindTarget::STBufRO || b.trg == eBindTarget::STBufRW) {
+            assert(b.trg == eBindTarget::STBufRO || !b.handle.readonly);
             ++descr_sizes.stbuf_count;
 
-            const auto &[buf_main, buf_cold] = storages->buffers.Get(b.handle.buf);
+            const Ren::BufferMain &buf_main = storages.buffers.Get(b.handle.buf).first;
 
             auto &new_write = descr_writes.emplace_back();
             new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -114,24 +130,42 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             assert((used_bindings & (1ull << b.loc)) == 0 && "Bindings overlap detected!");
             used_bindings |= (1ull << b.loc);
         } else if (b.trg == eBindTarget::ImageRO || b.trg == eBindTarget::ImageRW) {
-            auto &info = img_storage_infos[descr_sizes.store_img_count++];
-            info.sampler = b.handle.img->handle().sampler;
-            info.imageView = b.handle.img->handle().views[b.handle.view_index];
-            info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            if (b.handle.img_new) {
+                assert(b.trg == eBindTarget::ImageRO || !b.handle.readonly);
+                const Ren::ImageMain &img_main = storages.images.Get(b.handle.img_new).first;
 
-            auto &new_write = descr_writes.emplace_back();
-            new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-            new_write.dstBinding = b.loc;
-            new_write.dstArrayElement = b.offset;
-            new_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-            new_write.descriptorCount = b.size ? b.size : 1;
-            new_write.pImageInfo = &info;
+                auto &info = img_storage_infos[descr_sizes.store_img_count++];
+                info.sampler = img_main.sampler;
+                info.imageView = img_main.views[b.handle.view_index];
+                info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+                auto &new_write = descr_writes.emplace_back();
+                new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                new_write.dstBinding = b.loc;
+                new_write.dstArrayElement = b.offset;
+                new_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                new_write.descriptorCount = b.size ? b.size : 1;
+                new_write.pImageInfo = &info;
+            } else {
+                auto &info = img_storage_infos[descr_sizes.store_img_count++];
+                info.sampler = b.handle.img->handle().sampler;
+                info.imageView = b.handle.img->handle().views[b.handle.view_index];
+                info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+                auto &new_write = descr_writes.emplace_back();
+                new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                new_write.dstBinding = b.loc;
+                new_write.dstArrayElement = b.offset;
+                new_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                new_write.descriptorCount = b.size ? b.size : 1;
+                new_write.pImageInfo = &info;
+            }
 
             assert((used_bindings & (1ull << (b.loc + b.offset))) == 0 && "Bindings overlap detected!");
             used_bindings |= (1ull << (b.loc + b.offset));
         } else if (b.trg == eBindTarget::Sampler) {
             auto &info = sampler_infos[descr_sizes.sampler_count++];
-            info.sampler = storages->samplers.Get(b.handle.sampler).first.handle;
+            info.sampler = storages.samplers.Get(b.handle.sampler).first.handle;
 
             auto &new_write = descr_writes.emplace_back();
             new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -184,7 +218,7 @@ void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, 
 
     SmallVector<VkDescriptorSet, 2> descr_sets;
     descr_sets.push_back(
-        PrepareDescriptorSet(api, &storages, prog_main.descr_set_layouts[0], bindings, descr_alloc, log));
+        PrepareDescriptorSet(api, storages, prog_main.descr_set_layouts[0], bindings, descr_alloc, log));
     if (!descr_sets.back()) {
         log->Error("Failed to allocate descriptor set, skipping draw call!");
         return;
@@ -207,7 +241,7 @@ void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, 
         }
     }
 
-    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_main.handle);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_main.pipeline);
     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_main.layout, 0, descr_sets.size(),
                                 descr_sets.data(), 0, nullptr);
 
@@ -237,7 +271,7 @@ void Ren::DispatchComputeIndirect(CommandBuffer cmd_buf, const PipelineHandle pi
 
     SmallVector<VkDescriptorSet, 2> descr_sets;
     descr_sets.push_back(
-        PrepareDescriptorSet(api, &storages, prog_main.descr_set_layouts[0], bindings, descr_alloc, log));
+        PrepareDescriptorSet(api, storages, prog_main.descr_set_layouts[0], bindings, descr_alloc, log));
     if (!descr_sets.back()) {
         log->Error("Failed to allocate descriptor set, skipping draw call!");
         return;
@@ -260,7 +294,7 @@ void Ren::DispatchComputeIndirect(CommandBuffer cmd_buf, const PipelineHandle pi
         }
     }
 
-    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_main.handle);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_main.pipeline);
     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi_main.layout, 0, descr_sets.size(),
                                 descr_sets.data(), 0, nullptr);
 

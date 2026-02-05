@@ -3,21 +3,21 @@
 #include <Ren/Context.h>
 
 #include "../../utils/ShaderLoader.h"
+#include "../framegraph/FgBuilder.h"
 
 void Eng::ExReadExposure::Execute(const FgContext &fg) {
-    const Ren::Image &input_tex = fg.AccessROImage(args_->input_tex);
-    const Ren::BufferHandle output_buf = fg.AccessRWBuffer(args_->output_buf);
-
-    const auto &[output_buf_main, output_buf_cold] = fg.storages().buffers.Get(output_buf);
+    const Ren::ImageROHandle input_tex = fg.AccessROImage(args_->input_tex);
+    const Ren::BufferRWHandle output_buf = fg.AccessRWBuffer(args_->output_buf);
 
     { // Retrieve result of readback from previous frame
-        const auto *mapped_ptr = (const float *)Ren::Buffer_Map(fg.ren_ctx().api(), output_buf_main, output_buf_cold);
+        const auto *mapped_ptr = (const float *)fg.ren_ctx().MapBuffer(output_buf);
         if (mapped_ptr) {
             exposure_ = mapped_ptr[fg.backend_frame()];
-            Ren::Buffer_Unmap(fg.ren_ctx().api(), output_buf_main, output_buf_cold);
+            fg.ren_ctx().UnmapBuffer(output_buf);
         }
     }
 
-    input_tex.CopyTextureData(output_buf_main, output_buf_cold, fg.cmd_buf(), sizeof(float) * fg.backend_frame(),
-                              sizeof(float));
+    // Copy data from current frame
+    const uint32_t data_off = sizeof(float) * fg.backend_frame();
+    fg.ren_ctx().CmdCopyImageToBuffer(input_tex, output_buf, fg.cmd_buf(), data_off);
 }

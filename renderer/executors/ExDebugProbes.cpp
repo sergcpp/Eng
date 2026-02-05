@@ -5,21 +5,24 @@
 
 #include "../../utils/ShaderLoader.h"
 #include "../PrimDraw.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/probe_debug_interface.h"
 
-Eng::ExDebugProbes::ExDebugProbes(PrimDraw &prim_draw, ShaderLoader &sh, const DrawList &list,
-                                  const view_state_t *view_state, const Args *args)
+Eng::ExDebugProbes::ExDebugProbes(PrimDraw &prim_draw, ShaderLoader &sh, const view_state_t *view_state,
+                                  const Args *args)
     : prim_draw_(prim_draw), view_state_(view_state), args_(args) {
-    prog_probe_debug_ = sh.LoadProgram("internal/probe_debug.vert.glsl", "internal/probe_debug.frag.glsl");
+    prog_probe_debug_ = sh.FindOrCreateProgram("internal/probe_debug.vert.glsl", "internal/probe_debug.frag.glsl");
 }
 
 void Eng::ExDebugProbes::Execute(const FgContext &fg) {
     const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Image &off_tex = fg.AccessROImage(args_->offset_tex);
-    const Ren::Image &irr_tex = fg.AccessROImage(args_->irradiance_tex);
-    [[maybe_unused]] const Ren::Image &dist_tex = fg.AccessROImage(args_->distance_tex);
-    Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(args_->depth_tex);
-    Ren::WeakImgRef output_tex = fg.AccessRWImageRef(args_->output_tex);
+    const Ren::ImageROHandle irr_tex = fg.AccessROImage(args_->irradiance_tex);
+    [[maybe_unused]] const Ren::ImageROHandle dist_tex = fg.AccessROImage(args_->distance_tex);
+    const Ren::ImageROHandle off_tex = fg.AccessROImage(args_->offset_tex);
+
+    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(args_->depth_tex);
+    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(args_->output_tex);
 
     Ren::RastState rast_state;
     rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
@@ -46,7 +49,7 @@ void Eng::ExDebugProbes::Execute(const FgContext &fg) {
     const Ren::RenderTarget render_targets[] = {{output_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
     const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
 
-    prim_draw_.DrawPrim(PrimDraw::ePrim::Sphere, prog_probe_debug_, depth_target, render_targets, rast_state,
-                        fg.rast_state(), bindings, &uniform_params, sizeof(uniform_params), 0,
-                        PROBE_VOLUME_RES_X * PROBE_VOLUME_RES_Y * PROBE_VOLUME_RES_Z);
+    prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Sphere, prog_probe_debug_, depth_target, render_targets,
+                        rast_state, fg.rast_state(), bindings, &uniform_params, sizeof(uniform_params), 0,
+                        fg.framebuffers(), PROBE_VOLUME_RES_X * PROBE_VOLUME_RES_Y * PROBE_VOLUME_RES_Z);
 }

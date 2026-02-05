@@ -71,26 +71,26 @@ class Mesh : public RefCounter {
 
     // simple static mesh with normals
     void InitMeshSimple(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                        DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1,
-                        BufferHandle vertex_buf2, BufferHandle index_buf, ILog *log);
+                        DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                        ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log);
     // simple mesh with 4 per-vertex colors
     void InitMeshColored(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                         DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1,
-                         BufferHandle vertex_buf2, BufferHandle index_buf, ILog *log);
+                         DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                         ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log);
     // mesh with 4 bone weights per vertex
     void InitMeshSkeletal(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                          DualStorage<BufferMain, BufferCold> &buffers, BufferHandle skin_vertex_buf,
-                          BufferHandle delta_buf, BufferHandle index_buf, ILog *log);
+                          DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &skin_vertex_buf,
+                          ResizableBuffer &delta_buf, ResizableBuffer &index_buf, ILog *log);
 
   public:
     Mesh() = default;
     Mesh(std::string_view name, const float *positions, int vtx_count, const uint32_t *indices, int ndx_count,
-         const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1,
-         BufferHandle vertex_buf2, BufferHandle index_buf, eMeshLoadStatus *load_status, ILog *log);
+         const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+         ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, eMeshLoadStatus *load_status, ILog *log);
     Mesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load, const ApiContext &api,
-         DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1, BufferHandle vertex_buf2,
-         BufferHandle index_buf, BufferHandle skin_vertex_buf, BufferHandle delta_buf, eMeshLoadStatus *load_status,
-         ILog *log);
+         DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2,
+         ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf,
+         eMeshLoadStatus *load_status, ILog *log);
 
     Mesh(const Mesh &rhs) = delete;
     Mesh(Mesh &&rhs) = default;
@@ -121,15 +121,16 @@ class Mesh : public RefCounter {
     Skeleton *skel() { return &skel_; }
 
     void Init(const float *positions, int vtx_count, const uint32_t *indices, int ndx_count, const ApiContext &api,
-              DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1, BufferHandle vertex_buf2,
-              BufferHandle index_buf, eMeshLoadStatus *load_status, ILog *log);
+              DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2,
+              ResizableBuffer &index_buf, eMeshLoadStatus *load_status, ILog *log);
     void Init(std::istream *data, const material_load_callback &on_mat_load, const ApiContext &api,
-              DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1, BufferHandle vertex_buf2,
-              BufferHandle index_buf, BufferHandle skin_vertex_buf, BufferHandle delta_buf,
+              DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2,
+              ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf,
               eMeshLoadStatus *load_status, ILog *log);
 
-    void InitBufferData(const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, BufferHandle vertex_buf1,
-                        BufferHandle vertex_buf2, BufferHandle index_buf, ILog *log);
+    void InitBufferData(const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
+                        ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
+                        ILog *log);
     void ReleaseBufferData();
 
     std::unique_ptr<IAccStructure> blas;

@@ -6,6 +6,8 @@
 #include <Ren/VKCtx.h>
 
 #include "../PrimDraw.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/blit_oit_depth_interface.h"
 #include "../shaders/oit_blend_layer_interface.h"
 
@@ -16,16 +18,20 @@ uint32_t _draw_range_ext(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, co
                          Ren::Span<const VkDescriptorSet> descr_sets, int *draws_count);
 }
 
-void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &depth_tex) {
+void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::ImageRWHandle depth_tex,
+                                           const Ren::ImageRWHandle color_tex) {
     using namespace ExSharedInternal;
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
-    const Ren::Image &shadow_map_tex = fg.AccessROImage(shadow_map_);
-    const Ren::Image &ltc_luts_tex = fg.AccessROImage(ltc_luts_tex_);
-    const Ren::Image &env_tex = fg.AccessROImage(env_tex_);
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle shadow_depth_tex = fg.AccessROImage(shadow_depth_);
+    const Ren::ImageROHandle ltc_luts = fg.AccessROImage(ltc_luts_);
+    const Ren::ImageROHandle env_tex = fg.AccessROImage(env_tex_);
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
@@ -36,19 +42,19 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
     const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
     const Ren::BufferROHandle oit_depth_buf = fg.AccessROBuffer(oit_depth_buf_);
 
-    const Ren::Image &back_color_tex = fg.AccessROImage(back_color_tex_);
-    const Ren::Image &back_depth_tex = fg.AccessROImage(back_depth_tex_);
+    const Ren::ImageROHandle back_color_tex = fg.AccessROImage(back_color_tex_);
+    const Ren::ImageROHandle back_depth_tex = fg.AccessROImage(back_depth_tex_);
 
-    const Ren::Image *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
+    Ren::ImageROHandle irr_tex, dist_tex, off_tex;
     if (irradiance_tex_) {
-        irr_tex = &fg.AccessROImage(irradiance_tex_);
-        dist_tex = &fg.AccessROImage(distance_tex_);
-        off_tex = &fg.AccessROImage(offset_tex_);
+        irr_tex = fg.AccessROImage(irradiance_tex_);
+        dist_tex = fg.AccessROImage(distance_tex_);
+        off_tex = fg.AccessROImage(offset_tex_);
     }
 
-    const Ren::Image *specular_tex = nullptr;
+    Ren::ImageROHandle specular_tex = {};
     if (oit_specular_tex_) {
-        specular_tex = &fg.AccessROImage(oit_specular_tex_);
+        specular_tex = fg.AccessROImage(oit_specular_tex_);
     }
 
     if ((*p_list_)->alpha_blend_start_index == -1) {
@@ -73,8 +79,8 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
 
         const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
 
-        prim_draw_.DrawPrim(PrimDraw::ePrim::Quad, prog_oit_blit_depth_, depth_target, {}, rast_state, fg.rast_state(),
-                            bindings, &uniform_params, sizeof(uniform_params), 0);
+        prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad, prog_oit_blit_depth_, depth_target, {}, rast_state,
+                            fg.rast_state(), bindings, &uniform_params, sizeof(uniform_params), 0, fg.framebuffers());
     }
 
     Ren::SmallVector<Ren::Binding, 16> bindings = {
@@ -87,25 +93,25 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
         {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
         {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
         {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex},
-        {Ren::eBindTarget::TexSampled, OITBlendLayer::SHADOW_TEX_SLOT, shadow_map_tex},
-        {Ren::eBindTarget::TexSampled, OITBlendLayer::LTC_LUTS_TEX_SLOT, ltc_luts_tex},
+        {Ren::eBindTarget::TexSampled, OITBlendLayer::SHADOW_TEX_SLOT, shadow_depth_tex},
+        {Ren::eBindTarget::TexSampled, OITBlendLayer::LTC_LUTS_TEX_SLOT, ltc_luts},
         {Ren::eBindTarget::TexSampled, OITBlendLayer::ENV_TEX_SLOT, env_tex},
         {Ren::eBindTarget::TexSampled, OITBlendLayer::BACK_COLOR_TEX_SLOT, back_color_tex},
         {Ren::eBindTarget::TexSampled, OITBlendLayer::BACK_DEPTH_TEX_SLOT, {back_depth_tex, 1}}};
     if (irr_tex) {
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, OITBlendLayer::IRRADIANCE_TEX_SLOT, *irr_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, OITBlendLayer::DISTANCE_TEX_SLOT, *dist_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, OITBlendLayer::OFFSET_TEX_SLOT, *off_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, OITBlendLayer::IRRADIANCE_TEX_SLOT, irr_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, OITBlendLayer::DISTANCE_TEX_SLOT, dist_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, OITBlendLayer::OFFSET_TEX_SLOT, off_tex);
     }
     if (specular_tex) {
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, OITBlendLayer::SPEC_TEX_SLOT, *specular_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, OITBlendLayer::SPEC_TEX_SLOT, specular_tex);
     }
 
     const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines.Get(pi_vegetation_[0]).first;
     const Ren::ProgramMain &pr_vegetation0_main = storages.programs.Get(pi_vegetation0_main.prog).first;
 
     VkDescriptorSet descr_sets[2];
-    descr_sets[0] = PrepareDescriptorSet(api, &storages, pr_vegetation0_main.descr_set_layouts[0], bindings,
+    descr_sets[0] = PrepareDescriptorSet(api, storages, pr_vegetation0_main.descr_set_layouts[0], bindings,
                                          fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->textures_descr_sets[0];
 
@@ -134,9 +140,13 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
 
         const Ren::RenderPassMain &rp_simple0_main = storages.render_passes.Get(pi_simple0_main.render_pass).first;
 
+        const Ren::ImageRWHandle color_targets[] = {color_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth_tex, depth_tex, color_targets);
+
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         rp_begin_info.renderPass = rp_simple0_main.handle;
-        rp_begin_info.framebuffer = main_draw_fb_[api.backend_frame][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         const VkClearValue clear_values[4] = {{}, {}, {}, {}};
         rp_begin_info.pClearValues = clear_values;
@@ -147,23 +157,24 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
             Ren::DebugMarker _m(api, cmd_buf, "SIMPLE");
 
             const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
-            VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+            VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                    VK_INDEX_TYPE_UINT32);
 
             { // solid one-sided
                 Ren::DebugMarker _mm(api, cmd_buf, "SOLID-ONE-SIDED");
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.pipeline);
                 api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.layout, 0, 2,
                                             descr_sets, 0, nullptr);
                 i = _draw_range_ext(api, cmd_buf, pi_simple0_main, batch_indices, batches, i, BDB::BitAlphaBlend,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple1_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple1_main.pipeline);
                 i = _draw_range_ext(api, cmd_buf, pi_simple1_main, batch_indices, batches, i,
                                     BDB::BitAlphaBlend | BDB::BitBackSided, materials_per_descriptor,
                                     bindless_tex_->textures_descr_sets, &draws_count);
             }
             { // solid two-sided
                 Ren::DebugMarker _mm(api, cmd_buf, "SOLID-TWO-SIDED");
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.pipeline);
                 api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.layout, 0, 2,
                                             descr_sets, 0, nullptr);
                 i = _draw_range_ext(api, cmd_buf, pi_simple2_main, batch_indices, batches, i,
@@ -172,7 +183,7 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
             }
             { // moving solid one-sided
                 Ren::DebugMarker _mm(api, cmd_buf, "MOVING-SOLID-ONE-SIDED");
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.pipeline);
                 api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.layout, 0, 2,
                                             descr_sets, 0, nullptr);
                 i = _draw_range_ext(api, cmd_buf, pi_simple0_main, batch_indices, batches, i,
@@ -181,7 +192,7 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
             }
             { // moving solid two-sided
                 Ren::DebugMarker _mm(api, cmd_buf, "MOVING-SOLID-TWO-SIDED");
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.pipeline);
                 api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.layout, 0, 2,
                                             descr_sets, 0, nullptr);
                 i = _draw_range_ext(api, cmd_buf, pi_simple2_main, batch_indices, batches, i,
@@ -190,20 +201,20 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
             }
             { // alpha-tested one-sided
                 Ren::DebugMarker _mm(api, cmd_buf, "ALPHA-ONE-SIDED");
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.pipeline);
                 api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.layout, 0, 2,
                                             descr_sets, 0, nullptr);
                 i = _draw_range_ext(api, cmd_buf, pi_simple0_main, batch_indices, batches, i,
                                     BDB::BitAlphaBlend | BDB::BitAlphaTest, materials_per_descriptor,
                                     bindless_tex_->textures_descr_sets, &draws_count);
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple1_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple1_main.pipeline);
                 i = _draw_range_ext(api, cmd_buf, pi_simple1_main, batch_indices, batches, i,
                                     BDB::BitAlphaBlend | BDB::BitAlphaTest | BDB::BitBackSided,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
             { // alpha-tested two-sided
                 Ren::DebugMarker _mm(api, cmd_buf, "ALPHA-TWO-SIDED");
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.pipeline);
                 api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.layout, 0, 2,
                                             descr_sets, 0, nullptr);
                 i = _draw_range_ext(api, cmd_buf, pi_simple2_main, batch_indices, batches, i,
@@ -212,20 +223,20 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::WeakI
             }
             { // moving alpha-tested one-sided
                 Ren::DebugMarker _mm(api, cmd_buf, "MOVING-ALPHA-ONE-SIDED");
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.pipeline);
                 api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple0_main.layout, 0, 2,
                                             descr_sets, 0, nullptr);
                 i = _draw_range_ext(api, cmd_buf, pi_simple0_main, batch_indices, batches, i,
                                     BDB::BitAlphaBlend | BDB::BitMoving | BDB::BitAlphaTest, materials_per_descriptor,
                                     bindless_tex_->textures_descr_sets, &draws_count);
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple1_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple1_main.pipeline);
                 i = _draw_range_ext(api, cmd_buf, pi_simple1_main, batch_indices, batches, i,
                                     BDB::BitAlphaBlend | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitBackSided,
                                     materials_per_descriptor, bindless_tex_->textures_descr_sets, &draws_count);
             }
             { // moving alpha-tested two-sided
                 Ren::DebugMarker _mm(api, cmd_buf, "MOVING-ALPHA-TWO-SIDED");
-                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.handle);
+                api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.pipeline);
                 api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_simple2_main.layout, 0, 2,
                                             descr_sets, 0, nullptr);
                 i = _draw_range_ext(api, cmd_buf, pi_simple2_main, batch_indices, batches, i,

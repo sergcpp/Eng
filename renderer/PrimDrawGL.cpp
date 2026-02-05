@@ -4,7 +4,9 @@
 #include <Ren/Framebuffer.h>
 #include <Ren/GL.h>
 #include <Ren/ProbeStorage.h>
+#include <Ren/ResizableBuffer.h>
 
+#include "../utils/ShaderLoader.h"
 #include "Renderer_Structs.h"
 
 namespace PrimDrawInternal {
@@ -12,31 +14,45 @@ extern const int SphereIndicesCount;
 } // namespace PrimDrawInternal
 
 void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::ProgramHandle p,
-                             const Ren::RenderTarget depth_rt, Ren::Span<const Ren::RenderTarget> color_rts,
+                             const Ren::RenderTarget &depth_rt, Ren::Span<const Ren::RenderTarget> color_rts,
                              const Ren::RastState &new_rast_state, Ren::RastState &applied_rast_state,
                              Ren::Span<const Ren::Binding> bindings, const void *uniform_data,
-                             const int uniform_data_len, const int uniform_data_offset, const int instance_count) {
+                             const int uniform_data_len, const int uniform_data_offset, FramebufferPool *framebuffers,
+                             const int instance_count) {
     using namespace PrimDrawInternal;
-
-    const Ren::Framebuffer *fb =
-        FindOrCreateFramebuffer(nullptr, new_rast_state.depth.test_enabled ? depth_rt : Ren::RenderTarget{},
-                                new_rast_state.stencil.enabled ? depth_rt : Ren::RenderTarget{}, color_rts);
 
     new_rast_state.ApplyChanged(applied_rast_state);
     applied_rast_state = new_rast_state;
 
-    const Ren::StoragesRef &storages = ctx_->storages();
+    Ren::Context &ctx = sh_->ren_ctx();
+    const Ren::StoragesRef &storages = ctx.storages();
 
-    glBindFramebuffer(GL_FRAMEBUFFER, fb->id());
+    const Ren::FramebufferHandle fb =
+        (framebuffers ? *framebuffers : framebuffers_)
+            .FindOrCreate(ctx, {}, new_rast_state.depth.test_enabled ? depth_rt : Ren::RenderTarget{},
+                          new_rast_state.stencil.enabled ? depth_rt : Ren::RenderTarget{}, color_rts);
+
+    const Ren::FramebufferMain &fb_main = storages.framebuffers.Get(fb).first;
+    glBindFramebuffer(GL_FRAMEBUFFER, fb_main.id);
 
     for (const auto &b : bindings) {
         if (b.trg == Ren::eBindTarget::Tex || b.trg == Ren::eBindTarget::TexSampled) {
-            auto texture_id = GLuint(b.handle.img->id());
-            if (b.handle.view_index) {
-                texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+            if (b.handle.img_new) {
+                const auto &[img_main, img_cold] = storages.images.Get(b.handle.img_new);
+                auto texture_id = GLuint(img_main.img);
+                if (b.handle.view_index) {
+                    texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
+                }
+                ren_glBindTextureUnit_Comp(GLBindTarget(img_cold, b.handle.view_index), GLuint(b.loc + b.offset),
+                                           texture_id);
+            } else {
+                auto texture_id = GLuint(b.handle.img->id());
+                if (b.handle.view_index) {
+                    texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+                }
+                ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
+                                           texture_id);
             }
-            ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
-                                       texture_id);
             if (b.handle.sampler) {
                 ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
             } else {
@@ -81,24 +97,24 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
         }
     }
 
-    const Ren::ProgramMain &p_main = ctx_->programs().Get(p).first;
+    const Ren::ProgramMain &p_main = ctx.programs().Get(p).first;
     glUseProgram(p_main.id);
 
-    const Ren::ApiContext &api = ctx_->api();
+    const Ren::ApiContext &api = ctx.api();
 
     Ren::BufferMain temp_unif_buffer_main = {};
     Ren::BufferCold temp_unif_buffer_cold = {};
     if (uniform_data && uniform_data_len) {
         if (!Buffer_Init(api, temp_unif_buffer_main, temp_unif_buffer_cold, Ren::String{"Temp uniform buf"},
-                         Ren::eBufType::Uniform, uniform_data_len, ctx_->log())) {
-            ctx_->log()->Error("Failed to initialize temp uniform buffer");
+                         Ren::eBufType::Uniform, uniform_data_len, ctx.log())) {
+            ctx.log()->Error("Failed to initialize temp uniform buffer");
             return;
         }
         Ren::BufferMain temp_stage_buffer_main = {};
         Ren::BufferCold temp_stage_buffer_cold = {};
         if (!Buffer_Init(api, temp_stage_buffer_main, temp_stage_buffer_cold, Ren::String{"Temp upload buf"},
-                         Ren::eBufType::Upload, uniform_data_len, ctx_->log())) {
-            ctx_->log()->Error("Failed to initialize temp upload buffer");
+                         Ren::eBufType::Upload, uniform_data_len, ctx.log())) {
+            ctx.log()->Error("Failed to initialize temp upload buffer");
             Buffer_DestroyImmediately(api, temp_unif_buffer_main, temp_unif_buffer_cold);
             return;
         }
@@ -112,16 +128,20 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
     }
     glBindBufferBase(GL_UNIFORM_BUFFER, Eng::BIND_PUSH_CONSTANT_BUF, temp_unif_buffer_main.buf);
 
+    const Ren::BufferROHandle attrib_buffers[] = {ctx.default_vertex_buf1().handle(),
+                                                  ctx.default_vertex_buf2().handle()};
+    const Ren::BufferROHandle indices_buf = ctx.default_indices_buf().handle();
+
     if (prim == ePrim::Quad) {
         const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(fs_quad_vtx_input_).first;
 
-        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_buffers, indices_buf);
         glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, (const GLvoid *)uintptr_t(quad_ndx_.offset),
                                 instance_count);
     } else if (prim == ePrim::Sphere) {
         const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(sphere_vtx_input_).first;
 
-        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_buffers, indices_buf);
         glDrawElementsInstanced(GL_TRIANGLES, GLsizei(SphereIndicesCount), GL_UNSIGNED_SHORT,
                                 (void *)uintptr_t(sphere_ndx_.offset), instance_count);
     }
@@ -133,26 +153,15 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
 #endif
 }
 
-void Eng::PrimDraw::DrawPrim(ePrim prim, const Ren::ProgramHandle p, const Ren::RenderTarget depth_rt,
-                             Ren::Span<const Ren::RenderTarget> color_rts, const Ren::RastState &new_rast_state,
-                             Ren::RastState &applied_rast_state, Ren::Span<const Ren::Binding> bindings,
-                             const void *uniform_data, const int uniform_data_len, const int uniform_data_offset,
-                             const int instance_count) {
-    DrawPrim({}, prim, p, depth_rt, color_rts, new_rast_state, applied_rast_state, bindings, uniform_data,
-             uniform_data_len, uniform_data_offset, instance_count);
-}
+void Eng::PrimDraw::ClearTarget(Ren::CommandBuffer cmd_buf, const Ren::RenderTarget &depth_rt,
+                                Ren::Span<const Ren::RenderTarget> color_rts, FramebufferPool *framebuffers) {
+    const Ren::FramebufferHandle fb =
+        (framebuffers ? *framebuffers : framebuffers_).FindOrCreate(sh_->ren_ctx(), {}, depth_rt, depth_rt, color_rts);
 
-void Eng::PrimDraw::ClearTarget(Ren::CommandBuffer cmd_buf, Ren::RenderTarget depth_rt,
-                                Ren::Span<const Ren::RenderTarget> color_rts) {
-    const Ren::Framebuffer *fb = FindOrCreateFramebuffer(nullptr, depth_rt, depth_rt, color_rts);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, fb->id());
+    const Ren::FramebufferMain &fb_main = sh_->ren_ctx().framebuffers().Get(fb).first;
+    glBindFramebuffer(GL_FRAMEBUFFER, fb_main.id);
 
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClearDepth(0.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-}
-
-void Eng::PrimDraw::ClearTarget(Ren::RenderTarget depth_rt, Ren::Span<const Ren::RenderTarget> color_rts) {
-    ClearTarget({}, depth_rt, color_rts);
 }

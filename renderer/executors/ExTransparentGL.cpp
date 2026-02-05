@@ -8,18 +8,20 @@
 #include <Ren/GL.h>
 #include <Ren/RastState.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
+
 namespace ExSharedInternal {
 void _bind_textures_and_samplers(Ren::Context &ctx, const Ren::Material &mat);
 } // namespace ExSharedInternal
 
-void Eng::ExTransparent::DrawTransparent_Simple(const FgContext &fg, const Ren::BufferROHandle instances_buf,
-                                                const Ren::BufferROHandle instance_indices_buf,
-                                                const Ren::BufferROHandle unif_shared_data_buf,
-                                                const Ren::BufferROHandle materials_buf,
-                                                const Ren::BufferROHandle cells_buf, const Ren::BufferROHandle items_buf,
-                                                const Ren::BufferROHandle lights_buf, const Ren::BufferROHandle decals_buf,
-                                                const Ren::Image &shad_tex, const Ren::WeakImgRef &color_tex,
-                                                const Ren::Image &ssao_tex) {
+void Eng::ExTransparent::DrawTransparent_Simple(
+    const FgContext &fg, const Ren::BufferROHandle instances_buf, const Ren::BufferROHandle instance_indices_buf,
+    const Ren::BufferROHandle unif_shared_data_buf, const Ren::BufferROHandle materials_buf,
+    const Ren::BufferROHandle cells_buf, const Ren::BufferROHandle items_buf, const Ren::BufferROHandle lights_buf,
+    const Ren::BufferROHandle decals_buf, const Ren::ImageROHandle shadow_depth, const Ren::ImageRWHandle color_tex,
+    const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex, const Ren::ImageRWHandle depth_tex,
+    const Ren::ImageROHandle ssao_tex) {
     using namespace ExSharedInternal;
 
     Ren::RastState _rast_state;
@@ -39,8 +41,15 @@ void Eng::ExTransparent::DrawTransparent_Simple(const FgContext &fg, const Ren::
     _rast_state.blend.src_color = _rast_state.blend.src_alpha = unsigned(Ren::eBlendFactor::SrcAlpha);
     _rast_state.blend.dst_color = _rast_state.blend.dst_alpha = unsigned(Ren::eBlendFactor::OneMinusSrcAlpha);
 
+    const Ren::StoragesRef &storages = fg.storages();
+    const Ren::PipelineMain *pipelines = storages.pipelines.data_main();
+    const Ren::ProgramMain *programs = storages.programs.data_main();
+
+    const Ren::ImageRWHandle color_targets[] = {color_tex, normal_tex, spec_tex};
+    const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_transparent_, depth_tex, depth_tex, color_targets);
+
     // Bind main buffer for drawing
-    glBindFramebuffer(GL_FRAMEBUFFER, transparent_draw_fb_[0][fb_to_use_].id());
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb).first.id);
 
     _rast_state.viewport[2] = view_state_->ren_res[0];
     _rast_state.viewport[3] = view_state_->ren_res[1];
@@ -52,43 +61,44 @@ void Eng::ExTransparent::DrawTransparent_Simple(const FgContext &fg, const Ren::
     // Bind resources (shadow atlas, lightmap, cells item data)
     //
 
-    const Ren::Image &brdf_lut = fg.AccessROImage(brdf_lut_);
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
-    const Ren::Image &cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
-    const Ren::Image &dummy_black = fg.AccessROImage(dummy_black_);
+    const Ren::ImageROHandle brdf_lut = fg.AccessROImage(brdf_lut_);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
+    const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
 
     if (/*!(*p_list_)->probe_storage ||*/ (*p_list_)->alpha_blend_start_index == -1) {
         return;
     }
 
-    const Ren::StoragesRef &storages = fg.storages();
-    const Ren::PipelineMain *pipelines = fg.pipelines().data_main();
-    const Ren::ProgramMain *programs = fg.programs().data_main();
-
-    glBindVertexArray(storages.vtx_inputs.Get(draw_pass_vi_).first.gl_vao);
+    assert(false);
+    // glBindVertexArray(storages.vtx_inputs.Get(draw_pass_vi_).first.gl_vao);
 
     const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
     glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SHAD_TEX, shad_tex.id());
+    const Ren::ImageMain &shadow_depth_main = storages.images.Get(shadow_depth).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SHAD_TEX, shadow_depth_main.img);
 
     if ((*p_list_)->decals_atlas) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_DECAL_TEX, (*p_list_)->decals_atlas->tex_id(0));
     }
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SSAO_TEX_SLOT, ssao_tex.id());
+    const Ren::ImageMain &ssao_tex_main = storages.images.Get(ssao_tex).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SSAO_TEX_SLOT, ssao_tex_main.img);
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_BRDF_LUT, brdf_lut.id());
+    const Ren::ImageMain &brdf_lut_main = storages.images.Get(brdf_lut).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_BRDF_LUT, brdf_lut_main.img);
 
-    if ((*p_list_)->render_settings.enable_lightmap && (*p_list_)->env.lm_direct) {
+    /*if ((*p_list_)->render_settings.enable_lightmap && (*p_list_)->env.lm_direct) {
         for (int sh_l = 0; sh_l < 4; sh_l++) {
             ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_LMAP_SH + sh_l, (*p_list_)->env.lm_indir_sh[sh_l]->id());
         }
-    } else {
-        for (int sh_l = 0; sh_l < 4; sh_l++) {
-            ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_LMAP_SH + sh_l, dummy_black.id());
-        }
+    } else {*/
+    const Ren::ImageMain &dummy_black_main = storages.images.Get(dummy_black).first;
+    for (int sh_l = 0; sh_l < 4; sh_l++) {
+        ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_LMAP_SH + sh_l, dummy_black_main.img);
     }
+    //}
 
     // ren_glBindTextureUnit_Comp(GL_TEXTURE_CUBE_MAP_ARRAY, BIND_ENV_TEX,
     //                            (*p_list_)->probe_storage ? (*p_list_)->probe_storage->handle().id : 0);
@@ -102,7 +112,8 @@ void Eng::ExTransparent::DrawTransparent_Simple(const FgContext &fg, const Ren::
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_ITEMS_BUF,
                                GLuint(storages.buffers.Get(items_buf).first.views[0].second));
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex.id());
+    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
     // ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_CONE_RT_LUT, cone_rt_lut.ref->id());
 
     const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
@@ -383,7 +394,7 @@ void Eng::ExTransparent::DrawTransparent_OIT_MomentBased(const FgContext &fg) {
     Ren::GLUnbindSamplers(BIND_MAT_TEX0, 8);
 }
 
-void Eng::ExTransparent::DrawTransparent_OIT_WeightedBlended(const FgContext &fg) {}
+void Eng::ExTransparent::DrawTransparent_OIT_WeightedBlended(const FgContext &fg){}
 
 //
 // This is needed for moment-based OIT

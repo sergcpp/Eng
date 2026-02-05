@@ -345,7 +345,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
                            (update_range.second - update_range.first) * sizeof(material_data_t),
                            materials_upload_buf_main, 0, ren_ctx_.current_cmd_buf());
 
-    update_range = std::make_pair(std::numeric_limits<uint32_t>::max(), 0);
+    update_range = std::pair{std::numeric_limits<uint32_t>::max(), 0};
 
     return false;
 }
@@ -525,7 +525,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
         const std::string buf_name =
             "RT BLAS Buffer #" + std::to_string(scene_data_.persistent_data->hwrt.rt_blas_buffers.size());
         scene_data_.persistent_data->hwrt.rt_blas_buffers.emplace_back(
-            ren_ctx_.FindOrCreateBuffer(buf_name, Ren::eBufType::AccStructure, buf_size));
+            ren_ctx_.CreateBuffer(Ren::String{buf_name}, Ren::eBufType::AccStructure, buf_size));
         const uint16_t pool_index = scene_data_.persistent_data->hwrt.rt_blas_mem_alloc.AddPool(buf_size);
         if (pool_index != scene_data_.persistent_data->hwrt.rt_blas_buffers.size() - 1) {
             ren_ctx_.log()->Error("Invalid pool index!");
@@ -610,19 +610,12 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
     api.vkGetAccelerationStructureBuildSizesKHR(api.device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
                                                 &tlas_build_info, &max_instance_count, &size_info);
 
-    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Main)] = ren_ctx_.FindOrCreateBuffer(
-        "TLAS Buf", Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));
-    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Shadow)] = ren_ctx_.FindOrCreateBuffer(
-        "TLAS Shadow Buf", Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));
-    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Volume)] = ren_ctx_.FindOrCreateBuffer(
-        "TLAS Volume Buf", Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));
-
-    /*scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Main)] = scene_data_.buffers.Insert(
-        "TLAS Buf", api, Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));
-    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Shadow)] = scene_data_.buffers.Insert(
-        "TLAS Shadow Buf", api, Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));
-    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Volume)] = scene_data_.buffers.Insert(
-        "TLAS Volume Buf", api, Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));*/
+    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Main)] = ren_ctx_.CreateBuffer(
+        Ren::String{"TLAS Buf"}, Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));
+    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Shadow)] = ren_ctx_.CreateBuffer(
+        Ren::String{"TLAS Shadow Buf"}, Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));
+    scene_data_.persistent_data->rt_tlas_buf[int(eTLASIndex::Volume)] = ren_ctx_.CreateBuffer(
+        Ren::String{"TLAS Volume Buf"}, Ren::eBufType::AccStructure, uint32_t(size_info.accelerationStructureSize));
 
     { // Main TLAS
         const auto &[buf_main, buf_cold] =

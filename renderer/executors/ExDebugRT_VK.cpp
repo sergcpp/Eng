@@ -1,11 +1,10 @@
 #include "ExDebugRT.h"
 
 #include <Ren/Context.h>
-#include <Ren/Image.h>
+#include <Ren/DrawCall.h>
 #include <Ren/VKCtx.h>
 
-#include "../../utils/ShaderLoader.h"
-#include "../PrimDraw.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_debug_interface.h"
 
 void Eng::ExDebugRT::Execute_HWRT(const FgContext &fg) {
@@ -16,21 +15,21 @@ void Eng::ExDebugRT::Execute_HWRT(const FgContext &fg) {
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
     const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(args_->lights_buf);
     const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Image &env_tex = fg.AccessROImage(args_->env_tex);
-    const Ren::Image &shadow_depth_tex = fg.AccessROImage(args_->shadow_depth_tex);
-    const Ren::Image &shadow_color_tex = fg.AccessROImage(args_->shadow_color_tex);
-    const Ren::Image &ltc_luts_tex = fg.AccessROImage(args_->ltc_luts_tex);
+    const Ren::ImageROHandle env_tex = fg.AccessROImage(args_->env_tex);
+    const Ren::ImageROHandle shadow_depth = fg.AccessROImage(args_->shadow_depth);
+    const Ren::ImageROHandle shadow_color = fg.AccessROImage(args_->shadow_color);
+    const Ren::ImageROHandle ltc_luts = fg.AccessROImage(args_->ltc_luts);
     const Ren::BufferROHandle cells_buf = fg.AccessROBuffer(args_->cells_buf);
     const Ren::BufferROHandle items_buf = fg.AccessROBuffer(args_->items_buf);
 
-    const Ren::Image *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
+    Ren::ImageROHandle irr_tex, dist_tex, off_tex;
     if (args_->irradiance_tex) {
-        irr_tex = &fg.AccessROImage(args_->irradiance_tex);
-        dist_tex = &fg.AccessROImage(args_->distance_tex);
-        off_tex = &fg.AccessROImage(args_->offset_tex);
+        irr_tex = fg.AccessROImage(args_->irradiance_tex);
+        dist_tex = fg.AccessROImage(args_->distance_tex);
+        off_tex = fg.AccessROImage(args_->offset_tex);
     }
 
-    const Ren::Image &output_tex = fg.AccessRWImage(args_->output_tex);
+    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(args_->output_tex);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
@@ -51,24 +50,24 @@ void Eng::ExDebugRT::Execute_HWRT(const FgContext &fg) {
         {Ren::eBindTarget::SBufRO, RTDebug::LIGHTS_BUF_SLOT, lights_buf},
         {Ren::eBindTarget::UTBuf, RTDebug::CELLS_BUF_SLOT, cells_buf},
         {Ren::eBindTarget::UTBuf, RTDebug::ITEMS_BUF_SLOT, items_buf},
-        {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_DEPTH_TEX_SLOT, shadow_depth_tex},
-        {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_COLOR_TEX_SLOT, shadow_color_tex},
-        {Ren::eBindTarget::TexSampled, RTDebug::LTC_LUTS_TEX_SLOT, ltc_luts_tex},
+        {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_DEPTH_TEX_SLOT, shadow_depth},
+        {Ren::eBindTarget::TexSampled, RTDebug::SHADOW_COLOR_TEX_SLOT, shadow_color},
+        {Ren::eBindTarget::TexSampled, RTDebug::LTC_LUTS_TEX_SLOT, ltc_luts},
         {Ren::eBindTarget::ImageRW, RTDebug::OUT_IMG_SLOT, output_tex}};
     if (irr_tex) {
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::IRRADIANCE_TEX_SLOT, *irr_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::DISTANCE_TEX_SLOT, *dist_tex);
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, *off_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::IRRADIANCE_TEX_SLOT, irr_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::DISTANCE_TEX_SLOT, dist_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, RTDebug::OFFSET_TEX_SLOT, off_tex);
     }
 
     const auto &[pi_main, pi_cold] = storages.pipelines.Get(pi_debug_);
     const Ren::ProgramMain &pr = storages.programs.Get(pi_main.prog).first;
 
     VkDescriptorSet descr_sets[2];
-    descr_sets[0] = PrepareDescriptorSet(api, &storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
+    descr_sets[0] = PrepareDescriptorSet(api, storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->rt_textures.descr_set;
 
-    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pi_main.handle);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pi_main.pipeline);
     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pi_main.layout, 0, 2, descr_sets, 0,
                                 nullptr);
 

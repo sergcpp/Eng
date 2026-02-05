@@ -31,6 +31,18 @@ Gui::Renderer::~Renderer() {
 
     ctx_.ReleaseBuffer(vertex_buf_, true /* immediately */);
     ctx_.ReleaseBuffer(index_buf_, true /* immediately */);
+
+    ctx_.ReleaseRenderPass(render_pass_, true /* immediately */);
+
+    for (const Ren::FramebufferHandle fb : framebuffers_) {
+        ctx_.ReleaseFramebuffer(fb, true /* immediately */);
+    }
+
+    ctx_.ReleasePipeline(pipeline_, true /* immediately */);
+    ctx_.ReleaseProgram(program_);
+    ctx_.ReleaseShader(vs_);
+    ctx_.ReleaseShader(fs_);
+    ctx_.ReleaseVertexInput(vtx_input_);
 }
 
 void Gui::Renderer::Draw(const int w, const int h) {
@@ -226,10 +238,16 @@ void Gui::Renderer::Draw(const int w, const int h) {
     //
     framebuffers_.resize(api.present_images.size());
 
-    const Ren::RenderPassMain &rp_main = ctx_.render_passes().Get(render_pass_).first;
-    if (!framebuffers_[api.active_present_image].Setup(&api, rp_main, w, h, ctx_.backbuffer_ref(), {},
-                                                       Ren::WeakImgRef{}, false, ctx_.log())) {
-        ctx_.log()->Error("Failed to create framebuffer!");
+    const Ren::FramebufferAttachment attachments[] = {ctx_.backbuffer_img()};
+    if (!framebuffers_[api.active_present_image]) {
+        framebuffers_[api.active_present_image] = ctx_.CreateFramebuffer(render_pass_, {}, {}, attachments);
+    } else {
+        const auto &[fb_main, fb_cold] = ctx_.framebuffers().Get(framebuffers_[api.active_present_image]);
+        if (!Framebuffer_Equals(fb_main, fb_cold, render_pass_, {}, {}, attachments)) {
+            Framebuffer_Destroy(ctx_.api(), fb_main, fb_cold);
+            Framebuffer_Init(ctx_.api(), fb_main, fb_cold, ctx_.storages(), render_pass_, {}, {}, attachments,
+                             ctx_.log());
+        }
     }
 
     //
@@ -271,13 +289,13 @@ void Gui::Renderer::Draw(const int w, const int h) {
     assert(ndx_main.resource_state == Ren::eResState::IndexBuffer);
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    render_pass_begin_info.renderPass = rp_main.handle;
-    render_pass_begin_info.framebuffer = framebuffers_[api.active_present_image].vk_handle();
+    render_pass_begin_info.renderPass = ctx_.render_passes().Get(render_pass_).first.handle;
+    render_pass_begin_info.framebuffer = ctx_.framebuffers().Get(framebuffers_[api.active_present_image]).first.handle;
     render_pass_begin_info.renderArea = {{0, 0}, {uint32_t(w), uint32_t(h)}};
 
     api.vkCmdBeginRenderPass(cmd_buf, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_main.handle);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_main.pipeline);
 
     const VkViewport viewport = {0, 0, float(w), float(h), 0, 1};
     api.vkCmdSetViewport(cmd_buf, 0, 1, &viewport);

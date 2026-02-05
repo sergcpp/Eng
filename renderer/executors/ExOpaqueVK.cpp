@@ -6,6 +6,9 @@
 #include <Ren/Span.h>
 #include <Ren/VKCtx.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
+
 namespace ExSharedInternal {
 uint32_t _draw_list_range_full(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, VkDescriptorSet res_descr_set,
                                Ren::Span<const VkDescriptorSet> texture_descr_sets, const Ren::PipelineMain pipelines[],
@@ -24,7 +27,7 @@ uint32_t _draw_list_range_full(const Ren::ApiContext &api, VkCommandBuffer cmd_b
         }
 
         if (cur_pipe_id != batch.pipe_id) {
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].layout, 0, 1,
                                         &res_descr_set, 0, nullptr);
             cur_pipe_id = batch.pipe_id;
@@ -70,7 +73,7 @@ uint32_t _draw_list_range_full_rev(const Ren::ApiContext &api, VkCommandBuffer c
         }
 
         if (cur_pipe_id != batch.pipe_id) {
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[batch.pipe_id].layout, 0, 1,
                                         &res_descr_set, 0, nullptr);
             cur_pipe_id = batch.pipe_id;
@@ -98,7 +101,9 @@ uint32_t _draw_list_range_full_rev(const Ren::ApiContext &api, VkCommandBuffer c
 }
 } // namespace ExSharedInternal
 
-void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
+void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle color_tex,
+                               const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex,
+                               const Ren::ImageRWHandle depth_tex) {
     using namespace ExSharedInternal;
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
@@ -107,6 +112,9 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     //
     // Prepare descriptor sets
     //
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
@@ -116,22 +124,22 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
     const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
-    const Ren::Image &shad_tex = fg.AccessROImage(shad_tex_);
-    [[maybe_unused]] const Ren::Image &brdf_lut = fg.AccessROImage(brdf_lut_);
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
-    [[maybe_unused]] const Ren::Image &cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
+    const Ren::ImageROHandle shadow_depth_tex = fg.AccessROImage(shadow_depth_);
+    [[maybe_unused]] const Ren::ImageROHandle brdf_lut = fg.AccessROImage(brdf_lut_);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    [[maybe_unused]] const Ren::ImageROHandle cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
 
-    const Ren::Image &dummy_black = fg.AccessROImage(dummy_black_);
-    const Ren::Image &ssao_tex = fg.AccessROImage(ssao_tex_);
+    const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
+    const Ren::ImageROHandle ssao_tex = fg.AccessROImage(ssao_tex_);
 
-    const Ren::Image *lm_tex[4];
+    /*const Ren::Image *lm_tex[4];
     for (int i = 0; i < 4; ++i) {
         if (lm_tex_[i]) {
             lm_tex[i] = &fg.AccessROImage(lm_tex_[i]);
         } else {
-            lm_tex[i] = &dummy_black;
+            // lm_tex[i] = &dummy_black;
         }
-    }
+    }*/
 
     // if (!(*p_list_)->probe_storage) {
     //     return;
@@ -145,18 +153,24 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     const VkDescriptorSet res_descr_set = fg.descr_alloc().Alloc(descr_sizes, descr_set_layout_);
 
     { // update descriptor set
-        const VkDescriptorImageInfo shad_info = shad_tex.vk_desc_image_info();
+        const Ren::ImageMain &dummy_black_main = storages.images.Get(dummy_black).first;
+        const Ren::ImageMain &ssao_tex_main = storages.images.Get(ssao_tex).first;
+        const Ren::ImageMain &shadow_depth_main = storages.images.Get(shadow_depth_tex).first;
+
+        const VkDescriptorImageInfo shad_info = Image_GetDescriptorImageInfo(api, shadow_depth_main);
         VkDescriptorImageInfo lm_infos[4];
         for (int sh_l = 0; sh_l < 4; sh_l++) {
-            lm_infos[sh_l] = lm_tex[sh_l]->vk_desc_image_info();
+            // lm_infos[sh_l] = lm_tex[sh_l]->vk_desc_image_info();
+            lm_infos[sh_l] = Image_GetDescriptorImageInfo(api, dummy_black_main);
         }
 
         const VkDescriptorImageInfo decal_info = (*p_list_)->decals_atlas
                                                      ? (*p_list_)->decals_atlas->vk_desc_image_info()
-                                                     : dummy_black.vk_desc_image_info();
-        const VkDescriptorImageInfo ssao_info = ssao_tex.vk_desc_image_info();
+                                                     : Image_GetDescriptorImageInfo(api, dummy_black_main);
+        const VkDescriptorImageInfo ssao_info = Image_GetDescriptorImageInfo(api, ssao_tex_main);
 
-        const VkDescriptorImageInfo noise_info = noise_tex.vk_desc_image_info();
+        const Ren::ImageMain &noise_main = storages.images.Get(noise_tex).first;
+        const VkDescriptorImageInfo noise_info = Image_GetDescriptorImageInfo(api, noise_main);
         /*const VkDescriptorImageInfo env_info = {(*p_list_)->probe_storage->handle().sampler,
                                                 (*p_list_)->probe_storage->handle().views[0],
                                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};*/
@@ -370,40 +384,43 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
 
         uint32_t i = 0;
 
+        const Ren::ImageRWHandle color_targets[] = {color_tex, normal_tex, spec_tex};
+        const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_opaque_, depth_tex, depth_tex, color_targets);
+
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass =  storages.render_passes.Get(rp_opaque_).first.handle;
-        rp_begin_info.framebuffer = opaque_draw_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_opaque_).first.handle;
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vi_main = storages.vtx_inputs.Get(draw_pass_vi_).first;
-        VertexInput_BindBuffers(api, vi_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vi_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         { // one-sided1
             Ren::DebugMarker _m(api, cmd_buf, "ONE-SIDED-1");
             i = _draw_list_range_full(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
-                                      fg.pipelines().data_main(), batches, batch_indices, i, 0ull,
+                                      storages.pipelines.data_main(), batches, batch_indices, i, 0ull,
                                       materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
         }
 
         { // two-sided1
             Ren::DebugMarker _m(api, cmd_buf, "TWO-SIDED-1");
             i = _draw_list_range_full(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
-                                      fg.pipelines().data_main(), batches, batch_indices, i, CDB::BitTwoSided,
+                                      storages.pipelines.data_main(), batches, batch_indices, i, CDB::BitTwoSided,
                                       materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
         }
 
         { // one-sided2
             Ren::DebugMarker _m(api, cmd_buf, "ONE-SIDED-2");
             i = _draw_list_range_full(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
-                                      fg.pipelines().data_main(), batches, batch_indices, i, CDB::BitAlphaTest,
+                                      storages.pipelines.data_main(), batches, batch_indices, i, CDB::BitAlphaTest,
                                       materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
         }
 
         { // two-sided2
             Ren::DebugMarker _m(api, cmd_buf, "TWO-SIDED-2");
             i = _draw_list_range_full(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
-                                      fg.pipelines().data_main(), batches, batch_indices, i,
+                                      storages.pipelines.data_main(), batches, batch_indices, i,
                                       CDB::BitAlphaTest | CDB::BitTwoSided, materials_per_descriptor, cur_pipe_id,
                                       bound_descr_id, _dummy);
         }
@@ -411,7 +428,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         { // two-sided-tested-blended
             Ren::DebugMarker _m(api, cmd_buf, "TWO-SIDED-TESTED-BLENDED");
             i = _draw_list_range_full_rev(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
-                                          fg.pipelines().data_main(), batches, batch_indices,
+                                          storages.pipelines.data_main(), batches, batch_indices,
                                           uint32_t(batch_indices.size() - 1),
                                           CDB::BitAlphaBlend | CDB::BitAlphaTest | CDB::BitTwoSided,
                                           materials_per_descriptor, cur_pipe_id, bound_descr_id, _dummy);
@@ -420,7 +437,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         { // one-sided-tested-blended
             Ren::DebugMarker _m(api, cmd_buf, "ONE-SIDED-TESTED-BLENDED");
             _draw_list_range_full_rev(api, cmd_buf, res_descr_set, bindless_tex_->textures_descr_sets,
-                                      fg.pipelines().data_main(), batches, batch_indices, i,
+                                      storages.pipelines.data_main(), batches, batch_indices, i,
                                       CDB::BitAlphaBlend | CDB::BitAlphaTest, materials_per_descriptor, cur_pipe_id,
                                       bound_descr_id, _dummy);
         }

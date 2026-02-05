@@ -1,12 +1,12 @@
 #include "ExRTGI.h"
 
 #include <Ren/Context.h>
-#include <Ren/Image.h>
-#include <Ren/RastState.h>
+#include <Ren/DrawCall.h>
 #include <Ren/VKCtx.h>
 
 #include "../../utils/ShaderLoader.h"
-#include "../PrimDraw.h"
+#include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_gi_interface.h"
 
 void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
@@ -15,9 +15,9 @@ void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
     const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
-    const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(args_->noise_tex);
+    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
+    const Ren::ImageROHandle normal_tex = fg.AccessROImage(args_->normal_tex);
     const Ren::BufferROHandle ray_list_buf = fg.AccessROBuffer(args_->ray_list);
     const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
     [[maybe_unused]] const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
@@ -26,6 +26,7 @@ void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
     const Ren::BufferHandle out_ray_hits_buf = fg.AccessRWBuffer(args_->out_ray_hits_buf);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
 
     auto *acc_struct = static_cast<Ren::AccStructureVK *>(args_->tlas);
 
@@ -45,15 +46,14 @@ void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
         {Ren::eBindTarget::SBufRO, RTGI::NDX_BUF_SLOT, ndx_buf},
         {Ren::eBindTarget::SBufRW, RTGI::OUT_RAY_HITS_BUF_SLOT, out_ray_hits_buf}};
 
-    const Ren::PipelineMain &pi = fg.pipelines().Get(pi_rt_gi_).first;
-    const Ren::ProgramMain &pr = fg.programs().Get(pi.prog).first;
+    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_rt_gi_).first;
+    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
 
     VkDescriptorSet descr_sets[2];
-    descr_sets[0] =
-        PrepareDescriptorSet(api, &fg.storages(), pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
+    descr_sets[0] = PrepareDescriptorSet(api, storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->rt_inline_textures.descr_set;
 
-    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.pipeline);
     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 2, descr_sets, 0, nullptr);
 
     RTGI::Params uniform_params;

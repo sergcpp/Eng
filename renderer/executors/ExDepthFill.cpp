@@ -4,6 +4,8 @@
 #include <Ren/Span.h>
 
 #include "../../utils/ShaderLoader.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 
 namespace ExSharedInternal {
 uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
@@ -19,20 +21,15 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
 } // namespace ExSharedInternal
 
 void Eng::ExDepthFill::Execute(const FgContext &fg) {
-    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(depth_tex_);
+    const Ren::ImageRWHandle velocity_tex = fg.AccessRWImage(velocity_tex_);
 
-    Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(depth_tex_);
-    Ren::WeakImgRef velocity_tex = fg.AccessRWImageRef(velocity_tex_);
-
-    LazyInit(fg.ren_ctx(), fg.sh(), vtx_buf1, vtx_buf2, ndx_buf, depth_tex, velocity_tex);
-    DrawDepth(fg, vtx_buf1, vtx_buf2, ndx_buf);
+    LazyInit(fg.ren_ctx(), fg.sh(), depth_tex, velocity_tex);
+    DrawDepth(fg, depth_tex, velocity_tex);
 }
 
-void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
-                                const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
-                                const Ren::WeakImgRef &depth_tex, const Ren::WeakImgRef &velocity_tex) {
+void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle depth_tex,
+                                const Ren::ImageRWHandle velocity_tex) {
     const Ren::RenderTarget velocity_target = {velocity_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store};
     const Ren::RenderTarget depth_clear_target = {depth_tex, Ren::eLoadOp::Clear, Ren::eStoreOp::Store,
                                                   Ren::eLoadOp::Clear, Ren::eStoreOp::Store};
@@ -45,100 +42,100 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
 #else
         const bool bindless = true;
 #endif
-        static const int buf1_stride = 16, buf2_stride = 16;
+        const int buf1_stride = 16, buf2_stride = 16;
 
         Ren::VertexInputHandle vi_solid, vi_vege_solid, vi_transp, vi_vege_transp, vi_skin_solid, vi_skin_transp;
         { // VertexInput for solid depth-fill pass (uses position attribute only)
-            const Ren::VtxAttribDesc attribs[] = {{vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0}};
-            vi_solid = sh.LoadVertexInput(attribs, ndx_buf);
+            const Ren::VtxAttribDesc attribs[] = {{0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0}};
+            vi_solid = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for solid depth-fill pass of vegetation (uses position and color attributes only)
             const Ren::VtxAttribDesc attribs[] = {
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
-            vi_vege_solid = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {1, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 0, 6 * sizeof(uint16_t)}};
+            vi_vege_solid = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for alpha-tested depth-fill pass (uses position and uv attributes)
             const Ren::VtxAttribDesc attribs[] = {
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)}};
-            vi_transp = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)}};
+            vi_transp = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for alpha-tested depth-fill pass of vegetation (uses position, uvs and color attributes)
             const Ren::VtxAttribDesc attribs[] = {
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)},
-                {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
-            vi_vege_transp = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)},
+                {1, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 0, 6 * sizeof(uint16_t)}};
+            vi_vege_transp = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for depth-fill pass of skinned solid meshes (with velocity output)
             const Ren::VtxAttribDesc attribs[] = {
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_PRE_LOC, 3, Ren::eType::Float32, buf1_stride, MAX_SKIN_VERTICES_TOTAL * 16}};
-            vi_skin_solid = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_PRE_LOC, 3, Ren::eType::Float32, buf1_stride, MAX_SKIN_VERTICES_TOTAL * 16, 0}};
+            vi_skin_solid = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for depth-fill pass of skinned transparent meshes (with velocity output)
             const Ren::VtxAttribDesc attribs[] = {
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)},
-                {vtx_buf1, VTX_PRE_LOC, 3, Ren::eType::Float32, buf1_stride, MAX_SKIN_VERTICES_TOTAL * 16}};
-            vi_skin_transp = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)},
+                {0, VTX_PRE_LOC, 3, Ren::eType::Float32, buf1_stride, MAX_SKIN_VERTICES_TOTAL * 16, 0}};
+            vi_skin_transp = sh.FindOrCreateVertexInput(attribs);
         }
 
         const Ren::ProgramHandle fillz_solid_prog =
-            sh.LoadProgram("internal/fillz.vert.glsl", "internal/fillz.frag.glsl");
+            sh.FindOrCreateProgram("internal/fillz.vert.glsl", "internal/fillz.frag.glsl");
         const Ren::ProgramHandle fillz_solid_mov_prog =
-            sh.LoadProgram("internal/fillz@MOVING.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
+            sh.FindOrCreateProgram("internal/fillz@MOVING.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
         const Ren::ProgramHandle fillz_vege_solid_vel_prog =
-            sh.LoadProgram(bindless ? "internal/fillz_vege@OUTPUT_VELOCITY.vert.glsl"
-                                    : "internal/fillz_vege@OUTPUT_VELOCITY;NO_BINDLESS.vert.glsl",
-                           "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
+            sh.FindOrCreateProgram(bindless ? "internal/fillz_vege@OUTPUT_VELOCITY.vert.glsl"
+                                            : "internal/fillz_vege@OUTPUT_VELOCITY;NO_BINDLESS.vert.glsl",
+                                   "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
         const Ren::ProgramHandle fillz_vege_solid_vel_mov_prog =
-            sh.LoadProgram(bindless ? "internal/fillz_vege@MOVING;OUTPUT_VELOCITY.vert.glsl"
-                                    : "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;NO_BINDLESS.vert.glsl",
-                           "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        const Ren::ProgramHandle fillz_transp_prog = sh.LoadProgram(
+            sh.FindOrCreateProgram(bindless ? "internal/fillz_vege@MOVING;OUTPUT_VELOCITY.vert.glsl"
+                                            : "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;NO_BINDLESS.vert.glsl",
+                                   "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
+        const Ren::ProgramHandle fillz_transp_prog = sh.FindOrCreateProgram(
             bindless ? "internal/fillz@ALPHATEST.vert.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.vert.glsl",
             bindless ? "internal/fillz@ALPHATEST.frag.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.frag.glsl");
         const Ren::ProgramHandle fillz_transp_mov_prog =
-            sh.LoadProgram(bindless ? "internal/fillz@MOVING;ALPHATEST.vert.glsl"
-                                    : "internal/fillz@MOVING;ALPHATEST;NO_BINDLESS.vert.glsl",
-                           bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
-                                    : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
+            sh.FindOrCreateProgram(bindless ? "internal/fillz@MOVING;ALPHATEST.vert.glsl"
+                                            : "internal/fillz@MOVING;ALPHATEST;NO_BINDLESS.vert.glsl",
+                                   bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
+                                            : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
         const Ren::ProgramHandle fillz_vege_transp_vel_prog =
-            sh.LoadProgram(bindless ? "internal/fillz_vege@OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
-                                    : "internal/fillz_vege@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
-                           bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
-                                    : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
-        const Ren::ProgramHandle fillz_vege_transp_vel_mov_prog =
-            sh.LoadProgram(bindless ? "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
-                                    : "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
-                           bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
-                                    : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
-        const Ren::ProgramHandle fillz_skin_solid_vel_prog =
-            sh.LoadProgram("internal/fillz_skin@OUTPUT_VELOCITY.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        const Ren::ProgramHandle fillz_skin_solid_vel_mov_prog = sh.LoadProgram(
+            sh.FindOrCreateProgram(bindless ? "internal/fillz_vege@OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
+                                            : "internal/fillz_vege@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
+                                   bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
+                                            : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
+        const Ren::ProgramHandle fillz_vege_transp_vel_mov_prog = sh.FindOrCreateProgram(
+            bindless ? "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
+                     : "internal/fillz_vege@MOVING;OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
+            bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
+                     : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
+        const Ren::ProgramHandle fillz_skin_solid_vel_prog = sh.FindOrCreateProgram(
+            "internal/fillz_skin@OUTPUT_VELOCITY.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
+        const Ren::ProgramHandle fillz_skin_solid_vel_mov_prog = sh.FindOrCreateProgram(
             "internal/fillz_skin@MOVING;OUTPUT_VELOCITY.vert.glsl", "internal/fillz@OUTPUT_VELOCITY.frag.glsl");
-        //const Ren::ProgramHandle fillz_skin_transp_prog = sh.LoadProgram(
-        //    bindless ? "internal/fillz_skin@ALPHATEST.vert.glsl"
-        //             : "internal/fillz_skin@ALPHATEST;NO_BINDLESS.vert.glsl",
-        //    bindless ? "internal/fillz@ALPHATEST.frag.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.frag.glsl");
+        // const Ren::ProgramHandle fillz_skin_transp_prog = sh.FindOrCreateProgram(
+        //     bindless ? "internal/fillz_skin@ALPHATEST.vert.glsl"
+        //              : "internal/fillz_skin@ALPHATEST;NO_BINDLESS.vert.glsl",
+        //     bindless ? "internal/fillz@ALPHATEST.frag.glsl" : "internal/fillz@ALPHATEST;NO_BINDLESS.frag.glsl");
         const Ren::ProgramHandle fillz_skin_transp_vel_prog =
-            sh.LoadProgram(bindless ? "internal/fillz_skin@OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
-                                    : "internal/fillz_skin@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
-                           bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
-                                    : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
-        const Ren::ProgramHandle fillz_skin_transp_vel_mov_prog =
-            sh.LoadProgram(bindless ? "internal/fillz_skin@MOVING;OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
-                                    : "internal/fillz_skin@MOVING;OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
-                           bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
-                                    : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
+            sh.FindOrCreateProgram(bindless ? "internal/fillz_skin@OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
+                                            : "internal/fillz_skin@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
+                                   bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
+                                            : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
+        const Ren::ProgramHandle fillz_skin_transp_vel_mov_prog = sh.FindOrCreateProgram(
+            bindless ? "internal/fillz_skin@MOVING;OUTPUT_VELOCITY;ALPHATEST.vert.glsl"
+                     : "internal/fillz_skin@MOVING;OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.vert.glsl",
+            bindless ? "internal/fillz@OUTPUT_VELOCITY;ALPHATEST.frag.glsl"
+                     : "internal/fillz@OUTPUT_VELOCITY;ALPHATEST;NO_BINDLESS.frag.glsl");
 
-        rp_depth_only_[0] = sh.LoadRenderPass(depth_clear_target, {});
-        rp_depth_only_[1] = sh.LoadRenderPass(depth_load_target, {});
+        rp_depth_only_[0] = sh.FindOrCreateRenderPass(depth_clear_target, {});
+        rp_depth_only_[1] = sh.FindOrCreateRenderPass(depth_load_target, {});
 
-        rp_depth_velocity_[0] = sh.LoadRenderPass(depth_clear_target, {&velocity_target, 1});
-        rp_depth_velocity_[1] = sh.LoadRenderPass(depth_load_target, {&velocity_target, 1});
+        rp_depth_velocity_[0] = sh.FindOrCreateRenderPass(depth_clear_target, {&velocity_target, 1});
+        rp_depth_velocity_[1] = sh.FindOrCreateRenderPass(depth_load_target, {&velocity_target, 1});
 
         { // static solid/transp
             Ren::RastState rast_state;
@@ -148,18 +145,21 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
             rast_state.stencil.enabled = true;
             rast_state.stencil.pass = uint8_t(Ren::eStencilOp::Replace);
 
-            pi_static_solid_[2] = sh.LoadPipeline(rast_state, fillz_solid_prog, vi_solid, rp_depth_only_[0], 0);
-            pi_static_transp_[2] = sh.LoadPipeline(rast_state, fillz_transp_prog, vi_transp, rp_depth_only_[0], 0);
+            pi_static_solid_[2] = sh.FindOrCreatePipeline(rast_state, fillz_solid_prog, vi_solid, rp_depth_only_[0], 0);
+            pi_static_transp_[2] =
+                sh.FindOrCreatePipeline(rast_state, fillz_transp_prog, vi_transp, rp_depth_only_[0], 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
-            pi_static_solid_[0] = sh.LoadPipeline(rast_state, fillz_solid_prog, vi_solid, rp_depth_only_[0], 0);
-            pi_static_transp_[0] = sh.LoadPipeline(rast_state, fillz_transp_prog, vi_transp, rp_depth_only_[0], 0);
+            pi_static_solid_[0] = sh.FindOrCreatePipeline(rast_state, fillz_solid_prog, vi_solid, rp_depth_only_[0], 0);
+            pi_static_transp_[0] =
+                sh.FindOrCreatePipeline(rast_state, fillz_transp_prog, vi_transp, rp_depth_only_[0], 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Front);
 
-            pi_static_solid_[1] = sh.LoadPipeline(rast_state, fillz_solid_prog, vi_solid, rp_depth_only_[0], 0);
-            pi_static_transp_[1] = sh.LoadPipeline(rast_state, fillz_transp_prog, vi_transp, rp_depth_only_[0], 0);
+            pi_static_solid_[1] = sh.FindOrCreatePipeline(rast_state, fillz_solid_prog, vi_solid, rp_depth_only_[0], 0);
+            pi_static_transp_[1] =
+                sh.FindOrCreatePipeline(rast_state, fillz_transp_prog, vi_transp, rp_depth_only_[0], 0);
         }
         { // moving solid/transp
             Ren::RastState rast_state;
@@ -172,21 +172,24 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
             // mark dynamic objects
             rast_state.stencil.reference = 1;
 
-            pi_moving_solid_[2] = sh.LoadPipeline(rast_state, fillz_solid_mov_prog, vi_solid, rp_depth_velocity_[0], 0);
+            pi_moving_solid_[2] =
+                sh.FindOrCreatePipeline(rast_state, fillz_solid_mov_prog, vi_solid, rp_depth_velocity_[0], 0);
             pi_moving_transp_[2] =
-                sh.LoadPipeline(rast_state, fillz_transp_mov_prog, vi_transp, rp_depth_velocity_[0], 0);
+                sh.FindOrCreatePipeline(rast_state, fillz_transp_mov_prog, vi_transp, rp_depth_velocity_[0], 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
-            pi_moving_solid_[0] = sh.LoadPipeline(rast_state, fillz_solid_mov_prog, vi_solid, rp_depth_velocity_[0], 0);
+            pi_moving_solid_[0] =
+                sh.FindOrCreatePipeline(rast_state, fillz_solid_mov_prog, vi_solid, rp_depth_velocity_[0], 0);
             pi_moving_transp_[0] =
-                sh.LoadPipeline(rast_state, fillz_transp_mov_prog, vi_transp, rp_depth_velocity_[0], 0);
+                sh.FindOrCreatePipeline(rast_state, fillz_transp_mov_prog, vi_transp, rp_depth_velocity_[0], 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Front);
 
-            pi_moving_solid_[1] = sh.LoadPipeline(rast_state, fillz_solid_mov_prog, vi_solid, rp_depth_velocity_[0], 0);
+            pi_moving_solid_[1] =
+                sh.FindOrCreatePipeline(rast_state, fillz_solid_mov_prog, vi_solid, rp_depth_velocity_[0], 0);
             pi_moving_transp_[1] =
-                sh.LoadPipeline(rast_state, fillz_transp_mov_prog, vi_transp, rp_depth_velocity_[0], 0);
+                sh.FindOrCreatePipeline(rast_state, fillz_transp_mov_prog, vi_transp, rp_depth_velocity_[0], 0);
         }
         { // vege solid/transp
             Ren::RastState rast_state;
@@ -200,16 +203,16 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
             rast_state.stencil.reference = 1;
 
             pi_vege_static_solid_[1] =
-                sh.LoadPipeline(rast_state, fillz_vege_solid_vel_prog, vi_vege_solid, rp_depth_velocity_[0], 0);
-            pi_vege_static_transp_[1] =
-                sh.LoadPipeline(rast_state, fillz_vege_transp_vel_prog, vi_vege_transp, rp_depth_velocity_[0], 0);
+                sh.FindOrCreatePipeline(rast_state, fillz_vege_solid_vel_prog, vi_vege_solid, rp_depth_velocity_[0], 0);
+            pi_vege_static_transp_[1] = sh.FindOrCreatePipeline(rast_state, fillz_vege_transp_vel_prog, vi_vege_transp,
+                                                                rp_depth_velocity_[0], 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
             pi_vege_static_solid_[0] =
-                sh.LoadPipeline(rast_state, fillz_vege_solid_vel_prog, vi_vege_solid, rp_depth_velocity_[0], 0);
-            pi_vege_static_transp_[0] =
-                sh.LoadPipeline(rast_state, fillz_vege_transp_vel_prog, vi_vege_transp, rp_depth_velocity_[0], 0);
+                sh.FindOrCreatePipeline(rast_state, fillz_vege_solid_vel_prog, vi_vege_solid, rp_depth_velocity_[0], 0);
+            pi_vege_static_transp_[0] = sh.FindOrCreatePipeline(rast_state, fillz_vege_transp_vel_prog, vi_vege_transp,
+                                                                rp_depth_velocity_[0], 0);
         }
         { // vege moving solid/transp
             Ren::RastState rast_state;
@@ -222,17 +225,17 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
             // mark dynamic objects
             rast_state.stencil.reference = 1;
 
-            pi_vege_moving_solid_[1] =
-                sh.LoadPipeline(rast_state, fillz_vege_solid_vel_mov_prog, vi_vege_solid, rp_depth_velocity_[0], 0);
-            pi_vege_moving_transp_[1] =
-                sh.LoadPipeline(rast_state, fillz_vege_transp_vel_mov_prog, vi_vege_transp, rp_depth_velocity_[0], 0);
+            pi_vege_moving_solid_[1] = sh.FindOrCreatePipeline(rast_state, fillz_vege_solid_vel_mov_prog, vi_vege_solid,
+                                                               rp_depth_velocity_[0], 0);
+            pi_vege_moving_transp_[1] = sh.FindOrCreatePipeline(rast_state, fillz_vege_transp_vel_mov_prog,
+                                                                vi_vege_transp, rp_depth_velocity_[0], 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
-            pi_vege_moving_solid_[0] =
-                sh.LoadPipeline(rast_state, fillz_vege_solid_vel_mov_prog, vi_vege_solid, rp_depth_velocity_[0], 0);
-            pi_vege_moving_transp_[0] =
-                sh.LoadPipeline(rast_state, fillz_vege_transp_vel_mov_prog, vi_vege_transp, rp_depth_velocity_[0], 0);
+            pi_vege_moving_solid_[0] = sh.FindOrCreatePipeline(rast_state, fillz_vege_solid_vel_mov_prog, vi_vege_solid,
+                                                               rp_depth_velocity_[0], 0);
+            pi_vege_moving_transp_[0] = sh.FindOrCreatePipeline(rast_state, fillz_vege_transp_vel_mov_prog,
+                                                                vi_vege_transp, rp_depth_velocity_[0], 0);
         }
         { // skin solid/transp
             Ren::RastState rast_state;
@@ -246,16 +249,16 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
             rast_state.stencil.reference = 1;
 
             pi_skin_static_solid_[1] =
-                sh.LoadPipeline(rast_state, fillz_skin_solid_vel_prog, vi_skin_solid, rp_depth_velocity_[0], 0);
-            pi_skin_static_transp_[1] =
-                sh.LoadPipeline(rast_state, fillz_skin_transp_vel_prog, vi_skin_transp, rp_depth_velocity_[0], 0);
+                sh.FindOrCreatePipeline(rast_state, fillz_skin_solid_vel_prog, vi_skin_solid, rp_depth_velocity_[0], 0);
+            pi_skin_static_transp_[1] = sh.FindOrCreatePipeline(rast_state, fillz_skin_transp_vel_prog, vi_skin_transp,
+                                                                rp_depth_velocity_[0], 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
             pi_skin_static_solid_[0] =
-                sh.LoadPipeline(rast_state, fillz_skin_solid_vel_prog, vi_skin_solid, rp_depth_velocity_[0], 0);
-            pi_skin_static_transp_[0] =
-                sh.LoadPipeline(rast_state, fillz_skin_transp_vel_prog, vi_skin_transp, rp_depth_velocity_[0], 0);
+                sh.FindOrCreatePipeline(rast_state, fillz_skin_solid_vel_prog, vi_skin_solid, rp_depth_velocity_[0], 0);
+            pi_skin_static_transp_[0] = sh.FindOrCreatePipeline(rast_state, fillz_skin_transp_vel_prog, vi_skin_transp,
+                                                                rp_depth_velocity_[0], 0);
         }
         { // skin moving solid/transp
             Ren::RastState rast_state;
@@ -268,35 +271,19 @@ void Eng::ExDepthFill::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const 
             // mark dynamic objects
             rast_state.stencil.reference = 1;
 
-            pi_skin_moving_solid_[1] =
-                sh.LoadPipeline(rast_state, fillz_skin_solid_vel_mov_prog, vi_skin_solid, rp_depth_velocity_[0], 0);
-            pi_skin_moving_transp_[1] =
-                sh.LoadPipeline(rast_state, fillz_skin_transp_vel_mov_prog, vi_skin_transp, rp_depth_velocity_[0], 0);
+            pi_skin_moving_solid_[1] = sh.FindOrCreatePipeline(rast_state, fillz_skin_solid_vel_mov_prog, vi_skin_solid,
+                                                               rp_depth_velocity_[0], 0);
+            pi_skin_moving_transp_[1] = sh.FindOrCreatePipeline(rast_state, fillz_skin_transp_vel_mov_prog,
+                                                                vi_skin_transp, rp_depth_velocity_[0], 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
-            pi_skin_moving_solid_[0] =
-                sh.LoadPipeline(rast_state, fillz_skin_solid_vel_mov_prog, vi_skin_solid, rp_depth_velocity_[0], 0);
-            pi_skin_moving_transp_[0] =
-                sh.LoadPipeline(rast_state, fillz_skin_transp_vel_mov_prog, vi_skin_transp, rp_depth_velocity_[0], 0);
+            pi_skin_moving_solid_[0] = sh.FindOrCreatePipeline(rast_state, fillz_skin_solid_vel_mov_prog, vi_skin_solid,
+                                                               rp_depth_velocity_[0], 0);
+            pi_skin_moving_transp_[0] = sh.FindOrCreatePipeline(rast_state, fillz_skin_transp_vel_mov_prog,
+                                                                vi_skin_transp, rp_depth_velocity_[0], 0);
         }
 
         initialized = true;
-    }
-
-    fb_to_use_ = (fb_to_use_ + 1) % 2;
-
-    const Ren::RenderPassMain &rp_depth_only_main = ctx.render_passes().Get(rp_depth_only_[0]).first;
-    if (!depth_fill_fb_[ctx.backend_frame()][fb_to_use_].Setup(&ctx.api(), rp_depth_only_main, depth_tex->params.w,
-                                                               depth_tex->params.h, depth_tex, depth_tex,
-                                                               Ren::Span<const Ren::WeakImgRef>{}, false, ctx.log())) {
-        ctx.log()->Error("[ExDepthFill::LazyInit]: depth_fill_fb_ init failed!");
-    }
-
-    const Ren::RenderPassMain &rp_depth_velocity_main = ctx.render_passes().Get(rp_depth_velocity_[0]).first;
-    if (!depth_fill_vel_fb_[ctx.backend_frame()][fb_to_use_].Setup(&ctx.api(), rp_depth_velocity_main,
-                                                                   depth_tex->params.w, depth_tex->params.h, depth_tex,
-                                                                   depth_tex, velocity_tex, false, ctx.log())) {
-        ctx.log()->Error("[ExDepthFill::LazyInit]: depth_fill_vel_load_fb_ init failed!");
     }
 }

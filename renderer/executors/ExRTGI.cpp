@@ -5,6 +5,7 @@
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_gi_interface.h"
 
 void Eng::ExRTGI::Execute(const FgContext &fg) {
@@ -16,7 +17,7 @@ void Eng::ExRTGI::Execute(const FgContext &fg) {
     }
 }
 
-void Eng::ExRTGI::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
+void Eng::ExRTGI::LazyInit(Ren::Context &ctx, ShaderLoader &sh) {
     if (!initialized_) {
         auto hwrt_select = [&ctx](std::string_view hwrt_shader, std::string_view swrt_shader) {
             return ctx.capabilities.hwrt ? hwrt_shader : swrt_shader;
@@ -26,14 +27,15 @@ void Eng::ExRTGI::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
         };
 
         if (args_->second_bounce) {
-            pi_rt_gi_ =
-                sh.LoadPipeline(hwrt_select(subgroup_select("internal/rt_gi_hwrt@SECOND.comp.glsl",
-                                                            "internal/rt_gi_hwrt@SECOND;NO_SUBGROUP.comp.glsl"),
-                                            subgroup_select("internal/rt_gi_swrt@SECOND.comp.glsl",
-                                                            "internal/rt_gi_swrt@SECOND;NO_SUBGROUP.comp.glsl")),
-                                32);
+            pi_rt_gi_ = sh.FindOrCreatePipeline(
+                hwrt_select(subgroup_select("internal/rt_gi_hwrt@SECOND.comp.glsl",
+                                            "internal/rt_gi_hwrt@SECOND;NO_SUBGROUP.comp.glsl"),
+                            subgroup_select("internal/rt_gi_swrt@SECOND.comp.glsl",
+                                            "internal/rt_gi_swrt@SECOND;NO_SUBGROUP.comp.glsl")),
+                32);
         } else {
-            pi_rt_gi_ = sh.LoadPipeline(hwrt_select(subgroup_select("internal/rt_gi_hwrt@FIRST.comp.glsl",
+            pi_rt_gi_ =
+                sh.FindOrCreatePipeline(hwrt_select(subgroup_select("internal/rt_gi_hwrt@FIRST.comp.glsl",
                                                                     "internal/rt_gi_hwrt@FIRST;NO_SUBGROUP.comp.glsl"),
                                                     subgroup_select("internal/rt_gi_swrt@FIRST.comp.glsl",
                                                                     "internal/rt_gi_swrt@FIRST;NO_SUBGROUP.comp.glsl")),
@@ -51,9 +53,9 @@ void Eng::ExRTGI::Execute_SWRT(const FgContext &fg) {
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
     const Ren::BufferROHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.rt_blas_buf);
     const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
-    const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(args_->noise_tex);
+    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
+    const Ren::ImageROHandle normal_tex = fg.AccessROImage(args_->normal_tex);
     const Ren::BufferROHandle ray_list_buf = fg.AccessROBuffer(args_->ray_list);
     const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
     const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);

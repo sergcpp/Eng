@@ -1,20 +1,24 @@
 #pragma once
 
-#include "../Renderer_DrawList.h"
+#include <Ren/Common.h>
+#include <Ren/Framebuffer.h>
+
 #include "../framegraph/FgNode.h"
 
-#include <Ren/VertexInput.h>
-
 namespace Eng {
+struct BindlessTextureData;
+struct DrawList;
 class PrimDraw;
+class ShaderLoader;
+struct view_state_t;
+
 class ExTransparent final : public FgExecutor {
     bool initialized = false;
 
     // lazily initialized data
     Ren::VertexInputHandle draw_pass_vi_;
     Ren::RenderPassHandle rp_transparent_;
-    Ren::Framebuffer transparent_draw_fb_[Ren::MaxFramesInFlight][2], color_only_fb_[2], resolved_fb_, moments_fb_;
-    int fb_to_use_ = 0;
+
 #if defined(REN_VK_BACKEND)
     VkDescriptorSetLayout descr_set_layout_ = VK_NULL_HANDLE;
 #endif
@@ -38,30 +42,31 @@ class ExTransparent final : public FgExecutor {
     FgBufROHandle decals_buf_;
     FgBufROHandle materials_buf_;
     FgResRef lm_tex_[4];
-    FgResRef brdf_lut_;
-    FgResRef noise_tex_;
-    FgResRef cone_rt_lut_;
-    FgResRef dummy_black_;
+    FgImgROHandle brdf_lut_;
+    FgImgROHandle noise_tex_;
+    FgImgROHandle cone_rt_lut_;
+    FgImgROHandle dummy_black_;
 
-    FgResRef shad_tex_;
-    FgResRef ssao_tex_;
+    FgImgROHandle shadow_depth_;
+    FgImgROHandle ssao_tex_;
 
-    FgResRef color_tex_;
-    FgResRef normal_tex_;
-    FgResRef spec_tex_;
-    FgResRef depth_tex_;
+    FgImgRWHandle color_tex_;
+    FgImgRWHandle normal_tex_;
+    FgImgRWHandle spec_tex_;
+    FgImgRWHandle depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
-                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
-                  const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex);
-    void DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &color_tex);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle color_tex, Ren::ImageRWHandle normal_tex,
+                  Ren::ImageRWHandle spec_tex, Ren::ImageRWHandle depth_tex);
+    void DrawTransparent(const FgContext &fg, Ren::ImageRWHandle color_tex, Ren::ImageRWHandle normal_tex,
+                         Ren::ImageRWHandle spec_tex, Ren::ImageRWHandle depth_tex);
 
     void DrawTransparent_Simple(const FgContext &fg, Ren::BufferROHandle instances_buf,
                                 Ren::BufferROHandle instance_indices_buf, Ren::BufferROHandle unif_shared_data_buf,
                                 Ren::BufferROHandle materials_buf, Ren::BufferROHandle cells_buf,
                                 Ren::BufferROHandle items_buf, Ren::BufferROHandle lights_buf,
-                                Ren::BufferROHandle decals_buf, const Ren::Image &shad_tex,
-                                const Ren::WeakImgRef &color_tex, const Ren::Image &ssao_tex);
+                                Ren::BufferROHandle decals_buf, Ren::ImageROHandle shad_tex,
+                                Ren::ImageRWHandle color_tex, Ren::ImageRWHandle normal_tex,
+                                Ren::ImageRWHandle spec_tex, Ren::ImageRWHandle depth_tex, Ren::ImageROHandle ssao_tex);
     void DrawTransparent_OIT_MomentBased(const FgContext &fg);
     void DrawTransparent_OIT_WeightedBlended(const FgContext &fg);
 
@@ -72,13 +77,14 @@ class ExTransparent final : public FgExecutor {
   public:
     ExTransparent(const Ren::ApiContext &api, const DrawList **p_list, const view_state_t *view_state,
                   const FgBufROHandle vtx_buf1, const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf,
-                  const FgBufROHandle materials_buf, const BindlessTextureData *bindless_tex, const FgResRef brdf_lut,
-                  const FgResRef noise_tex, const FgResRef cone_rt_lut, const FgResRef dummy_black,
-                  const FgBufROHandle instances_buf, const FgBufROHandle instance_indices_buf,
-                  const FgBufROHandle shared_data_buf, const FgBufROHandle cells_buf, const FgBufROHandle items_buf,
-                  const FgBufROHandle lights_buf, const FgBufROHandle decals_buf, const FgResRef shad_tex,
-                  const FgResRef ssao_tex, const FgResRef lm_tex[4], const FgResRef color_tex,
-                  const FgResRef normal_tex, const FgResRef spec_tex, const FgResRef depth_tex)
+                  const FgBufROHandle materials_buf, const BindlessTextureData *bindless_tex,
+                  const FgImgROHandle brdf_lut, const FgImgROHandle noise_tex, const FgImgROHandle cone_rt_lut,
+                  const FgImgROHandle dummy_black, const FgBufROHandle instances_buf,
+                  const FgBufROHandle instance_indices_buf, const FgBufROHandle shared_data_buf,
+                  const FgBufROHandle cells_buf, const FgBufROHandle items_buf, const FgBufROHandle lights_buf,
+                  const FgBufROHandle decals_buf, const FgImgROHandle shadow_depth, const FgImgROHandle ssao_tex,
+                  const FgResRef lm_tex[4], const FgImgRWHandle color_tex, const FgImgRWHandle normal_tex,
+                  const FgImgRWHandle spec_tex, const FgImgRWHandle depth_tex)
         : api_(api) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;
@@ -95,7 +101,7 @@ class ExTransparent final : public FgExecutor {
         items_buf_ = items_buf;
         lights_buf_ = lights_buf;
         decals_buf_ = decals_buf;
-        shad_tex_ = shad_tex;
+        shadow_depth_ = shadow_depth;
         ssao_tex_ = ssao_tex;
         materials_buf_ = materials_buf;
 

@@ -1,11 +1,14 @@
 #pragma once
 
-#include "../Renderer_DrawList.h"
+#include <Ren/Framebuffer.h>
+
 #include "../framegraph/FgNode.h"
 
-#include <Ren/VertexInput.h>
-
 namespace Eng {
+struct BindlessTextureData;
+struct DrawList;
+class ShaderLoader;
+
 class ExShadowDepth final : public FgExecutor {
     bool initialized = false;
     int w_, h_;
@@ -13,8 +16,6 @@ class ExShadowDepth final : public FgExecutor {
     // lazily initialized data
     Ren::PipelineHandle pi_solid_[3], pi_alpha_[3];
     Ren::PipelineHandle pi_vege_solid_, pi_vege_alpha_;
-
-    Ren::Framebuffer shadow_fb_;
 
     // temp data (valid only between Setup and Execute calls)
     const DrawList **p_list_ = nullptr;
@@ -28,21 +29,20 @@ class ExShadowDepth final : public FgExecutor {
     FgBufROHandle instance_indices_buf_;
     FgBufROHandle shared_data_buf_;
     FgBufROHandle materials_buf_;
-    FgResRef noise_tex_;
+    FgImgROHandle noise_tex_;
 
     // outputs
-    FgResRef shadow_depth_tex_;
+    FgImgRWHandle shadow_depth_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
-                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &shadow_depth_tex);
-    void DrawShadowMaps(const FgContext &fg);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle shadow_depth);
+    void DrawShadowMaps(const FgContext &fg, Ren::ImageRWHandle shadow_depth);
 
   public:
     ExShadowDepth(const int w, const int h, const DrawList **p_list, const FgBufROHandle vtx_buf1,
                   const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
                   const BindlessTextureData *bindless_tex, const FgBufROHandle instances_buf,
                   const FgBufROHandle instance_indices_buf, const FgBufROHandle shared_data_buf,
-                  const FgResRef noise_tex, const FgResRef shadow_depth_tex)
+                  const FgImgROHandle noise_tex, const FgImgRWHandle shadow_depth)
         : w_(w), h_(h) {
         p_list_ = p_list;
         bindless_tex_ = bindless_tex;
@@ -57,7 +57,7 @@ class ExShadowDepth final : public FgExecutor {
         materials_buf_ = materials_buf;
         noise_tex_ = noise_tex;
 
-        shadow_depth_tex_ = shadow_depth_tex;
+        shadow_depth_ = shadow_depth;
     }
 
     void Execute(const FgContext &fg) override;

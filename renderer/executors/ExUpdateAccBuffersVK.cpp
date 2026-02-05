@@ -2,6 +2,8 @@
 
 #include <Ren/Context.h>
 
+#include "../framegraph/FgBuilder.h"
+
 void Eng::ExUpdateAccBuffers::Execute_HWRT(const FgContext &fg) {
     const Ren::BufferHandle rt_geo_instances_buf = fg.AccessRWBuffer(rt_geo_instances_buf_);
     const Ren::BufferHandle rt_obj_instances_buf = fg.AccessRWBuffer(rt_obj_instances_buf_);

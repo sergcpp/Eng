@@ -6,6 +6,9 @@
 #include <Ren/Span.h>
 #include <Ren/VKCtx.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
+
 namespace ExSharedInternal {
 uint32_t _draw_range(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, Ren::Span<const uint32_t> batch_indices,
                      Ren::Span<const Eng::basic_draw_batch_t> batches, uint32_t i, const uint64_t mask,
@@ -66,15 +69,18 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
                      uint32_t i, uint64_t mask);
 } // namespace ExSharedInternal
 
-void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle vtx_buf1,
-                                 const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf) {
+void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle depth_tex,
+                                 const Ren::ImageRWHandle velocity_tex) {
     using namespace ExSharedInternal;
+
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
 
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
@@ -118,7 +124,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
                                          {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
                                          {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf}};
         simple_descr_sets[0] =
-            PrepareDescriptorSet(api, &fg.storages(), simple_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
+            PrepareDescriptorSet(api, storages, simple_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         simple_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
     }
 
@@ -131,7 +137,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
                                          {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
                                          {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex}};
         vege_descr_sets[0] =
-            PrepareDescriptorSet(api, &fg.storages(), vege_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
+            PrepareDescriptorSet(api, storages, vege_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         vege_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
     }
 
@@ -144,34 +150,38 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, cmd_buf, "STATIC-SOLID-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth_tex, depth_tex, {});
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_static_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, cmd_buf, "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_solid_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_solid_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_solid_main[0]->layout, 0, 1,
                                         simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, 0u, &draws_count);
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_solid_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_solid_main[1]->pipeline);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitBackSided, &draws_count);
         }
 
         { // two-sided
             Ren::DebugMarker _mm(api, cmd_buf, "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_solid_main[2]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_solid_main[2]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_solid_main[2]->layout, 0, 1,
                                         simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitTwoSided, &draws_count);
@@ -188,6 +198,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, cmd_buf, "STATIC-SOLID-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -197,20 +211,21 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_moving_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[0]->layout, 0, 1,
                                         simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitMoving, &draws_count);
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[1]->layout, 0, 1,
                                         simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitMoving | BDB::BitBackSided,
@@ -219,7 +234,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[2]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[2]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_solid_main[2]->layout, 0, 1,
                                         simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitMoving | BDB::BitTwoSided,
@@ -237,30 +252,34 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "STATIC-ALPHA-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth_tex, depth_tex, {});
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_static_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_transp_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_transp_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_transp_main[0]->layout, 0,
                                         2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_static_transp_main[0], zfill_batch_indices, zfill_batches, i,
                                 BDB::BitAlphaTest, materials_per_descriptor, bindless_tex_->textures_descr_sets,
                                 &draws_count);
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_transp_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_transp_main[1]->pipeline);
             i = _draw_range_ext(api, cmd_buf, *pi_static_transp_main[0], zfill_batch_indices, zfill_batches, i,
                                 BDB::BitAlphaTest | BDB::BitBackSided, materials_per_descriptor,
                                 bindless_tex_->textures_descr_sets, &draws_count);
@@ -268,7 +287,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_transp_main[2]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_transp_main[2]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_static_transp_main[2]->layout, 0,
                                         2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_static_transp_main[2], zfill_batch_indices, zfill_batches, i,
@@ -287,6 +306,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "STATIC-ALPHA-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -296,22 +319,23 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_moving_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[0]->layout, 0,
                                         2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_moving_transp_main[0], zfill_batch_indices, zfill_batches, i,
                                 BDB::BitAlphaTest | BDB::BitMoving, materials_per_descriptor,
                                 bindless_tex_->textures_descr_sets, &draws_count);
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[1]->layout, 0,
                                         2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_moving_transp_main[1], zfill_batch_indices, zfill_batches, i,
@@ -321,7 +345,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[2]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[2]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_moving_transp_main[2]->layout, 0,
                                         2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_moving_transp_main[2], zfill_batch_indices, zfill_batches, i,
@@ -336,6 +360,9 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, cmd_buf, "VEGE-SOLID-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_only_[rp_index], depth_tex, depth_tex, {});
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -345,17 +372,18 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main =
             storages.vtx_inputs.Get(pi_vege_static_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, cmd_buf, "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_solid_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_solid_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_solid_main[0]->layout,
                                         0, 2, vege_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitsVege, &draws_count);
@@ -363,7 +391,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, cmd_buf, "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_solid_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_solid_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_solid_main[1]->layout,
                                         0, 2, vege_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitsVege | BDB::BitTwoSided,
@@ -380,6 +408,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-SOLID-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -389,17 +421,18 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main =
             storages.vtx_inputs.Get(pi_vege_moving_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_solid_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_solid_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_solid_main[0]->layout,
                                         0, 1, vege_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitsVege | BDB::BitMoving,
@@ -408,7 +441,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_solid_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_solid_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_solid_main[1]->layout,
                                         0, 1, vege_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i,
@@ -425,6 +458,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-ALPHA-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -434,17 +471,18 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main =
             storages.vtx_inputs.Get(pi_vege_static_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_transp_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_transp_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_transp_main[0]->layout,
                                         0, 2, vege_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_vege_static_transp_main[0], zfill_batch_indices, zfill_batches, i,
@@ -454,7 +492,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_transp_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_transp_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_static_transp_main[1]->layout,
                                         0, 2, vege_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_vege_static_transp_main[1], zfill_batch_indices, zfill_batches, i,
@@ -472,6 +510,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "VEGE-ALPHA-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -481,17 +523,18 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main =
             storages.vtx_inputs.Get(pi_vege_moving_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_transp_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_transp_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_transp_main[0]->layout,
                                         0, 2, vege_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_vege_moving_transp_main[0], zfill_batch_indices, zfill_batches, i,
@@ -501,7 +544,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_transp_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_transp_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_vege_moving_transp_main[1]->layout,
                                         0, 2, vege_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_vege_moving_transp_main[1], zfill_batch_indices, zfill_batches, i,
@@ -519,6 +562,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-SOLID-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -528,17 +575,18 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main =
             storages.vtx_inputs.Get(pi_skin_static_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_solid_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_solid_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_solid_main[0]->layout,
                                         0, 1, simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitsSkinned, &draws_count);
@@ -546,7 +594,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_solid_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_solid_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_solid_main[1]->layout,
                                         0, 1, simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitsSkinned | BDB::BitTwoSided,
@@ -563,6 +611,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-SOLID-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -572,17 +624,18 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main =
             storages.vtx_inputs.Get(pi_skin_moving_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_solid_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_solid_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_solid_main[0]->layout,
                                         0, 1, simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i, BDB::BitsSkinned | BDB::BitMoving,
@@ -591,7 +644,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_solid_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_solid_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_solid_main[1]->layout,
                                         0, 1, simple_descr_sets, 0, nullptr);
             i = _draw_range(api, cmd_buf, zfill_batch_indices, zfill_batches, i,
@@ -608,6 +661,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-ALPHA-SIMPLE");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -617,17 +674,18 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main =
             storages.vtx_inputs.Get(pi_skin_static_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_transp_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_transp_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_transp_main[0]->layout,
                                         0, 2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_skin_static_transp_main[0], zfill_batch_indices, zfill_batches, i,
@@ -637,7 +695,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_transp_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_transp_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_static_transp_main[1]->layout,
                                         0, 2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_skin_static_transp_main[1], zfill_batch_indices, zfill_batches, i,
@@ -655,6 +713,10 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKIN-ALPHA-MOVING");
         const int rp_index = (clear_depth_ && !draws_count) ? 0 : 1;
 
+        const Ren::ImageRWHandle velocity_target[] = {velocity_tex};
+        const Ren::FramebufferHandle fb =
+            fg.FindOrCreateFramebuffer(rp_depth_velocity_[rp_index], depth_tex, depth_tex, velocity_target);
+
         VkClearValue clear_value = {};
         clear_value.depthStencil.depth = 0.0f;
         clear_value.depthStencil.stencil = 0;
@@ -664,17 +726,18 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
-        rp_begin_info.framebuffer = depth_fill_vel_fb_[fg.backend_frame()][fb_to_use_].vk_handle();
+        rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
         const Ren::VertexInputMain &vtx_input_main =
             storages.vtx_inputs.Get(pi_skin_moving_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         { // one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ONE-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_transp_main[0]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_transp_main[0]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_transp_main[0]->layout,
                                         0, 2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_skin_moving_transp_main[0], zfill_batch_indices, zfill_batches, i,
@@ -684,7 +747,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::BufferROHandle 
 
         { // two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "TWO-SIDED");
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_transp_main[1]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_transp_main[1]->pipeline);
             api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_skin_moving_transp_main[1]->layout,
                                         0, 2, simple_descr_sets, 0, nullptr);
             i = _draw_range_ext(api, cmd_buf, *pi_skin_moving_transp_main[1], zfill_batch_indices, zfill_batches, i,

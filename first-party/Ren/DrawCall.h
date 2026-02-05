@@ -32,6 +32,7 @@ enum class eBindTarget : uint16_t {
 
 #if defined(REN_GL_BACKEND)
 uint32_t GLBindTarget(const Image &img, int view);
+uint32_t GLBindTarget(const ImageCold &img, int view);
 extern int g_param_buf_binding;
 #endif
 
@@ -46,17 +47,29 @@ struct OpaqueHandle {
         void *ptr;
     };
     union {
-
+        const ImageROHandle img_new;
         const Handle<void> handle;
     };
     const SamplerROHandle sampler = {};
     int view_index = 0;
+    bool readonly = false;
 
     OpaqueHandle(const Image &_img, int _view_index = 0) : img(&_img), handle(), view_index(_view_index) {}
     OpaqueHandle(const Image &_img, const SamplerROHandle _sampler, int _view_index = 0)
-        : img(&_img), handle({}), sampler(_sampler), view_index(_view_index) {}
-    OpaqueHandle(const BufferROHandle _buf, int _view_index = 0) : buf(_buf), handle(), view_index(_view_index) {}
+        : img(&_img), handle(), sampler(_sampler), view_index(_view_index) {}
+    OpaqueHandle(const BufferROHandle _buf, int _view_index = 0)
+        : buf(_buf), handle(), view_index(_view_index), readonly(true) {}
     OpaqueHandle(const BufferRWHandle _buf, int _view_index = 0) : buf(_buf), handle(), view_index(_view_index) {}
+
+    OpaqueHandle(const ImageROHandle _img, int _view_index = 0)
+        : ptr(nullptr), img_new(_img), view_index(_view_index), readonly(true) {}
+    OpaqueHandle(const ImageRWHandle _img, int _view_index = 0)
+        : ptr(nullptr), img_new(_img), view_index(_view_index) {}
+    OpaqueHandle(const ImageROHandle _img, const SamplerROHandle _sampler, int _view_index = 0)
+        : ptr(nullptr), img_new(_img), sampler(_sampler), view_index(_view_index), readonly(true) {}
+    OpaqueHandle(const ImageRWHandle _img, const SamplerROHandle _sampler, int _view_index = 0)
+        : ptr(nullptr), img_new(_img), sampler(_sampler), view_index(_view_index) {}
+
     OpaqueHandle(const SamplerROHandle _sampler) : ptr(nullptr), handle(), sampler(_sampler) {}
     OpaqueHandle(const BindlessDescriptors &_bindless) : bindless(&_bindless), handle() {}
 #if defined(REN_VK_BACKEND)
@@ -80,7 +93,7 @@ struct Binding {
 static_assert(sizeof(Binding) == sizeof(void *) + sizeof(void *) + 8 + 8 + 8);
 
 #if defined(REN_VK_BACKEND)
-[[nodiscard]] VkDescriptorSet PrepareDescriptorSet(const ApiContext &api, const StoragesRef *storages,
+[[nodiscard]] VkDescriptorSet PrepareDescriptorSet(const ApiContext &api, const StoragesRef &storages,
                                                    VkDescriptorSetLayout layout, Span<const Binding> bindings,
                                                    DescrMultiPoolAlloc &descr_alloc, ILog *log);
 #endif

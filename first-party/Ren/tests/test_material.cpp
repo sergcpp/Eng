@@ -31,7 +31,7 @@ void test_material() {
         };
 
         auto on_sampler_needed = [&test](const SamplingParams params) -> SamplerHandle {
-            return test.FindOrCreateSampler(params);
+            return test.CreateSampler(params);
         };
 
         const char mat_src[] = "pipelines:\n"
@@ -76,6 +76,10 @@ void test_material() {
 
         require(m_ref->params[0] == Vec4f(0, 1, 2, 3));
         require(m_ref->params[1] == Vec4f(0.5f, 1.2f, 11, 15));
+
+        for (const SamplerHandle s : m_ref->samplers) {
+            test.ReleaseSampler(s);
+        }
     }
 
     printf("OK\n");

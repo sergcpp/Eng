@@ -1,25 +1,23 @@
 #pragma once
 
-#include <Ren/Image.h>
-#include <Ren/VertexInput.h>
-
-#include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"
 
-struct view_state_t;
-
 namespace Eng {
+struct BindlessTextureData;
+struct view_state_t;
+class ShaderLoader;
+
 class ExRTGI final : public FgExecutor {
   public:
     struct Args {
-        FgResRef noise_tex;
+        FgImgROHandle noise_tex;
         FgBufROHandle geo_data;
         FgBufROHandle materials;
         FgBufROHandle vtx_buf1;
         FgBufROHandle ndx_buf;
         FgBufROHandle shared_data;
-        FgResRef depth_tex;
-        FgResRef normal_tex;
+        FgImgROHandle depth_tex;
+        FgImgROHandle normal_tex;
         FgBufRWHandle ray_counter;
         FgBufROHandle ray_list;
         FgBufROHandle indir_args;
@@ -56,7 +54,7 @@ class ExRTGI final : public FgExecutor {
 
     const Args *args_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh);
 
     void Execute_HWRT(const FgContext &fg);
     void Execute_SWRT(const FgContext &fg);

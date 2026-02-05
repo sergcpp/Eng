@@ -23,7 +23,19 @@ void CaptureMaterialTextureChange(Ren::Context &ctx, Eng::SceneData &scene_data,
         scene_data.material_changes.push_back(tex_user);
         const size_t ndx =
             std::distance(mat.textures.begin(), std::find(mat.textures.begin(), mat.textures.end(), ref));
-        mat.samplers[ndx] = ctx.FindOrCreateSampler(ref->params.sampling);
+
+        const auto it =
+            lower_bound(std::begin(scene_data.samplers), std::end(scene_data.samplers), ref->params.sampling,
+                        [&ctx](const Ren::SamplerHandle lhs_handle, const Ren::SamplingParams s) {
+                            return ctx.samplers().Get(lhs_handle).first.params < s;
+                        });
+        if (it == std::end(scene_data.samplers) || ctx.samplers().Get(*it).first.params != ref->params.sampling) {
+            mat.samplers[ndx] = ctx.CreateSampler(ref->params.sampling);
+            scene_data.samplers.insert(it, mat.samplers[ndx]);
+        } else {
+            mat.samplers[ndx] = *it;
+        }
+
         tex_user = mat.next_texture_user[ndx];
     }
 }

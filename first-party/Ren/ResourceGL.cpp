@@ -61,6 +61,29 @@ void Ren::TransitionResourceStates(const ApiContext &, const StoragesRef &storag
             if (tr.update_internal_state) {
                 buf_main.resource_state = tr.new_state;
             }
+        } else if (std::holds_alternative<ImageHandle>(tr.p_res)) {
+            const auto &[img_main, img_cold] = storages.images.Get(std::get<ImageHandle>(tr.p_res));
+
+            eResState old_state = tr.old_state;
+            if (old_state == eResState::Undefined) {
+                // take state from resource itself
+                old_state = img_main.resource_state;
+                if (old_state == tr.new_state && old_state != eResState::UnorderedAccess) {
+                    // transition is not needed
+                    continue;
+                }
+            }
+
+            if (old_state == eResState::UnorderedAccess) {
+                mem_barrier_bits |= GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
+                if (tr.new_state == eResState::ShaderResource || tr.new_state == eResState::StencilTestDepthFetch) {
+                    mem_barrier_bits |= GL_TEXTURE_FETCH_BARRIER_BIT;
+                }
+            }
+
+            if (tr.update_internal_state) {
+                img_main.resource_state = tr.new_state;
+            }
         }
     }
 

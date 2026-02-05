@@ -1,15 +1,13 @@
 #pragma once
 
-#include <Ren/Image.h>
-#include <Ren/VertexInput.h>
-
-#include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"
 
+namespace Eng {
+struct BindlessTextureData;
+class PrimDraw;
+class ShaderLoader;
 struct view_state_t;
 
-namespace Eng {
-class PrimDraw;
 class ExRTShadows final : public FgExecutor {
   public:
     struct Args {
@@ -18,9 +16,9 @@ class ExRTShadows final : public FgExecutor {
         FgBufROHandle vtx_buf1;
         FgBufROHandle ndx_buf;
         FgBufROHandle shared_data;
-        FgResRef noise_tex;
-        FgResRef depth_tex;
-        FgResRef normal_tex;
+        FgImgROHandle noise_tex;
+        FgImgROHandle depth_tex;
+        FgImgROHandle normal_tex;
         FgBufROHandle tlas_buf;
         FgBufROHandle tile_list_buf;
         FgBufROHandle indir_args;
@@ -34,7 +32,7 @@ class ExRTShadows final : public FgExecutor {
             FgBufROHandle mesh_instances_buf;
         } swrt;
 
-        FgResRef out_shadow_tex;
+        FgImgRWHandle out_shadow_tex;
     };
 
     ExRTShadows(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args)
@@ -54,7 +52,7 @@ class ExRTShadows final : public FgExecutor {
 
     const Args *args_ = nullptr;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh);
 
     void Execute_HWRT(const FgContext &fg);
     void Execute_SWRT(const FgContext &fg);

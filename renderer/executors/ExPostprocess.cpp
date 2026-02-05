@@ -9,6 +9,7 @@
 #include "../../utils/ShaderLoader.h"
 #include "../PrimDraw.h"
 #include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/blit_postprocess_interface.h"
 
 Eng::ExPostprocess::ExPostprocess(PrimDraw &prim_draw, ShaderLoader &sh, const view_state_t *view_state,
@@ -17,28 +18,29 @@ Eng::ExPostprocess::ExPostprocess(PrimDraw &prim_draw, ShaderLoader &sh, const v
     view_state_ = view_state;
     args_ = args;
 
-    blit_postprocess_prog_[0][0] = sh.LoadProgram("internal/blit_postprocess.vert.glsl",
-                                                  "internal/blit_postprocess@ABERRATION;PURKINJE.frag.glsl");
-    blit_postprocess_prog_[0][1] = sh.LoadProgram(
+    blit_postprocess_prog_[0][0] = sh.FindOrCreateProgram("internal/blit_postprocess.vert.glsl",
+                                                          "internal/blit_postprocess@ABERRATION;PURKINJE.frag.glsl");
+    blit_postprocess_prog_[0][1] = sh.FindOrCreateProgram(
         "internal/blit_postprocess.vert.glsl", "internal/blit_postprocess@ABERRATION;PURKINJE;TWO_TARGETS.frag.glsl");
-    blit_postprocess_prog_[1][0] = sh.LoadProgram("internal/blit_postprocess.vert.glsl",
-                                                  "internal/blit_postprocess@ABERRATION;PURKINJE;LUT.frag.glsl");
-    blit_postprocess_prog_[1][1] = sh.LoadProgram("internal/blit_postprocess.vert.glsl",
-                                                  "internal/blit_postprocess@ABERRATION;LUT;TWO_TARGETS.frag.glsl");
+    blit_postprocess_prog_[1][0] = sh.FindOrCreateProgram(
+        "internal/blit_postprocess.vert.glsl", "internal/blit_postprocess@ABERRATION;PURKINJE;LUT.frag.glsl");
+    blit_postprocess_prog_[1][1] = sh.FindOrCreateProgram(
+        "internal/blit_postprocess.vert.glsl", "internal/blit_postprocess@ABERRATION;LUT;TWO_TARGETS.frag.glsl");
 }
 
 void Eng::ExPostprocess::Execute(const FgContext &fg) {
-    const Ren::Image &exposure_tex = fg.AccessROImage(args_->exposure_tex);
-    const Ren::Image &color_tex = fg.AccessROImage(args_->color_tex);
-    const Ren::Image &bloom_tex = fg.AccessROImage(args_->bloom_tex);
-    Ren::WeakImgRef output_tex = fg.AccessRWImageRef(args_->output_tex);
-    const Ren::Image *lut_tex = nullptr;
+    const Ren::ImageROHandle exposure_tex = fg.AccessROImage(args_->exposure_tex);
+    const Ren::ImageROHandle color_tex = fg.AccessROImage(args_->color_tex);
+    const Ren::ImageROHandle bloom_tex = fg.AccessROImage(args_->bloom_tex);
+
+    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(args_->output_tex);
+    Ren::ImageROHandle lut_tex = {};
     if (args_->lut_tex) {
-        lut_tex = &fg.AccessROImage(args_->lut_tex);
+        lut_tex = fg.AccessROImage(args_->lut_tex);
     }
-    Ren::WeakImgRef output_tex2;
+    Ren::ImageRWHandle output_tex2;
     if (args_->output_tex2) {
-        output_tex2 = fg.AccessRWImageRef(args_->output_tex2);
+        output_tex2 = fg.AccessRWImage(args_->output_tex2);
     }
 
     Ren::RastState rast_state;
@@ -62,7 +64,7 @@ void Eng::ExPostprocess::Execute(const FgContext &fg) {
         {Ren::eBindTarget::TexSampled, BlitPostprocess::INPUT_TEX_SLOT, {color_tex, args_->linear_sampler}},
         {Ren::eBindTarget::TexSampled, BlitPostprocess::BLOOM_TEX_SLOT, bloom_tex}};
     if (args_->tonemap_mode == 2 && lut_tex) {
-        bindings.emplace_back(Ren::eBindTarget::TexSampled, BlitPostprocess::LUT_TEX_SLOT, *lut_tex);
+        bindings.emplace_back(Ren::eBindTarget::TexSampled, BlitPostprocess::LUT_TEX_SLOT, lut_tex);
     }
 
     Ren::SmallVector<Ren::RenderTarget, 2> render_targets = {
@@ -71,7 +73,8 @@ void Eng::ExPostprocess::Execute(const FgContext &fg) {
         render_targets.emplace_back(output_tex2, Ren::eLoadOp::DontCare, Ren::eStoreOp::Store);
     }
 
-    prim_draw_.DrawPrim(PrimDraw::ePrim::Quad, blit_postprocess_prog_[args_->tonemap_mode == 2][bool(output_tex2)], {},
-                        render_targets, rast_state, fg.rast_state(), bindings, &uniform_params,
-                        sizeof(BlitPostprocess::Params), 0);
+    prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad,
+                        blit_postprocess_prog_[args_->tonemap_mode == 2][bool(output_tex2)], {}, render_targets,
+                        rast_state, fg.rast_state(), bindings, &uniform_params, sizeof(BlitPostprocess::Params), 0,
+                        fg.framebuffers());
 }

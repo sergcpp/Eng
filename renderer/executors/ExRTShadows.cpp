@@ -4,6 +4,8 @@
 #include <Ren/DrawCall.h>
 
 #include "../../utils/ShaderLoader.h"
+#include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_shadows_interface.h"
 
 void Eng::ExRTShadows::Execute(const FgContext &fg) {
@@ -17,7 +19,7 @@ void Eng::ExRTShadows::Execute(const FgContext &fg) {
 
 void Eng::ExRTShadows::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     if (!initialized_) {
-        pi_rt_shadows_ = sh.LoadPipeline(
+        pi_rt_shadows_ = sh.FindOrCreatePipeline(
             ctx.capabilities.hwrt ? "internal/rt_shadows_hwrt.comp.glsl" : "internal/rt_shadows_swrt.comp.glsl", 32);
         if (!pi_rt_shadows_) {
             ctx.log()->Error("ExRTShadows: Failed to initialize pipeline!");
@@ -32,9 +34,9 @@ void Eng::ExRTShadows::Execute_SWRT(const FgContext &fg) {
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
     const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
-    const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(args_->noise_tex);
+    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
+    const Ren::ImageROHandle normal_tex = fg.AccessROImage(args_->normal_tex);
     const Ren::BufferROHandle rt_blas_buf = fg.AccessROBuffer(args_->swrt.blas_buf);
     const Ren::BufferROHandle rt_tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
     const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
@@ -42,7 +44,7 @@ void Eng::ExRTShadows::Execute_SWRT(const FgContext &fg) {
     const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(args_->tile_list_buf);
     const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
 
-    const Ren::Image &out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
+    const Ren::ImageRWHandle out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
 
     const Ren::Binding bindings[] = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},

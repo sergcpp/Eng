@@ -6,216 +6,127 @@
 #define VERBOSE_LOGGING
 #endif
 
-Ren::Framebuffer &Ren::Framebuffer::operator=(Framebuffer &&rhs) noexcept {
-    if (&rhs == this) {
-        return (*this);
+bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, FramebufferCold &fb_cold,
+                           const StoragesRef &storages, const RenderPassROHandle render_pass,
+                           const FramebufferAttachment &depth, const FramebufferAttachment &stencil,
+                           Span<const FramebufferAttachment> color_attachments, ILog *log) {
+    SmallVector<VkImageView, 4> image_views;
+
+    int w = -1, h = -1;
+
+    if (depth) {
+        const auto &[img_main, img_cold] = storages.images.Get(depth.img);
+        image_views.push_back(img_main.views[0]);
+        fb_cold.depth_attachment = depth;
+        w = img_cold.params.w;
+        h = img_cold.params.h;
     }
 
-    Destroy();
-
-    api_ = std::exchange(rhs.api_, nullptr);
-    handle_ = std::exchange(rhs.handle_, VkFramebuffer{VK_NULL_HANDLE});
-    renderpass_ = std::exchange(rhs.renderpass_, VkRenderPass{VK_NULL_HANDLE});
-    w = std::exchange(rhs.w, -1);
-    h = std::exchange(rhs.h, -1);
-    color_attachments = std::move(rhs.color_attachments);
-    depth_attachment = std::exchange(rhs.depth_attachment, {});
-    stencil_attachment = std::exchange(rhs.stencil_attachment, {});
-
-    return (*this);
-}
-
-Ren::Framebuffer::~Framebuffer() { Destroy(); }
-
-void Ren::Framebuffer::Destroy() {
-    if (handle_ != VK_NULL_HANDLE) {
-        api_->framebuffers_to_destroy[api_->backend_frame].push_back(handle_);
-        handle_ = VK_NULL_HANDLE;
+    if (stencil) {
+        const auto &[stencil_main, stencil_cold] = storages.images.Get(stencil.img);
+        fb_cold.stencil_attachment = stencil;
+        if (depth) {
+            const auto &[depth_main, depth_cold] = storages.images.Get(depth.img);
+            if (stencil_main.views[0] != depth_main.views[0]) {
+                image_views.push_back(stencil_main.views[0]);
+            }
+        } else {
+            image_views.push_back(stencil_main.views[0]);
+        }
     }
+
+    for (int i = 0; i < color_attachments.size(); i++) {
+        if (color_attachments[i]) {
+            const auto &[img_main, img_cold] = storages.images.Get(color_attachments[i].img);
+            image_views.push_back(img_main.views[color_attachments[i].view_index]);
+            fb_cold.color_attachments.push_back(color_attachments[i]);
+            if (w == -1) {
+                w = img_cold.params.w;
+                h = img_cold.params.h;
+            }
+            assert(w == img_cold.params.w);
+            assert(h == img_cold.params.h);
+        } else {
+            fb_cold.color_attachments.emplace_back();
+        }
+    }
+
+    fb_main.renderpass = render_pass;
+    fb_main.w = uint16_t(w);
+    fb_main.h = uint16_t(h);
+
+    VkFramebufferCreateInfo framebuf_create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    framebuf_create_info.renderPass = storages.render_passes.Get(render_pass).first.handle;
+    framebuf_create_info.attachmentCount = image_views.size();
+    framebuf_create_info.pAttachments = image_views.data();
+    framebuf_create_info.width = w;
+    framebuf_create_info.height = h;
+    framebuf_create_info.layers = 1;
+
+    const VkResult res = api.vkCreateFramebuffer(api.device, &framebuf_create_info, nullptr, &fb_main.handle);
+    if (res != VK_SUCCESS) {
+        log->Error("Framebuffer creation failed (error %i)", int(res));
+#ifdef VERBOSE_LOGGING
+    } else {
+        log->Info("Framebuffer %p created (%i attachments)", fb_main.handle, int(image_views.size()));
+#endif
+    }
+    return res == VK_SUCCESS;
 }
 
-bool Ren::Framebuffer::Changed(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
-                               const WeakImgRef &_stencil_attachment, Span<const WeakImgRef> _color_attachments) const {
-    return renderpass_ != render_pass.handle || depth_attachment != _depth_attachment ||
-           stencil_attachment != _stencil_attachment || Span<const Attachment>(color_attachments) != _color_attachments;
+void Ren::Framebuffer_Destroy(const ApiContext &api, FramebufferMain &fb_main, FramebufferCold &fb_cold) {
+    if (fb_main.handle != VK_NULL_HANDLE) {
+        api.framebuffers_to_destroy[api.backend_frame].push_back(fb_main.handle);
+    }
+    fb_main = {};
+    fb_cold = {};
 }
 
-bool Ren::Framebuffer::Changed(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
-                               const WeakImgRef &_stencil_attachment,
-                               Span<const RenderTarget> _color_attachments) const {
-    return renderpass_ != render_pass.handle || depth_attachment != _depth_attachment ||
-           stencil_attachment != _stencil_attachment || Span<const Attachment>(color_attachments) != _color_attachments;
+void Ren::Framebuffer_DestroyImmediately(const ApiContext &api, FramebufferMain &fb_main, FramebufferCold &fb_cold) {
+    if (fb_main.handle != VK_NULL_HANDLE) {
+        api.vkDestroyFramebuffer(api.device, fb_main.handle, nullptr);
+    }
+    fb_main = {};
+    fb_cold = {};
 }
 
-bool Ren::Framebuffer::LessThan(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
-                                const WeakImgRef &_stencil_attachment,
-                                Span<const WeakImgRef> _color_attachments) const {
-    if (renderpass_ < render_pass.handle) {
+bool Ren::Framebuffer_LessThan(const FramebufferMain &fb_main, const FramebufferCold &fb_cold,
+                               const RenderPassROHandle render_pass, const FramebufferAttachment &depth_attachment,
+                               const FramebufferAttachment &stencil_attachment,
+                               Span<const FramebufferAttachment> color_attachments) {
+    if (fb_main.renderpass < render_pass) {
         return true;
-    } else if (renderpass_ == render_pass.handle) {
-        if (depth_attachment < _depth_attachment) {
+    } else if (fb_main.renderpass == render_pass) {
+        if (fb_cold.depth_attachment < depth_attachment) {
             return true;
-        } else if (depth_attachment == _depth_attachment) {
-            if (stencil_attachment < _stencil_attachment) {
+        } else if (fb_cold.depth_attachment == depth_attachment) {
+            if (fb_cold.stencil_attachment < stencil_attachment) {
                 return true;
-            } else if (stencil_attachment == _stencil_attachment) {
-                return Span<const Attachment>(color_attachments) < _color_attachments;
+            } else if (fb_cold.stencil_attachment == stencil_attachment) {
+                return Span<const FramebufferAttachment>(fb_cold.color_attachments) < color_attachments;
             }
         }
     }
     return false;
 }
 
-bool Ren::Framebuffer::LessThan(const RenderPassMain &render_pass, const WeakImgRef &_depth_attachment,
-                                const WeakImgRef &_stencil_attachment,
-                                Span<const RenderTarget> _color_attachments) const {
-    if (renderpass_ < render_pass.handle) {
+bool Ren::Framebuffer_LessThan(const FramebufferMain &fb_main, const FramebufferCold &fb_cold,
+                               const RenderPassROHandle render_pass, const RenderTarget &depth_attachment,
+                               const RenderTarget &stencil_attachment, Span<const RenderTarget> color_attachments) {
+    if (fb_main.renderpass < render_pass) {
         return true;
-    } else if (renderpass_ == render_pass.handle) {
-        if (depth_attachment < _depth_attachment) {
+    } else if (fb_main.renderpass == render_pass) {
+        if (fb_cold.depth_attachment < depth_attachment) {
             return true;
-        } else if (depth_attachment == _depth_attachment) {
-            if (stencil_attachment < _stencil_attachment) {
+        } else if (fb_cold.depth_attachment == depth_attachment) {
+            if (fb_cold.stencil_attachment < stencil_attachment) {
                 return true;
-            } else if (stencil_attachment == _stencil_attachment) {
-                return Span<const Attachment>(color_attachments) < _color_attachments;
+            } else if (fb_cold.stencil_attachment == stencil_attachment) {
+                return Span<const FramebufferAttachment>(fb_cold.color_attachments) < color_attachments;
             }
         }
     }
     return false;
-}
-
-bool Ren::Framebuffer::Setup(const ApiContext *api, const RenderPassMain &render_pass, const int _w, const int _h,
-                             const WeakImgRef _depth_attachment, const WeakImgRef _stencil_attachment,
-                             Span<const WeakImgRef> _color_attachments, const bool is_multisampled, ILog *log) {
-    if (!Changed(render_pass, _depth_attachment, _stencil_attachment, _color_attachments)) {
-        // nothing has changed
-        return true;
-    }
-
-    Destroy();
-
-    api_ = api;
-    color_attachments.clear();
-    depth_attachment = {};
-    stencil_attachment = {};
-
-    SmallVector<VkImageView, 4> image_views;
-
-    if (_depth_attachment) {
-        image_views.push_back(_depth_attachment->handle().views[0]);
-        depth_attachment = {_depth_attachment, 0, _depth_attachment->handle()};
-    }
-
-    if (_stencil_attachment) {
-        stencil_attachment = {_stencil_attachment, 0, _stencil_attachment->handle()};
-        if (_stencil_attachment->handle().views[0] != _depth_attachment->handle().views[0]) {
-            image_views.push_back(_stencil_attachment->handle().views[0]);
-        }
-    }
-
-    for (int i = 0; i < _color_attachments.size(); i++) {
-        if (_color_attachments[i]) {
-            image_views.push_back(_color_attachments[i]->handle().views[0]);
-            color_attachments.push_back({_color_attachments[i], 0, _color_attachments[i]->handle()});
-        } else {
-            color_attachments.emplace_back();
-        }
-    }
-
-    renderpass_ = render_pass.handle;
-    w = _w;
-    h = _h;
-
-    VkFramebufferCreateInfo framebuf_create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-    framebuf_create_info.renderPass = renderpass_;
-    framebuf_create_info.attachmentCount = image_views.size();
-    framebuf_create_info.pAttachments = image_views.data();
-    framebuf_create_info.width = _w;
-    framebuf_create_info.height = _h;
-    framebuf_create_info.layers = 1;
-
-    const VkResult res = api->vkCreateFramebuffer(api->device, &framebuf_create_info, nullptr, &handle_);
-    if (res != VK_SUCCESS) {
-        log->Error("Framebuffer creation failed (error %i)", int(res));
-#ifdef VERBOSE_LOGGING
-    } else {
-        log->Info("Framebuffer %p created (%i attachments)", handle_, int(image_views.size()));
-#endif
-    }
-    return res == VK_SUCCESS;
-}
-
-bool Ren::Framebuffer::Setup(const ApiContext *api, const RenderPassMain &render_pass, const int _w, const int _h,
-                             const RenderTarget &_depth_target, const RenderTarget &_stencil_target,
-                             Span<const RenderTarget> _color_targets, ILog *log) {
-    SmallVector<WeakImgRef, 4> color_refs;
-    for (int i = 0; i < _color_targets.size(); ++i) {
-        color_refs.push_back(_color_targets[i].ref);
-    }
-    if (!Changed(render_pass, _depth_target.ref, _stencil_target.ref, color_refs)) {
-        // nothing has changed
-        return true;
-    }
-
-    /*if (_color_attachments_count == 1 && !_color_attachments[0]) {
-        // default backbuffer
-        return true;
-    }*/
-
-    Destroy();
-
-    api_ = api;
-    color_attachments.clear();
-    depth_attachment = {};
-    stencil_attachment = {};
-
-    SmallVector<VkImageView, 4> image_views;
-
-    if (_depth_target) {
-        image_views.push_back(_depth_target.ref->handle().views[0]);
-        depth_attachment = {_depth_target.ref, _depth_target.view_index, _depth_target.ref->handle()};
-    }
-
-    if (_stencil_target) {
-        stencil_attachment = {_stencil_target.ref, _stencil_target.view_index, _stencil_target.ref->handle()};
-        if (!_depth_target || _stencil_target.ref->handle().views[0] != _depth_target.ref->handle().views[0]) {
-            image_views.push_back(_stencil_target.ref->handle().views[0]);
-        }
-    }
-
-    for (int i = 0; i < _color_targets.size(); i++) {
-        if (_color_targets[i]) {
-            image_views.push_back(_color_targets[i].ref->handle().views[_color_targets[i].view_index]);
-            color_attachments.push_back(
-                {_color_targets[i].ref, _color_targets[i].view_index, _color_targets[i].ref->handle()});
-        } else {
-            color_attachments.emplace_back();
-        }
-    }
-
-    renderpass_ = render_pass.handle;
-    w = _w;
-    h = _h;
-
-    VkFramebufferCreateInfo framebuf_create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-    framebuf_create_info.renderPass = renderpass_;
-    framebuf_create_info.attachmentCount = image_views.size();
-    framebuf_create_info.pAttachments = image_views.data();
-    framebuf_create_info.width = _w;
-    framebuf_create_info.height = _h;
-    framebuf_create_info.layers = 1;
-
-    const VkResult res = api->vkCreateFramebuffer(api->device, &framebuf_create_info, nullptr, &handle_);
-    if (res != VK_SUCCESS) {
-        log->Error("Framebuffer creation failed (error %i)", int(res));
-#ifdef VERBOSE_LOGGING
-    } else {
-        log->Info("Framebuffer %p created (%i attachments)", handle_, int(image_views.size()));
-#endif
-    }
-
-    return res == VK_SUCCESS;
 }
 
 #undef VERBOSE_LOGGING

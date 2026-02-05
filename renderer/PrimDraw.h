@@ -15,6 +15,25 @@
 
 namespace Eng {
 class ShaderLoader;
+
+class FramebufferPool {
+    std::vector<Ren::FramebufferHandle> framebuffers_;
+
+  public:
+    Ren::FramebufferHandle FindOrCreate(Ren::Context &ctx, Ren::RenderPassROHandle render_pass,
+                                        const Ren::FramebufferAttachment &depth,
+                                        const Ren::FramebufferAttachment &stencil,
+                                        Ren::Span<const Ren::FramebufferAttachment> color_attachments);
+    Ren::FramebufferHandle FindOrCreate(Ren::Context &ctx, Ren::RenderPassROHandle render_pass,
+                                        const Ren::RenderTarget &depth, const Ren::RenderTarget &stencil,
+                                        Ren::Span<const Ren::RenderTarget> color_attachments);
+    Ren::FramebufferHandle FindOrCreate(Ren::Context &ctx, Ren::RenderPassROHandle render_pass,
+                                        Ren::ImageRWHandle depth, Ren::ImageRWHandle stencil,
+                                        Ren::Span<const Ren::ImageRWHandle> color_attachments);
+
+    void Clear(Ren::Context &ctx);
+};
+
 class PrimDraw {
   public:
     struct Binding;
@@ -30,30 +49,23 @@ class PrimDraw {
 
     Ren::VertexInputHandle fs_quad_vtx_input_, sphere_vtx_input_;
 
-    Ren::Context *ctx_ = nullptr;
-    std::vector<Ren::Framebuffer> framebuffers_;
+    ShaderLoader *sh_ = nullptr;
 
-    const Ren::Framebuffer *FindOrCreateFramebuffer(const Ren::RenderPassMain *rp, Ren::RenderTarget depth_target,
-                                                    Ren::RenderTarget stencil_target,
-                                                    Ren::Span<const Ren::RenderTarget> color_targets);
+    FramebufferPool framebuffers_;
 
   public:
     ~PrimDraw();
 
-    bool LazyInit(Ren::Context &ctx);
+    bool LazyInit(ShaderLoader &sh);
     void CleanUp();
 
-    void DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, Ren::ProgramHandle p, Ren::RenderTarget depth_rt,
+    void DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, Ren::ProgramHandle p, const Ren::RenderTarget &depth_rt,
                   Ren::Span<const Ren::RenderTarget> color_rts, const Ren::RastState &new_rast_state,
                   Ren::RastState &applied_rast_state, Ren::Span<const Ren::Binding> bindings, const void *uniform_data,
-                  int uniform_data_len, int uniform_data_offset, int instances = 1);
-    void DrawPrim(ePrim prim, Ren::ProgramHandle p, Ren::RenderTarget depth_rt,
-                  Ren::Span<const Ren::RenderTarget> color_rts, const Ren::RastState &new_rast_state,
-                  Ren::RastState &applied_rast_state, Ren::Span<const Ren::Binding> bindings, const void *uniform_data,
-                  int uniform_data_len, int uniform_data_offset, int instances = 1);
+                  int uniform_data_len, int uniform_data_offset, FramebufferPool *framebuffers = nullptr,
+                  int instances = 1);
 
-    void ClearTarget(Ren::CommandBuffer cmd_buf, Ren::RenderTarget depth_rt,
-                     Ren::Span<const Ren::RenderTarget> color_rts);
-    void ClearTarget(Ren::RenderTarget depth_rt, Ren::Span<const Ren::RenderTarget> color_rts);
+    void ClearTarget(Ren::CommandBuffer cmd_buf, const Ren::RenderTarget &depth_rt,
+                     Ren::Span<const Ren::RenderTarget> color_rts, FramebufferPool *framebuffers = nullptr);
 };
 } // namespace Eng

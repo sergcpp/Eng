@@ -1,19 +1,23 @@
 #pragma once
 
-#include "../Renderer_DrawList.h"
+#include <Ren/Common.h>
+#include <Ren/Framebuffer.h>
+
 #include "../framegraph/FgNode.h"
 
-#include <Ren/VertexInput.h>
-
 namespace Eng {
+struct BindlessTextureData;
+struct DrawList;
+struct view_state_t;
+class ShaderLoader;
+
 class ExOpaque final : public FgExecutor {
     bool initialized = false;
 
     // lazily initialized data
     Ren::VertexInputHandle draw_pass_vi_;
     Ren::RenderPassHandle rp_opaque_;
-    Ren::Framebuffer opaque_draw_fb_[Ren::MaxFramesInFlight][2];
-    int fb_to_use_ = 0;
+
 #if defined(REN_VK_BACKEND)
     VkDescriptorSetLayout descr_set_layout_ = VK_NULL_HANDLE;
 #endif
@@ -36,23 +40,23 @@ class ExOpaque final : public FgExecutor {
     FgBufROHandle items_buf_;
     FgBufROHandle lights_buf_;
     FgBufROHandle decals_buf_;
-    FgResRef shad_tex_;
+    FgImgROHandle shadow_depth_;
     FgResRef lm_tex_[4];
-    FgResRef ssao_tex_;
-    FgResRef brdf_lut_;
-    FgResRef noise_tex_;
-    FgResRef cone_rt_lut_;
-    FgResRef dummy_black_;
+    FgImgROHandle ssao_tex_;
+    FgImgROHandle brdf_lut_;
+    FgImgROHandle noise_tex_;
+    FgImgROHandle cone_rt_lut_;
+    FgImgROHandle dummy_black_;
 
-    FgResRef color_tex_;
-    FgResRef normal_tex_;
-    FgResRef spec_tex_;
-    FgResRef depth_tex_;
+    FgImgRWHandle color_tex_;
+    FgImgRWHandle normal_tex_;
+    FgImgRWHandle spec_tex_;
+    FgImgRWHandle depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
-                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
-                  const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex);
-    void DrawOpaque(const FgContext &fg);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle color_tex, Ren::ImageRWHandle normal_tex,
+                  Ren::ImageRWHandle spec_tex, Ren::ImageRWHandle depth_tex);
+    void DrawOpaque(const FgContext &fg, Ren::ImageRWHandle color_tex, Ren::ImageRWHandle normal_tex,
+                    Ren::ImageRWHandle spec_tex, Ren::ImageRWHandle depth_tex);
 
 #if defined(REN_VK_BACKEND)
     void InitDescrSetLayout();
@@ -60,13 +64,13 @@ class ExOpaque final : public FgExecutor {
   public:
     ExOpaque(Ren::ApiContext &api, const DrawList **p_list, const view_state_t *view_state,
              const FgBufROHandle vtx_buf1, const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf,
-             const FgBufROHandle materials_buf, const BindlessTextureData *bindless_tex, const FgResRef brdf_lut,
-             const FgResRef noise_tex, const FgResRef cone_rt_lut, const FgResRef dummy_black,
+             const FgBufROHandle materials_buf, const BindlessTextureData *bindless_tex, const FgImgROHandle brdf_lut,
+             const FgImgROHandle noise_tex, const FgImgROHandle cone_rt_lut, const FgImgROHandle dummy_black,
              const FgBufROHandle instances_buf, const FgBufROHandle instance_indices_buf,
              const FgBufROHandle shared_data_buf, const FgBufROHandle cells_buf, const FgBufROHandle items_buf,
-             const FgBufROHandle lights_buf, const FgBufROHandle decals_buf, const FgResRef shadowmap_tex,
-             const FgResRef ssao_tex, const FgResRef lm_tex[], const FgResRef out_color, const FgResRef out_normals,
-             const FgResRef out_spec, const FgResRef out_depth)
+             const FgBufROHandle lights_buf, const FgBufROHandle decals_buf, const FgImgROHandle shadow_depth,
+             const FgImgROHandle ssao_tex, const FgResRef lm_tex[], const FgImgRWHandle out_color,
+             const FgImgRWHandle out_normals, const FgImgRWHandle out_spec, const FgImgRWHandle out_depth)
         : api_(api) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;
@@ -83,7 +87,7 @@ class ExOpaque final : public FgExecutor {
         items_buf_ = items_buf;
         lights_buf_ = lights_buf;
         decals_buf_ = decals_buf;
-        shad_tex_ = shadowmap_tex;
+        shadow_depth_ = shadow_depth;
 
         materials_buf_ = materials_buf;
         ssao_tex_ = ssao_tex;

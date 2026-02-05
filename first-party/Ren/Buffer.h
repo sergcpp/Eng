@@ -54,7 +54,6 @@ struct BufferMain {
     uint32_t buf = 0;
     SmallVector<std::pair<eFormat, uint32_t>, 1> views;
 #endif
-    uint32_t generation = 0;
     mutable eResState resource_state = eResState::Undefined;
 };
 
@@ -73,20 +72,16 @@ struct BufferCold {
 };
 
 inline bool operator==(const BufferMain &lhs, const BufferMain &rhs) {
-    return lhs.buf == rhs.buf && lhs.views == rhs.views && lhs.generation == rhs.generation;
+    return lhs.buf == rhs.buf && lhs.views == rhs.views;
 }
 inline bool operator!=(const BufferMain &lhs, const BufferMain &rhs) {
-    return lhs.buf != rhs.buf || lhs.views != rhs.views || lhs.generation != rhs.generation;
+    return lhs.buf != rhs.buf || lhs.views != rhs.views;
 }
 inline bool operator<(const BufferMain &lhs, const BufferMain &rhs) {
     if (lhs.buf < rhs.buf) {
         return true;
     } else if (lhs.buf == rhs.buf) {
-        if (lhs.views < rhs.views) {
-            return true;
-        } else if (lhs.views == rhs.views) {
-            return lhs.generation < rhs.generation;
-        }
+        return lhs.views < rhs.views;
     }
     return false;
 }

@@ -2,6 +2,8 @@
 
 #include <Ren/Context.h>
 
+#include "../framegraph/FgBuilder.h"
+
 void Eng::ExUpdateAccBuffers::Execute(const FgContext &fg) {
     if (fg.ren_ctx().capabilities.hwrt) {
 #if !defined(REN_GL_BACKEND)

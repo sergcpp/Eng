@@ -1,23 +1,22 @@
 #pragma once
 
-#include <Ren/Image.h>
-#include <Ren/RenderPass.h>
-
 #include "../framegraph/FgNode.h"
 
 namespace Eng {
 class PrimDraw;
+class ShaderLoader;
 struct view_state_t;
 
 class ExPostprocess final : public FgExecutor {
   public:
     struct Args {
-        FgResRef exposure_tex;
-        FgResRef color_tex;
-        FgResRef bloom_tex;
-        FgResRef lut_tex;
-        FgResRef output_tex;
-        FgResRef output_tex2;
+        FgImgROHandle exposure_tex;
+        FgImgROHandle color_tex;
+        FgImgROHandle bloom_tex;
+        FgImgROHandle lut_tex;
+
+        FgImgRWHandle output_tex;
+        FgImgRWHandle output_tex2;
 
         Ren::SamplerHandle linear_sampler;
 

@@ -63,53 +63,5 @@ inline bool operator<(const SamplingParams lhs, const SamplingParams rhs) {
     return false;
 }
 
-struct SamplingParamsPacked {
-    uint8_t filter : 2;
-    uint8_t wrap : 2;
-    uint8_t compare : 4;
-    Fixed8 lod_bias;
-
-    SamplingParamsPacked() = default;
-    SamplingParamsPacked(const SamplingParams &p)
-        : filter(uint8_t(p.filter)), wrap(uint8_t(p.wrap)), compare(uint8_t(p.compare)), lod_bias(p.lod_bias) {
-        assert(uint8_t(p.filter) < 4);
-        assert(uint8_t(p.wrap) < 4);
-        assert(uint8_t(p.compare) < 16);
-    }
-
-    operator SamplingParams() const {
-        return SamplingParams{eFilter(filter), eWrap(wrap), eCompareOp(compare), lod_bias};
-    }
-};
-static_assert(sizeof(SamplingParamsPacked) == 2);
-
-inline bool operator==(const SamplingParamsPacked lhs, const SamplingParamsPacked rhs) {
-    return lhs.filter == rhs.filter && lhs.wrap == rhs.wrap && lhs.compare == rhs.compare &&
-           lhs.lod_bias == rhs.lod_bias;
-}
-inline bool operator!=(const SamplingParamsPacked lhs, const SamplingParamsPacked rhs) { return !operator==(lhs, rhs); }
-inline bool operator==(const SamplingParamsPacked lhs, const SamplingParams rhs) {
-    return lhs.filter == uint8_t(rhs.filter) && lhs.wrap == uint8_t(rhs.wrap) && lhs.compare == uint8_t(rhs.compare) &&
-           lhs.lod_bias == rhs.lod_bias;
-}
-inline bool operator!=(const SamplingParamsPacked lhs, const SamplingParams rhs) { return !operator==(lhs, rhs); }
-
-inline bool operator<(const SamplingParamsPacked lhs, const SamplingParamsPacked rhs) {
-    if (lhs.filter < rhs.filter) {
-        return true;
-    } else if (lhs.filter == rhs.filter) {
-        if (lhs.wrap < rhs.wrap) {
-            return true;
-        } else if (lhs.wrap == rhs.wrap) {
-            if (lhs.compare < rhs.compare) {
-                return true;
-            } else if (lhs.compare == rhs.compare) {
-                return lhs.lod_bias.value() < rhs.lod_bias.value();
-            }
-        }
-    }
-    return false;
-}
-
 enum class eSamplerLoadStatus { Found, Created };
 } // namespace Ren

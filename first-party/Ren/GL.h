@@ -553,6 +553,11 @@ EXTERN_FUNC PFNGLBINDTEXTUREUNITCOMPPROC ren_glBindTextureUnit_Comp;
 #define GL_MIN 0x8007
 #define GL_MAX 0x8008
 
+#define GL_VERTEX_ATTRIB_ARRAY_SIZE            0x8623
+#define GL_VERTEX_ATTRIB_ARRAY_TYPE            0x8625
+#define GL_VERTEX_ATTRIB_ARRAY_NORMALIZED      0x886A
+#define GL_VERTEX_ATTRIB_ARRAY_RELATIVE_OFFSET 0x82D5
+
 #ifndef APIENTRY
 #if defined(_WIN32)
 #define WINAPI __stdcall
@@ -617,6 +622,12 @@ typedef void(APIENTRY *PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, G
                                                      GLsizei stride, const GLvoid *pointer);
 typedef void(APIENTRY *PFNGLVERTEXATTRIBIPOINTERPROC)(GLuint index, GLint size, GLenum type, GLsizei stride,
                                                       const void *pointer);
+typedef void(APIENTRY *PFNGLVERTEXATTRIBFORMATPROC)(GLuint attribindex, GLint size, GLenum type, GLboolean normalized,
+                                                    GLuint relativeoffset);
+typedef void(APIENTRY *PFNGLVERTEXATTRIBIFORMATPROC)(GLuint attribindex, GLint size, GLenum type,
+                                                     GLuint relativeoffset);
+typedef void(APIENTRY *PFNGLVERTEXATTRIBBINDINGPROC)(GLuint attribindex, GLuint bindingindex);
+
 typedef void(APIENTRY *PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 typedef void(APIENTRY *PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 
@@ -916,6 +927,9 @@ typedef void(APIENTRY *PFNGLNAMEDBUFFERSTORAGECOMPPROC)(GLenum target, GLuint bu
 
 typedef void(APIENTRY *PFNGLTEXTUREVIEWPROC)(GLuint texture, GLenum target, GLuint origtexture, GLenum internalformat,
                                              GLuint minlevel, GLuint numlevels, GLuint minlayer, GLuint numlayers);
+
+typedef void(APIENTRY *PFNGLGETVERTEXATTRIBIVPROC)(GLuint index, GLenum pname, GLint *params);
+
 //
 // Bindless texture
 //
@@ -976,6 +990,9 @@ typedef void(APIENTRY *PFNGLBLENDEQUATIONSEPARATEPROC)(GLenum modeRGB, GLenum mo
 #define glUniformBlockBinding ren_glUniformBlockBinding
 #define glVertexAttribPointer ren_glVertexAttribPointer
 #define glVertexAttribIPointer ren_glVertexAttribIPointer
+#define glVertexAttribFormat ren_glVertexAttribFormat
+#define glVertexAttribIFormat ren_glVertexAttribIFormat
+#define glVertexAttribBinding ren_glVertexAttribBinding
 #define glEnableVertexAttribArray ren_glEnableVertexAttribArray
 #define glDisableVertexAttribArray ren_glDisableVertexAttribArray
 #define glCreateShader ren_glCreateShader
@@ -1177,6 +1194,8 @@ typedef void(APIENTRY *PFNGLBLENDEQUATIONSEPARATEPROC)(GLenum modeRGB, GLenum mo
 
 #define glTextureView ren_glTextureView
 
+#define glGetVertexAttribiv ren_glGetVertexAttribiv
+
 //
 // Bindless texture
 //
@@ -1234,6 +1253,9 @@ EXTERN_FUNC PFNGLGETUNIFORMBLOCKINDEXPROC ren_glGetUniformBlockIndex;
 EXTERN_FUNC PFNGLUNIFORMBLOCKBINDINGPROC ren_glUniformBlockBinding;
 EXTERN_FUNC PFNGLVERTEXATTRIBPOINTERPROC ren_glVertexAttribPointer;
 EXTERN_FUNC PFNGLVERTEXATTRIBIPOINTERPROC ren_glVertexAttribIPointer;
+EXTERN_FUNC PFNGLVERTEXATTRIBFORMATPROC ren_glVertexAttribFormat;
+EXTERN_FUNC PFNGLVERTEXATTRIBIFORMATPROC ren_glVertexAttribIFormat;
+EXTERN_FUNC PFNGLVERTEXATTRIBBINDINGPROC ren_glVertexAttribBinding;
 EXTERN_FUNC PFNGLENABLEVERTEXATTRIBARRAYPROC ren_glEnableVertexAttribArray;
 EXTERN_FUNC PFNGLDISABLEVERTEXATTRIBARRAYPROC ren_glDisableVertexAttribArray;
 
@@ -1449,6 +1471,8 @@ EXTERN_FUNC PFNGLNAMEDBUFFERSTORAGEPROC ren_glNamedBufferStorage;
 EXTERN_FUNC PFNGLNAMEDBUFFERSTORAGECOMPPROC ren_glNamedBufferStorage_Comp;
 
 EXTERN_FUNC PFNGLTEXTUREVIEWPROC ren_glTextureView;
+
+EXTERN_FUNC PFNGLGETVERTEXATTRIBIVPROC ren_glGetVertexAttribiv;
 
 //
 // Bindless texture

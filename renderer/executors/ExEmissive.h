@@ -1,20 +1,22 @@
 #pragma once
 
-#include "../Renderer_DrawList.h"
+#include <Ren/Common.h>
+#include <Ren/Framebuffer.h>
+
 #include "../framegraph/FgNode.h"
 
-#include <Ren/VertexInput.h>
-
 namespace Eng {
+struct BindlessTextureData;
+struct DrawList;
+struct view_state_t;
+class ShaderLoader;
+
 class ExEmissive final : public FgExecutor {
     bool initialized = false;
 
     // lazily initialized data
     Ren::PipelineHandle pi_simple_[3];
     Ren::PipelineHandle pi_vegetation_[2];
-
-    Ren::Framebuffer main_draw_fb_[Ren::MaxFramesInFlight][2];
-    int fb_to_use_ = 0;
 
     // temp data
     const view_state_t *view_state_ = nullptr;
@@ -31,22 +33,21 @@ class ExEmissive final : public FgExecutor {
     FgBufROHandle instance_indices_buf_;
     FgBufROHandle shared_data_buf_;
     FgBufROHandle materials_buf_;
-    FgResRef noise_tex_;
-    FgResRef dummy_white_;
+    FgImgROHandle noise_tex_;
+    FgImgROHandle dummy_white_;
 
-    FgResRef out_color_tex_;
-    FgResRef out_depth_tex_;
+    FgImgRWHandle out_color_tex_;
+    FgImgRWHandle out_depth_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
-                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &depth_tex);
-    void DrawOpaque(const FgContext &fg);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle color_tex, Ren::ImageRWHandle depth_tex);
+    void DrawOpaque(const FgContext &fg, Ren::ImageRWHandle color_tex, Ren::ImageRWHandle depth_tex);
 
   public:
     ExEmissive(const DrawList **p_list, const view_state_t *view_state, const FgBufROHandle vtx_buf1,
                const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
-               const BindlessTextureData *bindless_tex, const FgResRef noise_tex, const FgResRef dummy_white,
+               const BindlessTextureData *bindless_tex, const FgImgROHandle noise_tex, const FgImgROHandle dummy_white,
                const FgBufROHandle instances_buf, const FgBufROHandle instance_indices_buf,
-               const FgBufROHandle shared_data_buf, const FgResRef out_color, const FgResRef out_depth) {
+               const FgBufROHandle shared_data_buf, const FgImgRWHandle out_color, const FgImgRWHandle out_depth) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;
 

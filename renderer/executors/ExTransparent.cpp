@@ -4,22 +4,21 @@
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 
 void Eng::ExTransparent::Execute(const FgContext &fg) {
-    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+    const Ren::ImageRWHandle color_tex = fg.AccessRWImage(color_tex_);
+    const Ren::ImageRWHandle normal_tex = fg.AccessRWImage(normal_tex_);
+    const Ren::ImageRWHandle spec_tex = fg.AccessRWImage(spec_tex_);
+    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(depth_tex_);
 
-    Ren::WeakImgRef color_tex = fg.AccessRWImageRef(color_tex_);
-    Ren::WeakImgRef normal_tex = fg.AccessRWImageRef(normal_tex_);
-    Ren::WeakImgRef spec_tex = fg.AccessRWImageRef(spec_tex_);
-    Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(depth_tex_);
-
-    LazyInit(fg.ren_ctx(), fg.sh(), vtx_buf1, vtx_buf2, ndx_buf, color_tex, normal_tex, spec_tex, depth_tex);
-    DrawTransparent(fg, color_tex);
+    LazyInit(fg.ren_ctx(), fg.sh(), color_tex, normal_tex, spec_tex, depth_tex);
+    DrawTransparent(fg, color_tex, normal_tex, spec_tex, depth_tex);
 }
 
-void Eng::ExTransparent::DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &color_tex) {
+void Eng::ExTransparent::DrawTransparent(const FgContext &fg, const Ren::ImageRWHandle color_tex,
+                                         const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex,
+                                         const Ren::ImageRWHandle depth_tex) {
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
@@ -29,17 +28,17 @@ void Eng::ExTransparent::DrawTransparent(const FgContext &fg, const Ren::WeakImg
     const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
     const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
-    const Ren::Image &shad_tex = fg.AccessROImage(shad_tex_);
-    const Ren::Image &ssao_tex = fg.AccessROImage(ssao_tex_);
+    const Ren::ImageROHandle shad_tex = fg.AccessROImage(shadow_depth_);
+    const Ren::ImageROHandle ssao_tex = fg.AccessROImage(ssao_tex_);
 
     DrawTransparent_Simple(fg, instances_buf, instance_indices_buf, unif_shared_data_buf, materials_buf, cells_buf,
-                           items_buf, lights_buf, decals_buf, shad_tex, color_tex, ssao_tex);
+                           items_buf, lights_buf, decals_buf, shad_tex, color_tex, normal_tex, spec_tex, depth_tex,
+                           ssao_tex);
 }
 
-void Eng::ExTransparent::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
-                                  const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
-                                  const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &normal_tex,
-                                  const Ren::WeakImgRef &spec_tex, const Ren::WeakImgRef &depth_tex) {
+void Eng::ExTransparent::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle color_tex,
+                                  const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex,
+                                  const Ren::ImageRWHandle depth_tex) {
     const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store},
                                                {normal_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store},
                                                {spec_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
@@ -47,20 +46,18 @@ void Eng::ExTransparent::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
                                             Ren::eStoreOp::Store};
 
     if (!initialized) {
-        rp_transparent_ = sh.LoadRenderPass(depth_target, color_targets);
+        rp_transparent_ = sh.FindOrCreateRenderPass(depth_target, color_targets);
 
-        [[maybe_unused]] static const int buf1_stride = 16, buf2_stride = 16;
+        [[maybe_unused]] const int buf1_stride = 16, buf2_stride = 16;
 
         { // VertexInput for main drawing (uses all attributes)
             const Ren::VtxAttribDesc attribs[] = {
-                // Attributes from buffer 1
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)},
-                // Attributes from buffer 2
-                {vtx_buf2, VTX_NOR_LOC, 4, Ren::eType::Int16_snorm, buf1_stride, 0},
-                {vtx_buf2, VTX_TAN_LOC, 2, Ren::eType::Int16_snorm, buf1_stride, 4 * sizeof(uint16_t)},
-                {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf1_stride, 6 * sizeof(uint16_t)}};
-            draw_pass_vi_ = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)},
+                {1, VTX_NOR_LOC, 4, Ren::eType::Int16_snorm, buf1_stride, 0, 0},
+                {1, VTX_TAN_LOC, 2, Ren::eType::Int16_snorm, buf1_stride, 0, 4 * sizeof(uint16_t)},
+                {1, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf1_stride, 0, 6 * sizeof(uint16_t)}};
+            draw_pass_vi_ = sh.FindOrCreateVertexInput(attribs);
         }
 
 #if defined(REN_VK_BACKEND)
@@ -69,28 +66,6 @@ void Eng::ExTransparent::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, cons
 
         initialized = true;
     }
-
-    fb_to_use_ = (fb_to_use_ + 1) % 2;
-
-    const Ren::RenderPassMain &rp_transparent_main = ctx.render_passes().Get(rp_transparent_).first;
-    if (!transparent_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(
-            &ctx.api(), rp_transparent_main, color_tex->params.w, color_tex->params.h, depth_target, depth_target,
-            color_targets, ctx.log())) {
-        ctx.log()->Error("ExTransparent: transparent_draw_fb_ init failed!");
-    }
-
-#if !defined(REN_VK_BACKEND)
-    if (!color_only_fb_[fb_to_use_].Setup(&ctx.api(), Ren::RenderPassMain{}, color_tex->params.w, color_tex->params.h,
-                                          color_tex, depth_tex, depth_tex, false, ctx.log())) {
-        ctx.log()->Error("ExTransparent: color_only_fb_ init failed!");
-    }
-
-    // if (!resolved_fb_.Setup(ctx.api(), {}, transparent_tex.desc.w, transparent_tex.desc.h, transparent_tex.ref,
-    // {},
-    //                         {}, false)) {
-    //     ctx.log()->Error("ExTransparent: resolved_fb_ init failed!");
-    // }
-#endif
 
     /*if (moments_b0_.id && moments_z_and_z2_.id && moments_z3_and_z4_.id) {
         const Ren::ImgHandle attachments[] = {moments_b0_, moments_z_and_z2_,

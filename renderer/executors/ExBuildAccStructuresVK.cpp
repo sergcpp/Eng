@@ -3,6 +3,9 @@
 #include <Ren/Context.h>
 #include <Ren/VKCtx.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
+
 void Eng::ExBuildAccStructures::Execute_HWRT(const FgContext &fg) {
     const Ren::BufferROHandle rt_obj_instances_buf = fg.AccessROBuffer(rt_obj_instances_buf_ro_);
     [[maybe_unused]] const Ren::BufferHandle rt_tlas_buf = fg.AccessRWBuffer(rt_tlas_buf_);
@@ -10,7 +13,7 @@ void Eng::ExBuildAccStructures::Execute_HWRT(const FgContext &fg) {
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
 
-    auto *vk_tlas = reinterpret_cast<Ren::AccStructureVK *>(acc_struct_data_->rt_tlases[rt_index_]);
+    auto *vk_tlas = reinterpret_cast<Ren::AccStructureVK *>(rt_tlas_);
 
     const Ren::BufferMain &rt_obj_instances_buf_main = fg.storages().buffers.Get(rt_obj_instances_buf).first;
     VkAccelerationStructureGeometryInstancesDataKHR instances_data = {

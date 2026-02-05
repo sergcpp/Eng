@@ -1,6 +1,7 @@
 #include "SceneData.h"
 
 #include <Ren/Context.h>
+#include <Ren/ResizableBuffer.h>
 #if defined(REN_VK_BACKEND)
 #include <Ren/DescriptorPool.h>
 #include <Ren/VKCtx.h>
@@ -11,11 +12,14 @@ Eng::PersistentGpuData::PersistentGpuData(Ren::Context &_ctx) : ctx(_ctx) {}
 Eng::PersistentGpuData::~PersistentGpuData() {
     Release();
 
-    ctx.ReleaseBuffer(vertex_buf1);
-    ctx.ReleaseBuffer(vertex_buf2);
-    ctx.ReleaseBuffer(indices_buf);
-    ctx.ReleaseBuffer(skin_vertex_buf);
-    ctx.ReleaseBuffer(delta_buf);
+    if (trilinear_sampler) {
+        ctx.ReleaseSampler(trilinear_sampler);
+    }
+    vertex_buf1.reset();
+    vertex_buf2.reset();
+    indices_buf.reset();
+    skin_vertex_buf.reset();
+    delta_buf.reset();
 }
 
 void Eng::PersistentGpuData::Release() {
@@ -54,25 +58,24 @@ void Eng::PersistentGpuData::Release() {
     }
     materials_buf = {};
     if (vertex_buf1) {
-        const auto &[vertex_buf1_main, vertex_buf1_cold] = ctx.buffers().Get(vertex_buf1);
-        Buffer_Resize(api, vertex_buf1_main, vertex_buf1_cold, 128, ctx.log(), false, true /* destroy_immediately */);
+        vertex_buf1->Release(true /* immediately */);
+        vertex_buf1 = {};
     }
     if (vertex_buf2) {
-        const auto &[vertex_buf2_main, vertex_buf2_cold] = ctx.buffers().Get(vertex_buf2);
-        Buffer_Resize(api, vertex_buf2_main, vertex_buf2_cold, 128, ctx.log(), false, true /* destroy_immediately */);
+        vertex_buf2->Release(true /* immediately */);
+        vertex_buf2 = {};
     }
     if (skin_vertex_buf) {
-        const auto &[skin_vertex_buf_main, skin_vertex_buf_cold] = ctx.buffers().Get(skin_vertex_buf);
-        Buffer_Resize(api, skin_vertex_buf_main, skin_vertex_buf_cold, 128, ctx.log(), false,
-                      true /* destroy_immediately */);
+        skin_vertex_buf->Release(true /* immediately */);
+        skin_vertex_buf = {};
     }
     if (delta_buf) {
-        const auto &[delta_buf_main, delta_buf_cold] = ctx.buffers().Get(delta_buf);
-        Buffer_Resize(api, delta_buf_main, delta_buf_cold, 128, ctx.log(), false, true /* destroy_immediately */);
+        delta_buf->Release(true /* immediately */);
+        delta_buf = {};
     }
     if (indices_buf) {
-        const auto &[indices_buf_main, indices_buf_cold] = ctx.buffers().Get(indices_buf);
-        Buffer_Resize(api, indices_buf_main, indices_buf_cold, 128, ctx.log(), false, true /* destroy_immediately */);
+        indices_buf->Release(true /* immediately */);
+        indices_buf = {};
     }
     if (stoch_lights_buf) {
         ctx.ReleaseBuffer(stoch_lights_buf);
@@ -93,17 +96,26 @@ void Eng::PersistentGpuData::Release() {
     }
     hwrt = {};
     if (swrt.rt_prim_indices_buf) {
-        ctx.ReleaseBuffer(swrt.rt_prim_indices_buf);
+        swrt.rt_prim_indices_buf->Release(true /* immediately */);
+        swrt.rt_prim_indices_buf = {};
     }
     if (swrt.rt_blas_buf) {
-        ctx.ReleaseBuffer(swrt.rt_blas_buf);
+        swrt.rt_blas_buf->Release(true /* immediately */);
+        swrt.rt_blas_buf = {};
     }
     swrt = {};
 
     std::fill(std::begin(rt_tlas), std::end(rt_tlas), nullptr);
 
-    probe_irradiance = {};
-    probe_distance = {};
-    probe_offset = {};
+    if (probe_irradiance) {
+        ctx.ReleaseImage(probe_irradiance, true /* immediately */);
+    }
+    if (probe_distance) {
+        ctx.ReleaseImage(probe_distance, true /* immediately */);
+    }
+    if (probe_offset) {
+        ctx.ReleaseImage(probe_offset, true /* immediately */);
+    }
+    probe_irradiance = probe_distance = probe_offset = {};
     probe_volumes.clear();
 }

@@ -48,6 +48,20 @@ uint32_t Ren::GLBindTarget(const Image &img, const int view) {
     return GL_TEXTURE_2D;
 }
 
+uint32_t Ren::GLBindTarget(const ImageCold &img, const int view) {
+    if (view == 0) {
+        // NOTE: Assume all additional views are 2D textures
+        return GL_TEXTURE_2D;
+    }
+    if (Bitmask<eImgFlags>{img.params.flags} & eImgFlags::Array) {
+        return GL_TEXTURE_2D_ARRAY;
+    }
+    if (img.params.d != 0) {
+        return GL_TEXTURE_3D;
+    }
+    return GL_TEXTURE_2D;
+}
+
 void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, const StoragesRef &storages,
                           Vec3u grp_count, Span<const Binding> bindings, const void *uniform_data, int uniform_data_len,
                           DescrMultiPoolAlloc &descr_alloc, ILog *log) {
@@ -56,12 +70,22 @@ void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, 
         assert((occupied[g_gl_bind_target_index[int(b.trg)]] & (1u << (b.loc + b.offset))) == 0);
         occupied[g_gl_bind_target_index[int(b.trg)]] |= (1u << (b.loc + b.offset));
         if (b.trg == eBindTarget::Tex || b.trg == eBindTarget::TexSampled) {
-            auto texture_id = GLuint(b.handle.img->id());
-            if (b.handle.view_index) {
-                texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+            if (b.handle.img_new) {
+                const auto &[img_main, img_cold] = storages.images.Get(b.handle.img_new);
+                auto texture_id = GLuint(img_main.img);
+                if (b.handle.view_index) {
+                    texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
+                }
+                ren_glBindTextureUnit_Comp(GLBindTarget(img_cold, b.handle.view_index), GLuint(b.loc + b.offset),
+                                           texture_id);
+            } else {
+                auto texture_id = GLuint(b.handle.img->id());
+                if (b.handle.view_index) {
+                    texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+                }
+                ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
+                                           texture_id);
             }
-            ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
-                                       texture_id);
             if (b.handle.sampler) {
                 ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
             } else {
@@ -100,14 +124,27 @@ void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, 
         } else if (b.trg == eBindTarget::Sampler) {
             ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
         } else if (b.trg == eBindTarget::ImageRO || b.trg == eBindTarget::ImageRW) {
-            auto texture_id = GLuint(b.handle.img->id());
-            if (b.handle.view_index) {
-                texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+            if (b.handle.img_new) {
+                const auto &[img_main, img_cold] = storages.images.Get(b.handle.img_new);
+
+                auto texture_id = GLuint(img_main.img);
+                if (b.handle.view_index) {
+                    texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
+                }
+                const bool layered = Bitmask<eImgFlags>(img_cold.params.flags) & eImgFlags::Array;
+                glBindImageTexture(GLuint(b.loc + b.offset), texture_id, 0, layered ? GL_TRUE : GL_FALSE, 0,
+                                   b.trg == eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
+                                   GLInternalFormatFromFormat(img_cold.params.format));
+            } else {
+                auto texture_id = GLuint(b.handle.img->id());
+                if (b.handle.view_index) {
+                    texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+                }
+                const bool layered = Bitmask<eImgFlags>(b.handle.img->params.flags) & eImgFlags::Array;
+                glBindImageTexture(GLuint(b.loc + b.offset), texture_id, 0, layered ? GL_TRUE : GL_FALSE, 0,
+                                   b.trg == eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
+                                   GLInternalFormatFromFormat(b.handle.img->params.format));
             }
-            const bool layered = Bitmask<eImgFlags>(b.handle.img->params.flags) & eImgFlags::Array;
-            glBindImageTexture(GLuint(b.loc + b.offset), texture_id, 0, layered ? GL_TRUE : GL_FALSE, 0,
-                               b.trg == eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
-                               GLInternalFormatFromFormat(b.handle.img->params.format));
         } else if (b.trg == eBindTarget::BindlessDescriptors) {
             const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.bindless->buf);
             if (b.offset || b.size) {
@@ -171,12 +208,22 @@ void Ren::DispatchComputeIndirect(CommandBuffer, const PipelineHandle pipeline, 
         assert((occupied[g_gl_bind_target_index[int(b.trg)]] & (1u << (b.loc + b.offset))) == 0);
         occupied[g_gl_bind_target_index[int(b.trg)]] |= (1u << (b.loc + b.offset));
         if (b.trg == eBindTarget::Tex || b.trg == eBindTarget::TexSampled) {
-            auto texture_id = GLuint(b.handle.img->id());
-            if (b.handle.view_index) {
-                texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+            if (b.handle.img_new) {
+                const auto &[img_main, img_cold] = storages.images.Get(b.handle.img_new);
+                auto texture_id = GLuint(img_main.img);
+                if (b.handle.view_index) {
+                    texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
+                }
+                ren_glBindTextureUnit_Comp(GLBindTarget(img_cold, b.handle.view_index), GLuint(b.loc + b.offset),
+                                           texture_id);
+            } else {
+                auto texture_id = GLuint(b.handle.img->id());
+                if (b.handle.view_index) {
+                    texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+                }
+                ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
+                                           texture_id);
             }
-            ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
-                                       texture_id);
             if (b.handle.sampler) {
                 ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
             } else {
@@ -215,14 +262,27 @@ void Ren::DispatchComputeIndirect(CommandBuffer, const PipelineHandle pipeline, 
         } else if (b.trg == eBindTarget::Sampler) {
             ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
         } else if (b.trg == eBindTarget::ImageRO || b.trg == eBindTarget::ImageRW) {
-            auto texture_id = GLuint(b.handle.img->id());
-            if (b.handle.view_index) {
-                texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+            if (b.handle.img_new) {
+                const auto &[img_main, img_cold] = storages.images.Get(b.handle.img_new);
+
+                auto texture_id = GLuint(img_main.img);
+                if (b.handle.view_index) {
+                    texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
+                }
+                const bool layered = Bitmask<eImgFlags>(img_cold.params.flags) & eImgFlags::Array;
+                glBindImageTexture(GLuint(b.loc + b.offset), texture_id, 0, layered ? GL_TRUE : GL_FALSE, 0,
+                                   b.trg == eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
+                                   GLInternalFormatFromFormat(img_cold.params.format));
+            } else {
+                auto texture_id = GLuint(b.handle.img->id());
+                if (b.handle.view_index) {
+                    texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+                }
+                const bool layered = Bitmask<eImgFlags>(b.handle.img->params.flags) & eImgFlags::Array;
+                glBindImageTexture(GLuint(b.loc + b.offset), texture_id, 0, layered ? GL_TRUE : GL_FALSE, 0,
+                                   b.trg == eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
+                                   GLInternalFormatFromFormat(b.handle.img->params.format));
             }
-            const bool layered = Bitmask<eImgFlags>(b.handle.img->params.flags) & eImgFlags::Array;
-            glBindImageTexture(GLuint(b.loc + b.offset), texture_id, 0, layered ? GL_TRUE : GL_FALSE, 0,
-                               b.trg == eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
-                               GLInternalFormatFromFormat(b.handle.img->params.format));
         } else if (b.trg == eBindTarget::BindlessDescriptors) {
             const auto &[buf_main, buf_cold] = storages.buffers.Get(b.handle.bindless->buf);
             if (b.offset || b.size) {

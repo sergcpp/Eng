@@ -20,103 +20,76 @@ const VkFormat g_attrib_formats_vk[][4] = {
 };
 static_assert(std::size(g_attrib_formats_vk) == int(eType::_Count));
 
-const int g_type_sizes[] = {
-    -1,               // Undefined
-    sizeof(uint16_t), // Float16
-    sizeof(float),    // Float32
-    sizeof(uint32_t), // Uint32
-    sizeof(uint16_t), // Uint16
-    sizeof(uint16_t), // Uint16UNorm
-    sizeof(int16_t),  // Int16SNorm
-    sizeof(uint8_t),  // Uint8UNorm
-    sizeof(int32_t),  // Int32
-};
-static_assert(std::size(g_type_sizes) == int(eType::_Count));
-
-const int MaxVertexInputAttributeOffset = 16; // 16 seems to be supported by all implementations
+extern const int g_type_sizes[];
 } // namespace Ren
 
-bool Ren::VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> _attribs,
-                           const BufferROHandle _elem_buf) {
+bool Ren::VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> _attribs) {
     vtx_input.attribs.assign(_attribs.begin(), _attribs.end());
-    vtx_input.elem_buf = _elem_buf;
     return true;
 }
 
 void Ren::VertexInput_Destroy(VertexInputMain &vtx_input) { vtx_input = {}; }
 
 void Ren::VertexInput_BindBuffers(const ApiContext &api, const VertexInputMain &vtx_input,
-                                  const DualStorage<BufferMain, BufferCold> &buffers, VkCommandBuffer cmd_buf,
-                                  const uint32_t index_offset, const int index_type) {
+                                  const DualStorage<BufferMain, BufferCold> &buffers,
+                                  Span<const BufferROHandle> attrib_bufs, const BufferROHandle elem_buf,
+                                  VkCommandBuffer cmd_buf, uint32_t index_offset, int index_type) {
     SmallVector<VkBuffer, 8> buffers_to_bind;
     SmallVector<VkDeviceSize, 8> buffer_offsets;
-    for (const auto &attr_descr : vtx_input.attribs) {
+    for (const VtxAttribDesc &attr : vtx_input.attribs) {
         int bound_index = -1;
         for (int i = 0; i < int(buffers_to_bind.size()); ++i) {
-            if (buffers_to_bind[i] == buffers.Get(attr_descr.buf).first.buf &&
-                (attr_descr.offset <= MaxVertexInputAttributeOffset || buffer_offsets[i] == attr_descr.offset)) {
+            if (buffers_to_bind[i] == buffers.Get(attrib_bufs[attr.buf]).first.buf &&
+                buffer_offsets[i] == attr.base_offset) {
                 bound_index = i;
                 break;
             }
         }
         if (bound_index == -1) {
-            buffers_to_bind.push_back(buffers.Get(attr_descr.buf).first.buf);
-            if (attr_descr.offset > MaxVertexInputAttributeOffset) {
-                buffer_offsets.push_back(attr_descr.offset);
-            } else {
-                // attribute offset will be used instead
-                buffer_offsets.push_back(0);
-            }
+            buffers_to_bind.push_back(buffers.Get(attrib_bufs[attr.buf]).first.buf);
+            buffer_offsets.push_back(attr.base_offset);
         }
     }
-
     api.vkCmdBindVertexBuffers(cmd_buf, 0, buffers_to_bind.size(), buffers_to_bind.cdata(), buffer_offsets.cdata());
-    if (vtx_input.elem_buf) {
-        api.vkCmdBindIndexBuffer(cmd_buf, buffers.Get(vtx_input.elem_buf).first.buf, VkDeviceSize(index_offset),
+    if (elem_buf) {
+        api.vkCmdBindIndexBuffer(cmd_buf, buffers.Get(elem_buf).first.buf, VkDeviceSize(index_offset),
                                  VkIndexType(index_type));
     }
 }
 
 void Ren::VertexInput_FillVKDescriptions(
-    const VertexInputMain &vtx_input, const DualStorage<BufferMain, BufferCold> &buffers,
+    const VertexInputMain &vtx_input,
     SmallVectorImpl<VkVertexInputBindingDescription, aligned_allocator<VkVertexInputBindingDescription, 4>>
         &out_bindings,
     SmallVectorImpl<VkVertexInputAttributeDescription, aligned_allocator<VkVertexInputAttributeDescription, 4>>
         &out_attribs) {
-    SmallVector<std::pair<BufferROHandle, VkDeviceSize>, 8> bound_buffers;
-    for (const auto &attr_descr : vtx_input.attribs) {
+    SmallVector<std::pair<int, VkDeviceSize>, 8> bound_buffers;
+    for (const VtxAttribDesc &attr : vtx_input.attribs) {
         auto &vk_attr = out_attribs.emplace_back();
-        vk_attr.location = uint32_t(attr_descr.loc);
-        vk_attr.format = g_attrib_formats_vk[int(attr_descr.type)][attr_descr.size - 1];
-        if (attr_descr.offset > MaxVertexInputAttributeOffset) {
-            // binding offset will be used instead
-            vk_attr.offset = 0;
-        } else {
-            vk_attr.offset = attr_descr.offset;
-        }
+        vk_attr.location = uint32_t(attr.loc);
+        vk_attr.format = g_attrib_formats_vk[int(attr.type)][attr.size - 1];
+        vk_attr.offset = attr.rel_offset;
         vk_attr.binding = 0xffffffff;
 
         for (uint32_t i = 0; i < uint32_t(bound_buffers.size()); ++i) {
-            if (bound_buffers[i].first == attr_descr.buf &&
-                (attr_descr.offset <= MaxVertexInputAttributeOffset || bound_buffers[i].second == attr_descr.offset)) {
+            if (bound_buffers[i].first == attr.buf && bound_buffers[i].second == attr.base_offset) {
                 vk_attr.binding = i;
                 break;
             }
         }
-
         if (vk_attr.binding == 0xffffffff) {
-            vk_attr.binding = uint32_t(bound_buffers.size());
+            vk_attr.binding = uint32_t(out_bindings.size());
 
             auto &vk_binding = out_bindings.emplace_back();
             vk_binding.binding = uint32_t(bound_buffers.size());
-            if (attr_descr.stride) {
-                vk_binding.stride = uint32_t(attr_descr.stride);
+            if (attr.stride) {
+                vk_binding.stride = uint32_t(attr.stride);
             } else {
-                vk_binding.stride = uint32_t(g_type_sizes[int(attr_descr.type)]) * attr_descr.size;
+                vk_binding.stride = uint32_t(g_type_sizes[int(attr.type)]) * attr.size;
             }
             vk_binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-            bound_buffers.emplace_back(attr_descr.buf, attr_descr.offset);
+            bound_buffers.emplace_back(attr.buf, attr.base_offset);
         }
     }
 }

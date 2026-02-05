@@ -103,6 +103,8 @@ set(SOURCE_FILES AccStructure.h
                  RastState.cpp
                  RenderPass.h
                  RenderPass.cpp
+                 ResizableBuffer.h
+                 ResizableBuffer.cpp
                  Resource.h
                  Resource.cpp
                  RingBuffer.h

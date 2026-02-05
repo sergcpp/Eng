@@ -8,9 +8,12 @@
 
 namespace Ren {
 class ILog;
+struct ImageMain;
+struct ImageCold;
 
-class Image;
-using ImgRef = StrongRef<Image, NamedStorage<Image>>;
+using ImageRWHandle = Handle<ImageMain, RWTag>;
+using ImageROHandle = Handle<ImageMain, ROTag>;
+using ImageHandle = ImageRWHandle;
 
 struct ApiContext {
     void *vulkan_module = {};
@@ -30,7 +33,7 @@ struct ApiContext {
     VkPresentModeKHR present_mode = {};
     SmallVector<VkImage, MaxFramesInFlight> present_images;
     SmallVector<VkImageView, MaxFramesInFlight> present_image_views;
-    SmallVector<ImgRef, MaxFramesInFlight> present_image_refs;
+    SmallVector<ImageHandle, MaxFramesInFlight> present_image_handles;
     VkSwapchainKHR swapchain = {};
 
     uint32_t active_present_image = 0;
@@ -77,7 +80,7 @@ struct ApiContext {
     uint32_t supported_stages_mask = 0xffffffff;
 
     // generation counters
-    mutable uint32_t buffer_counter = 0;
+    mutable uint32_t image_counter = 0;
 
     // resources scheduled for deferred destruction
     mutable std::vector<VkImage> images_to_destroy[MaxFramesInFlight];

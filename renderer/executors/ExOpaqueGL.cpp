@@ -7,6 +7,9 @@
 #include <Ren/GL.h>
 #include <Ren/RastState.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
+
 namespace ExSharedInternal {
 void _bind_textures_and_samplers(Ren::Context &ctx, const Ren::Material &mat) {
     assert(mat.textures.size() == mat.samplers.size());
@@ -21,8 +24,10 @@ uint32_t _draw_list_range_full(const Eng::FgContext &fg, const Ren::MaterialStor
                                uint64_t &cur_mat_id, uint64_t &cur_pipe_id, uint64_t &cur_prog_id,
                                Eng::backend_info_t &backend_info) {
     auto &ren_ctx = fg.ren_ctx();
-    const Ren::PipelineMain *pipelines = fg.pipelines().data_main();
-    const Ren::ProgramMain *programs = fg.programs().data_main();
+
+    const Ren::StoragesRef &storages = fg.storages();
+    const Ren::PipelineMain *pipelines = storages.pipelines.data_main();
+    const Ren::ProgramMain *programs = storages.programs.data_main();
 
     GLenum cur_primitive;
     if (cur_prog_id != 0xffffffffffffffff) {
@@ -85,8 +90,10 @@ uint32_t _draw_list_range_full_rev(const Eng::FgContext &fg, const Ren::Material
                                    uint64_t &cur_mat_id, uint64_t &cur_pipe_id, uint64_t &cur_prog_id,
                                    Eng::backend_info_t &backend_info) {
     auto &ren_ctx = fg.ren_ctx();
-    const Ren::PipelineMain *pipelines = fg.pipelines().data_main();
-    const Ren::ProgramMain *programs = fg.programs().data_main();
+
+    const Ren::StoragesRef &storages = fg.storages();
+    const Ren::PipelineMain *pipelines = storages.pipelines.data_main();
+    const Ren::ProgramMain *programs = storages.programs.data_main();
 
     int i = int(ndx);
     for (; i >= 0; i--) {
@@ -130,8 +137,13 @@ uint32_t _draw_list_range_full_rev(const Eng::FgContext &fg, const Ren::Material
 }
 } // namespace ExSharedInternal
 
-void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
+void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle color_tex,
+                               const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex,
+                               const Ren::ImageRWHandle depth_tex) {
     using namespace ExSharedInternal;
+
+    const Ren::ApiContext &api = fg.ren_ctx().api();
+    const Ren::StoragesRef &storages = fg.storages();
 
     Ren::RastState rast_state;
     rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
@@ -149,8 +161,11 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         rast_state.depth.compare_op = unsigned(Ren::eCompareOp::LEqual);
     }
 
+    const Ren::ImageRWHandle color_targets[] = {color_tex, normal_tex, spec_tex};
+    const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_opaque_, depth_tex, depth_tex, color_targets);
+
     // Bind main buffer for drawing
-    glBindFramebuffer(GL_FRAMEBUFFER, opaque_draw_fb_[0][fb_to_use_].id());
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb).first.id);
 
     rast_state.viewport[2] = view_state_->ren_res[0];
     rast_state.viewport[3] = view_state_->ren_res[1];
@@ -158,14 +173,12 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     rast_state.ApplyChanged(fg.rast_state());
     fg.rast_state() = rast_state;
 
-    const Ren::StoragesRef &storages = fg.storages();
-
-    const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(draw_pass_vi_).first;
-    glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
-
     //
     // Bind resources (shadow atlas, lightmap, cells item data)
     //
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
@@ -175,22 +188,25 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     const Ren::BufferROHandle lights_buf = fg.AccessROBuffer(lights_buf_);
     const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
-    const Ren::Image &shad_tex = fg.AccessROImage(shad_tex_);
-    const Ren::Image &ssao_tex = fg.AccessROImage(ssao_tex_);
-    const Ren::Image &brdf_lut = fg.AccessROImage(brdf_lut_);
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
-    const Ren::Image &cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
+    const Ren::ImageROHandle shadow_depth = fg.AccessROImage(shadow_depth_);
+    const Ren::ImageROHandle ssao_tex = fg.AccessROImage(ssao_tex_);
+    const Ren::ImageROHandle brdf_lut = fg.AccessROImage(brdf_lut_);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle cone_rt_lut = fg.AccessROImage(cone_rt_lut_);
 
-    const Ren::Image &dummy_black = fg.AccessROImage(dummy_black_);
+    const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
 
-    const Ren::Image *lm_tex[4];
+    Ren::ImageROHandle lm_tex[4];
     for (int i = 0; i < 4; ++i) {
-        if (lm_tex_[i]) {
-            lm_tex[i] = &fg.AccessROImage(lm_tex_[i]);
-        } else {
-            lm_tex[i] = &dummy_black;
-        }
+        // if (lm_tex_[i]) {
+        // lm_tex[i] = &fg.AccessROImage(lm_tex_[i]);
+        //} else {
+        lm_tex[i] = dummy_black;
+        //}
     }
+
+    const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(draw_pass_vi_).first;
+    VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
     const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
@@ -202,18 +218,22 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
     glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SHAD_TEX, shad_tex.id());
+    const Ren::ImageMain &shadow_depth_main = storages.images.Get(shadow_depth).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SHAD_TEX, shadow_depth_main.img);
 
     if ((*p_list_)->decals_atlas) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_DECAL_TEX, (*p_list_)->decals_atlas->tex_id(0));
     }
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SSAO_TEX_SLOT, ssao_tex.id());
+    const Ren::ImageMain &ssao_tex_main = storages.images.Get(ssao_tex).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_SSAO_TEX_SLOT, ssao_tex_main.img);
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_BRDF_LUT, brdf_lut.id());
+    const Ren::ImageMain &brdf_lut_main = storages.images.Get(brdf_lut).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_BRDF_LUT, brdf_lut_main.img);
 
     for (int sh_l = 0; sh_l < 4; sh_l++) {
-        ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_LMAP_SH + sh_l, lm_tex[sh_l]->id());
+        const Ren::ImageMain &lm_tex_main = storages.images.Get(lm_tex[sh_l]).first;
+        ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_LMAP_SH + sh_l, lm_tex_main.img);
     }
 
     // ren_glBindTextureUnit_Comp(GL_TEXTURE_CUBE_MAP_ARRAY, BIND_ENV_TEX,
@@ -228,7 +248,8 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_ITEMS_BUF,
                                GLuint(storages.buffers.Get(items_buf).first.views[0].second));
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex.id());
+    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
     // ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_CONE_RT_LUT, cone_rt_lut.id());
 
     const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
@@ -252,7 +273,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         uint32_t i = 0;
 
         { // one-sided1
-            Ren::DebugMarker _m(fg.ren_ctx().api(), fg.cmd_buf(), "ONE-SIDED-1");
+            Ren::DebugMarker _m(api, fg.cmd_buf(), "ONE-SIDED-1");
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
             rast_state.ApplyChanged(fg.rast_state());
@@ -263,7 +284,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         }
 
         { // two-sided1
-            Ren::DebugMarker _m(fg.ren_ctx().api(), fg.cmd_buf(), "TWO-SIDED-1");
+            Ren::DebugMarker _m(api, fg.cmd_buf(), "TWO-SIDED-1");
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::None);
             rast_state.ApplyChanged(fg.rast_state());
@@ -274,7 +295,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         }
 
         { // one-sided2
-            Ren::DebugMarker _m(fg.ren_ctx().api(), fg.cmd_buf(), "ONE-SIDED-2");
+            Ren::DebugMarker _m(api, fg.cmd_buf(), "ONE-SIDED-2");
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
             rast_state.ApplyChanged(fg.rast_state());
@@ -285,7 +306,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         }
 
         { // two-sided2
-            Ren::DebugMarker _m(fg.ren_ctx().api(), fg.cmd_buf(), "TWO-SIDED-2");
+            Ren::DebugMarker _m(api, fg.cmd_buf(), "TWO-SIDED-2");
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::None);
             rast_state.ApplyChanged(fg.rast_state());
@@ -296,7 +317,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         }
 
         { // two-sided-tested-blended
-            Ren::DebugMarker _m(fg.ren_ctx().api(), fg.cmd_buf(), "TWO-SIDED-TESTED-BLENDED");
+            Ren::DebugMarker _m(api, fg.cmd_buf(), "TWO-SIDED-TESTED-BLENDED");
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::None);
             rast_state.ApplyChanged(fg.rast_state());
@@ -308,7 +329,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg) {
         }
 
         { // one-sided-tested-blended
-            Ren::DebugMarker _m(fg.ren_ctx().api(), fg.cmd_buf(), "ONE-SIDED-TESTED-BLENDED");
+            Ren::DebugMarker _m(api, fg.cmd_buf(), "ONE-SIDED-TESTED-BLENDED");
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
             rast_state.ApplyChanged(fg.rast_state());

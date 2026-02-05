@@ -6,7 +6,7 @@
 #include <Sys/ScopeExit.h>
 
 #include "../Renderer_Structs.h"
-
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/skinning_interface.h"
 
 void Eng::ExSkinning::Execute(const FgContext &fg) {

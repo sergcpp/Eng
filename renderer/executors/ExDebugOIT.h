@@ -1,21 +1,18 @@
 #pragma once
 
-#include <Ren/Image.h>
-#include <Ren/VertexInput.h>
-
-#include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"
 
+namespace Eng {
+class ShaderLoader;
 struct view_state_t;
 
-namespace Eng {
 class ExDebugOIT final : public FgExecutor {
   public:
     struct Args {
         int layer_index = 0;
 
         FgBufROHandle oit_depth_buf;
-        FgResRef output_tex;
+        FgImgRWHandle output_tex;
     };
 
     ExDebugOIT(ShaderLoader &sh, const view_state_t *view_state, const Args *pass_data);

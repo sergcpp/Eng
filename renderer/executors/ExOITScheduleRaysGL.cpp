@@ -1,27 +1,30 @@
 #include "ExOITScheduleRays.h"
 
-#include "../PrimDraw.h"
-#include "../Renderer_Structs.h"
-
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
 #include <Ren/GL.h>
 #include <Ren/RastState.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/blit_oit_depth_interface.h"
 #include "../shaders/oit_schedule_rays_interface.h"
 
 namespace ExSharedInternal {
-uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &materials, const Ren::Image &white_tex,
-                          Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
-                          uint32_t i, uint64_t mask, uint32_t &cur_mat_id, int *draws_count);
+uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &materials,
+                          const Ren::ImageMain &white_tex, Ren::Span<const uint32_t> batch_indices,
+                          Ren::Span<const Eng::basic_draw_batch_t> batches, uint32_t i, uint64_t mask,
+                          uint32_t &cur_mat_id, int *draws_count);
 } // namespace ExSharedInternal
 
-void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::WeakImgRef &depth_tex) {
+void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::ImageRWHandle depth_tex) {
     using namespace ExSharedInternal;
 
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
-    const Ren::Image &dummy_white = fg.AccessROImage(dummy_white_);
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle dummy_white = fg.AccessROImage(dummy_white_);
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
@@ -50,8 +53,10 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
 
     const Ren::StoragesRef &storages = fg.storages();
 
+    const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer({}, depth_tex, depth_tex, {});
+
     // Bind main buffer for drawing
-    glBindFramebuffer(GL_FRAMEBUFFER, main_draw_fb_[0][fb_to_use_].id());
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb).first.id);
 
     const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
@@ -63,7 +68,8 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
     const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
     glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, unif_shared_data_buf_main.buf);
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex.id());
+    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
 
     const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
@@ -80,6 +86,8 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, OITScheduleRays::RAY_LIST_SLOT, GLuint(ray_list_buf_main.buf));
     const Ren::BufferMain &ray_bitmask_buf_main = storages.buffers.Get(ray_bitmask_buf).first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, OITScheduleRays::RAY_BITMASK_SLOT, GLuint(ray_bitmask_buf_main.buf));
+
+    const Ren::ImageMain &dummy_white_main = storages.images.Get(dummy_white).first;
 
     const Ren::Span<const basic_draw_batch_t> batches = {(*p_list_)->basic_batches};
     const Ren::Span<const uint32_t> batch_indices = {(*p_list_)->basic_batch_indices};
@@ -101,7 +109,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
         const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
 
         const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
-        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 
         { // solid one-sided
@@ -113,8 +121,8 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, BDB::BitAlphaBlend, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, BDB::BitAlphaBlend,
+                                 cur_mat_id, &draws_count);
 
             rast_state = pi_simple1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
@@ -122,7 +130,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i,
                                  BDB::BitAlphaBlend | BDB::BitBackSided, cur_mat_id, &draws_count);
         }
         { // solid two-sided
@@ -134,7 +142,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i,
                                  BDB::BitAlphaBlend | BDB::BitTwoSided, cur_mat_id, &draws_count);
         }
         { // moving solid one-sided
@@ -146,7 +154,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i,
                                  BDB::BitAlphaBlend | BDB::BitMoving, cur_mat_id, &draws_count);
         }
         { // moving solid two-sided
@@ -159,7 +167,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaBlend | BDB::BitMoving | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
         { // alpha-tested one-sided
@@ -171,7 +179,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i,
                                  BDB::BitAlphaBlend | BDB::BitAlphaTest, cur_mat_id, &draws_count);
         }
         { // alpha-tested two-sided
@@ -184,7 +192,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaBlend | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
         { // moving alpha-tested one-sided
@@ -197,7 +205,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaBlend | BDB::BitMoving | BDB::BitAlphaTest;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
         { // moving alpha-tested two-sided
@@ -210,7 +218,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Wea
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaBlend | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
     }

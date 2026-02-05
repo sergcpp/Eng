@@ -8,3 +8,7 @@ bool Ren::RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const 
 }
 
 void Ren::RenderPass_Destroy(const ApiContext &api, RenderPassMain &rp_main) { rp_main = {}; }
+
+void Ren::RenderPass_DestroyImmediately(const ApiContext &api, RenderPassMain &rp_main) {
+    RenderPass_Destroy(api, rp_main);
+}

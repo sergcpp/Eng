@@ -7,10 +7,14 @@
 #include <Ren/GL.h>
 #include <Ren/RastState.h>
 
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
+
 namespace ExSharedInternal {
-uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &materials, const Ren::Image &white_tex,
-                          Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
-                          uint32_t i, uint64_t mask, uint32_t &cur_mat_id, int *draws_count) {
+uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &materials,
+                          const Ren::ImageMain &white_tex, Ren::Span<const uint32_t> batch_indices,
+                          Ren::Span<const Eng::basic_draw_batch_t> batches, uint32_t i, uint64_t mask,
+                          uint32_t &cur_mat_id, int *draws_count) {
     const Ren::Context &ren_ctx = fg.ren_ctx();
     const Ren::StoragesRef &storages = fg.storages();
 
@@ -33,7 +37,7 @@ uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &
                 glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers.Get(mat.samplers[j]).first.id);
             }
             for (; j < Eng::MAX_TEX_PER_MATERIAL; ++j) {
-                ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j, white_tex.id());
+                ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j, white_tex.img);
                 glBindSampler(Eng::BIND_MAT_TEX0 + j, 0);
             }
 
@@ -54,7 +58,9 @@ uint32_t _skip_range(Ren::Span<const uint32_t> batch_indices, Ren::Span<const En
                      uint32_t i, uint32_t mask);
 } // namespace ExSharedInternal
 
-void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
+void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle albedo_tex,
+                                    const Ren::ImageRWHandle normal_tex, const Ren::ImageRWHandle spec_tex,
+                                    const Ren::ImageRWHandle depth_tex) {
     using namespace ExSharedInternal;
 
     Ren::RastState _rast_state;
@@ -77,17 +83,23 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
     glDisable(GL_SCISSOR_TEST);
     fg.rast_state().scissor.enabled = false;
 
+    const Ren::StoragesRef &storages = fg.storages();
+
+    const Ren::ImageRWHandle color_targets[] = {albedo_tex, normal_tex, spec_tex};
+    const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer({}, depth_tex, depth_tex, color_targets);
+
     // Bind main buffer for drawing
-    glBindFramebuffer(GL_FRAMEBUFFER, main_draw_fb_[0][fb_to_use_].id());
-    if (!main_draw_fb_[0][fb_to_use_].color_attachments.empty()) {
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb).first.id);
+    /*if (!main_draw_fb_[0][fb_to_use_].color_attachments.empty())*/ {
+        const Ren::ImageMain &albedo_main = storages.images.Get(albedo_tex).first;
+        const Ren::ImageMain &normal_main = storages.images.Get(normal_tex).first;
+        const Ren::ImageMain &spec_main = storages.images.Get(spec_tex).first;
+
         const float black[] = {0.0f, 0.0f, 0.0f, 0.0f};
-        glClearTexImage(main_draw_fb_[fg.backend_frame()][fb_to_use_].color_attachments[0].handle.id, 0, GL_RGBA,
-                        GL_FLOAT, black);
+        glClearTexImage(albedo_main.img, 0, GL_RGBA, GL_FLOAT, black);
         const uint32_t zero[] = {0, 0, 0, 0};
-        glClearTexImage(main_draw_fb_[fg.backend_frame()][fb_to_use_].color_attachments[1].handle.id, 0, GL_RED_INTEGER,
-                        GL_UNSIGNED_INT, zero);
-        glClearTexImage(main_draw_fb_[fg.backend_frame()][fb_to_use_].color_attachments[2].handle.id, 0, GL_RED_INTEGER,
-                        GL_UNSIGNED_INT, zero);
+        glClearTexImage(normal_main.img, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, zero);
+        glClearTexImage(spec_main.img, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, zero);
     }
 
     _rast_state.viewport[2] = view_state_->ren_res[0];
@@ -99,6 +111,9 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
     //
     // Bind resources (shadow atlas, lightmap, cells item data)
     //
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
@@ -107,11 +122,9 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
     const Ren::BufferROHandle items_buf = fg.AccessROBuffer(items_buf_);
     const Ren::BufferROHandle decals_buf = fg.AccessROBuffer(decals_buf_);
 
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
-    const Ren::Image &dummy_white = fg.AccessROImage(dummy_white_);
-    const Ren::Image &dummy_black = fg.AccessROImage(dummy_black_);
-
-    const Ren::StoragesRef &storages = fg.storages();
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle dummy_white = fg.AccessROImage(dummy_white_);
+    const Ren::ImageROHandle dummy_black = fg.AccessROImage(dummy_black_);
 
     const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_MATERIALS_BUF, GLuint(materials_buf_main.buf));
@@ -134,12 +147,15 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_ITEMS_BUF,
                                GLuint(storages.buffers.Get(items_buf).first.views[0].second));
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex.id());
+    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
 
     const Ren::BufferMain &instances_buf_main = storages.buffers.Get(instances_buf).first;
     ren_glBindTextureUnit_Comp(GL_TEXTURE_BUFFER, BIND_INST_BUF, GLuint(instances_buf_main.views[0].second));
     const Ren::BufferMain &instance_indices_buf_main = storages.buffers.Get(instance_indices_buf).first;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_INST_NDX_BUF, GLuint(instance_indices_buf_main.buf));
+
+    const Ren::ImageMain &dummy_white_main = storages.images.Get(dummy_white).first;
 
     const Ren::Span<const basic_draw_batch_t> batches = (*p_list_)->basic_batches;
     const Ren::Span<const uint32_t> batch_indices = (*p_list_)->basic_batch_indices;
@@ -161,7 +177,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SIMPLE");
 
         const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
-        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 
         { // solid one-sided
@@ -173,7 +189,8 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, 0, cur_mat_id, &draws_count);
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, 0, cur_mat_id,
+                                 &draws_count);
 
             rast_state = pi_simple1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
@@ -181,8 +198,8 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, BDB::BitBackSided, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, BDB::BitBackSided,
+                                 cur_mat_id, &draws_count);
         }
 
         { // solid two-sided
@@ -194,8 +211,8 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, BDB::BitTwoSided, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, BDB::BitTwoSided,
+                                 cur_mat_id, &draws_count);
         }
 
         { // moving solid one-sided
@@ -207,7 +224,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, BDB::BitMoving, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, BDB::BitMoving, cur_mat_id,
                                  &draws_count);
         }
 
@@ -221,7 +238,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitMoving | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -234,8 +251,8 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, BDB::BitAlphaTest, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, BDB::BitAlphaTest,
+                                 cur_mat_id, &draws_count);
         }
 
         { // alpha-tested two-sided
@@ -248,7 +265,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -262,7 +279,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitMoving | BDB::BitAlphaTest;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -276,7 +293,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
     }
@@ -288,7 +305,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
         const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines.Get(pi_vegetation_[1]).first;
 
         const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input).first;
-        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_vegetation0_main.prog).first.id);
 
         { // vegetation solid one-sided
@@ -300,7 +317,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, BDB::BitsVege, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, BDB::BitsVege, cur_mat_id,
                                  &draws_count);
         }
 
@@ -314,7 +331,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsVege | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -328,7 +345,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsVege | BDB::BitMoving;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -342,7 +359,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsVege | BDB::BitMoving | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -356,7 +373,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsVege | BDB::BitAlphaTest;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -370,7 +387,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsVege | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -384,7 +401,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsVege | BDB::BitMoving | BDB::BitAlphaTest;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -398,7 +415,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsVege | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
     }
@@ -407,7 +424,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKINNED");
 
         const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
-        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 
         { // skinned solid one-sided
@@ -419,8 +436,8 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, BDB::BitsSkinned, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, BDB::BitsSkinned,
+                                 cur_mat_id, &draws_count);
         }
 
         { // skinned solid two-sided
@@ -433,7 +450,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -447,7 +464,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitMoving;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -461,7 +478,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitMoving | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -475,7 +492,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitAlphaTest;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -489,7 +506,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -503,7 +520,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitMoving | BDB::BitAlphaTest;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
 
@@ -517,7 +534,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg) {
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white, batch_indices, batches, i, DrawMask, cur_mat_id,
+            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
                                  &draws_count);
         }
     }

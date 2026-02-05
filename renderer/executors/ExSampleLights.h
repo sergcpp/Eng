@@ -1,14 +1,12 @@
 #pragma once
 
-#include <Ren/Image.h>
-#include <Ren/VertexInput.h>
-
-#include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"
 
+namespace Eng {
+struct BindlessTextureData;
+class ShaderLoader;
 struct view_state_t;
 
-namespace Eng {
 class ExSampleLights final : public FgExecutor {
   public:
     struct Args {
@@ -23,10 +21,10 @@ class ExSampleLights final : public FgExecutor {
         FgBufROHandle ndx_buf;
         FgBufROHandle tlas_buf;
 
-        FgResRef albedo_tex;
-        FgResRef depth_tex;
-        FgResRef norm_tex;
-        FgResRef spec_tex;
+        FgImgROHandle albedo_tex;
+        FgImgROHandle depth_tex;
+        FgImgROHandle norm_tex;
+        FgImgROHandle spec_tex;
 
         Ren::IAccStructure *tlas = nullptr;
 
@@ -37,8 +35,8 @@ class ExSampleLights final : public FgExecutor {
             FgBufROHandle mesh_instances_buf;
         } swrt;
 
-        FgResRef out_diffuse_tex;
-        FgResRef out_specular_tex;
+        FgImgRWHandle out_diffuse_tex;
+        FgImgRWHandle out_specular_tex;
     };
 
     ExSampleLights(const view_state_t *view_state, const BindlessTextureData *bindless_tex, const Args *args)
@@ -58,7 +56,7 @@ class ExSampleLights final : public FgExecutor {
 
     const Args *args_ = nullptr;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh);
 
     void Execute_HWRT(const FgContext &fg);
     void Execute_SWRT(const FgContext &fg);

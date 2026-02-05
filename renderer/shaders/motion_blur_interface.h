@@ -13,8 +13,8 @@ struct Params {
 
 const int TILE_RES = 20;
 
-const int GRP_SIZE_X = 8;
-const int GRP_SIZE_Y = 8;
+const uint GRP_SIZE_X = 8;
+const uint GRP_SIZE_Y = 8;
 
 const int GRP_SIZE = GRP_SIZE_X * GRP_SIZE_Y;
 

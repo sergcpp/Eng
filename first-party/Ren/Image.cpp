@@ -1,5 +1,6 @@
 #include "Image.h"
 
+#include "ApiContext.h"
 #include "Utils.h"
 
 #if defined(REN_GL_BACKEND)
@@ -279,6 +280,72 @@ int Ren::BlockLenFromGLInternalFormat(uint32_t gl_internal_format) {
         assert(false);
     }
     return -1;
+}
+
+bool Ren::Image_Init(const ApiContext &api, ImageMain &img_main, ImageCold &img_cold, String name, const ImgParams &p,
+                     Span<const uint8_t> data, MemAllocators *mem_allocs, ILog *log) {
+    if (data.empty()) {
+        return Image_Init(api, img_main, img_cold, std::move(name), p, nullptr, nullptr, 0u, {}, mem_allocs, log);
+    }
+
+    BufferMain sbuf_main = {};
+    BufferCold sbuf_cold = {};
+    if (!Buffer_Init(api, sbuf_main, sbuf_cold, String{"Temp Stage Buf"}, eBufType::Upload, uint32_t(data.size()),
+                     log)) {
+        return false;
+    }
+
+    { // Update staging buffer
+        uint8_t *stage_data = Buffer_Map(api, sbuf_main, sbuf_cold);
+        memcpy(stage_data, data.data(), data.size());
+        Buffer_Unmap(api, sbuf_main, sbuf_cold);
+    }
+    CommandBuffer cmd_buf = api.BegSingleTimeCommands();
+
+    const bool ret =
+        Image_Init(api, img_main, img_cold, std::move(name), p, &sbuf_main, &sbuf_cold, 0u, cmd_buf, mem_allocs, log);
+
+    api.EndSingleTimeCommands(cmd_buf);
+
+    Buffer_DestroyImmediately(api, sbuf_main, sbuf_cold);
+
+    return ret;
+}
+
+bool Ren::Image_Init(const ApiContext &api, ImageMain &img_main, ImageCold &img_cold, String name, const ImgParams &p,
+                     Span<const uint8_t> data[6], MemAllocators *mem_allocs, ILog *log) {
+    if (!data) {
+        return Image_Init(api, img_main, img_cold, std::move(name), p, nullptr, nullptr, 0, {}, mem_allocs, log);
+    }
+
+    BufferMain sbuf_main = {};
+    BufferCold sbuf_cold = {};
+    if (!Buffer_Init(api, sbuf_main, sbuf_cold, String{"Temp Stage Buf"}, eBufType::Upload,
+                     uint32_t(data[0].size() + data[1].size() + data[2].size() + data[3].size() + data[4].size() +
+                              data[5].size()),
+                     log)) {
+        return false;
+    }
+
+    { // Update staging buffer
+        uint8_t *stage_data = Buffer_Map(api, sbuf_main, sbuf_cold);
+        uint32_t stage_off = 0;
+        for (int i = 0; i < 6; i++) {
+            memcpy(&stage_data[stage_off], data[i].data(), data[i].size());
+            stage_off += uint32_t(data[i].size());
+        }
+        Buffer_Unmap(api, sbuf_main, sbuf_cold);
+    }
+    CommandBuffer cmd_buf = api.BegSingleTimeCommands();
+
+    const bool ret =
+        Image_Init(api, img_main, img_cold, std::move(name), p, &sbuf_main, &sbuf_cold, 0, cmd_buf, mem_allocs, log);
+
+    api.EndSingleTimeCommands(cmd_buf);
+
+    Buffer_DestroyImmediately(api, sbuf_main, sbuf_cold);
+
+    return ret;
 }
 
 Ren::eImgUsage Ren::ImgUsageFromState(eResState state) { return g_img_usage_per_state[int(state)]; }

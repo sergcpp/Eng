@@ -10,180 +10,104 @@
 
 namespace Ren {
 struct FramebufferAttachment {
-    WeakImgRef ref;
+    ImageRWHandle img;
     uint8_t view_index = 0;
-    ImgHandle handle; // handle is stored to detect image reallocation
 
-    bool operator==(const WeakImgRef &rhs) const {
-        if (!rhs) {
-            return !bool(this->ref);
-        }
-        return this->handle == rhs->handle();
-    }
-    bool operator!=(const WeakImgRef &rhs) const { return !operator==(rhs); }
-    bool operator<(const WeakImgRef &rhs) const {
-        if (!rhs) {
-            return this->handle < ImgHandle();
-        }
-        return this->handle < rhs->handle();
-    }
-    friend bool operator<(const WeakImgRef &lhs, const FramebufferAttachment &rhs) {
-        if (!lhs) {
-            return ImgHandle() < rhs.handle;
-        }
-        return lhs->handle() < rhs.handle;
-    }
+    FramebufferAttachment() = default;
+    FramebufferAttachment(const ImageRWHandle _img, const uint8_t _view_index = 0)
+        : img(_img), view_index(_view_index) {}
+    FramebufferAttachment(const RenderTarget &rt) : img(rt.img), view_index(rt.view_index) {}
 
-    bool operator==(const RenderTarget &rhs) const {
-        if (!rhs) {
-            return !bool(this->ref);
-        }
-        return this->handle == rhs.ref->handle() && this->view_index == rhs.view_index;
-    }
-    bool operator!=(const RenderTarget &rhs) const { return !operator==(rhs); }
-    bool operator<(const RenderTarget &rhs) const {
-        if (!rhs) {
-            return this->handle < ImgHandle();
-        }
-        if (this->handle < rhs.ref->handle()) {
-            return true;
-        } else if (this->handle == rhs.ref->handle()) {
-            return this->view_index < rhs.view_index;
-        }
-        return false;
-    }
-    friend bool operator<(const RenderTarget &lhs, const FramebufferAttachment &rhs) {
-        if (!lhs) {
-            return ImgHandle() < rhs.handle;
-        }
-        if (lhs.ref->handle() < rhs.handle) {
-            return true;
-        } else if (lhs.ref->handle() == rhs.handle) {
-            return lhs.view_index < rhs.view_index;
-        }
-        return false;
-    }
+    operator bool() const { return bool(img); }
 };
+
+inline bool operator==(const FramebufferAttachment &lhs, const FramebufferAttachment &rhs) {
+    return lhs.img == rhs.img && lhs.view_index == rhs.view_index;
+}
+
+inline bool operator!=(const FramebufferAttachment &lhs, const FramebufferAttachment &rhs) {
+    return lhs.img != rhs.img || lhs.view_index != rhs.view_index;
+}
+
+inline bool operator<(const FramebufferAttachment &lhs, const FramebufferAttachment &rhs) {
+    if (lhs.img < rhs.img) {
+        return true;
+    } else if (lhs.img == rhs.img) {
+        return lhs.view_index < rhs.view_index;
+    }
+    return false;
+}
+
+inline bool operator==(const FramebufferAttachment &lhs, const RenderTarget &rhs) {
+    return lhs.img == rhs.img && lhs.view_index == rhs.view_index;
+}
+
+inline bool operator!=(const FramebufferAttachment &lhs, const RenderTarget &rhs) {
+    return lhs.img != rhs.img || lhs.view_index != rhs.view_index;
+}
+
+inline bool operator<(const FramebufferAttachment &lhs, const RenderTarget &rhs) {
+    if (lhs.img < rhs.img) {
+        return true;
+    } else if (lhs.img == rhs.img) {
+        return lhs.view_index < rhs.view_index;
+    }
+    return false;
+}
+
+inline bool operator<(const RenderTarget &lhs, const FramebufferAttachment &rhs) {
+    if (lhs.img < rhs.img) {
+        return true;
+    } else if (lhs.img == rhs.img) {
+        return lhs.view_index < rhs.view_index;
+    }
+    return false;
+}
 
 struct FramebufferMain {
 #if defined(REN_VK_BACKEND)
     VkFramebuffer handle = {};
-    VkRenderPass renderpass = {};
 #elif defined(REN_GL_BACKEND)
     uint32_t id = 0;
 #endif
+    RenderPassROHandle renderpass;
+    uint16_t w = 0xffffu, h = 0xffffu;
 };
 
-struct FramebufferCold {};
-
-class Framebuffer {
-    const ApiContext *api_ = nullptr;
-#if defined(REN_VK_BACKEND)
-    VkFramebuffer handle_ = {};
-    VkRenderPass renderpass_ = {};
-#elif defined(REN_GL_BACKEND)
-    uint32_t id_ = 0;
-#endif
-    struct Attachment {
-        WeakImgRef ref;
-        uint8_t view_index = 0;
-        ImgHandle handle; // handle is stored to detect image reallocation
-
-        bool operator==(const WeakImgRef &rhs) const {
-            if (!rhs) {
-                return !bool(this->ref);
-            }
-            return this->handle == rhs->handle();
-        }
-        bool operator!=(const WeakImgRef &rhs) const { return !operator==(rhs); }
-        bool operator<(const WeakImgRef &rhs) const {
-            if (!rhs) {
-                return this->handle < ImgHandle();
-            }
-            return this->handle < rhs->handle();
-        }
-        friend bool operator<(const WeakImgRef &lhs, const Attachment &rhs) {
-            if (!lhs) {
-                return ImgHandle() < rhs.handle;
-            }
-            return lhs->handle() < rhs.handle;
-        }
-
-        bool operator==(const RenderTarget &rhs) const {
-            if (!rhs) {
-                return !bool(this->ref);
-            }
-            return this->handle == rhs.ref->handle() && this->view_index == rhs.view_index;
-        }
-        bool operator!=(const RenderTarget &rhs) const { return !operator==(rhs); }
-        bool operator<(const RenderTarget &rhs) const {
-            if (!rhs) {
-                return this->handle < ImgHandle();
-            }
-            if (this->handle < rhs.ref->handle()) {
-                return true;
-            } else if (this->handle == rhs.ref->handle()) {
-                return this->view_index < rhs.view_index;
-            }
-            return false;
-        }
-        friend bool operator<(const RenderTarget &lhs, const Attachment &rhs) {
-            if (!lhs) {
-                return ImgHandle() < rhs.handle;
-            }
-            if (lhs.ref->handle() < rhs.handle) {
-                return true;
-            } else if (lhs.ref->handle() == rhs.handle) {
-                return lhs.view_index < rhs.view_index;
-            }
-            return false;
-        }
-    };
-
-    void Destroy();
-
-  public:
-    int w = -1, h = -1;
-
-    SmallVector<Attachment, 4> color_attachments;
-    Attachment depth_attachment, stencil_attachment;
-
-    Framebuffer() = default;
-    ~Framebuffer();
-
-    Framebuffer(const Framebuffer &rhs) = delete;
-    Framebuffer(Framebuffer &&rhs) noexcept { (*this) = std::move(rhs); }
-    Framebuffer &operator=(const Framebuffer &rhs) = delete;
-    Framebuffer &operator=(Framebuffer &&rhs) noexcept;
-
-#if defined(REN_VK_BACKEND)
-    [[nodiscard]] VkFramebuffer vk_handle() const { return handle_; }
-    [[nodiscard]] VkRenderPass renderpass() const { return renderpass_; }
-#elif defined(REN_GL_BACKEND)
-    [[nodiscard]] uint32_t id() const { return id_; }
-#endif
-
-    [[nodiscard]] bool Changed(const RenderPassMain &render_pass, const WeakImgRef &depth_attachment,
-                               const WeakImgRef &stencil_attachment, Span<const WeakImgRef> color_attachments) const;
-    [[nodiscard]] bool Changed(const RenderPassMain &render_pass, const WeakImgRef &depth_attachment,
-                               const WeakImgRef &stencil_attachment, Span<const RenderTarget> color_attachments) const;
-
-    [[nodiscard]] bool LessThan(const RenderPassMain &render_pass, const WeakImgRef &depth_attachment,
-                                const WeakImgRef &stencil_attachment, Span<const WeakImgRef> color_attachments) const;
-    [[nodiscard]] bool LessThan(const RenderPassMain &render_pass, const WeakImgRef &depth_attachment,
-                                const WeakImgRef &stencil_attachment, Span<const RenderTarget> color_attachments) const;
-
-    bool Setup(const ApiContext *api, const RenderPassMain &render_pass, int w, int h, WeakImgRef depth_attachment,
-               WeakImgRef stencil_attachment, Span<const WeakImgRef> color_attachments, bool is_multisampled,
-               ILog *log);
-    bool Setup(const ApiContext *api, const RenderPassMain &render_pass, int w, int h, const RenderTarget &depth_target,
-               const RenderTarget &stencil_target, Span<const RenderTarget> color_attachments, ILog *log);
-    bool Setup(const ApiContext *api, const RenderPassMain &renderpass, int w, int h, const WeakImgRef depth_attachment,
-               const WeakImgRef stencil_attachment, const WeakImgRef color_attachment, const bool is_multisampled,
-               ILog *log) {
-        return Setup(api, renderpass, w, h, depth_attachment, stencil_attachment, {&color_attachment, 1},
-                     is_multisampled, log);
-    }
+struct FramebufferCold {
+    SmallVector<FramebufferAttachment, 4> color_attachments;
+    FramebufferAttachment depth_attachment, stencil_attachment;
 };
+
+bool Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, FramebufferCold &fb_cold,
+                      const StoragesRef &storages, RenderPassROHandle render_pass, const FramebufferAttachment &depth,
+                      const FramebufferAttachment &stencil, Span<const FramebufferAttachment> color_attachments,
+                      ILog *log);
+void Framebuffer_Destroy(const ApiContext &api, FramebufferMain &fb_main, FramebufferCold &fb_cold);
+void Framebuffer_DestroyImmediately(const ApiContext &api, FramebufferMain &fb_main, FramebufferCold &fb_cold);
+
+inline bool Framebuffer_Equals(const FramebufferMain &fb_main, const FramebufferCold &fb_cold,
+                               RenderPassROHandle render_pass, const FramebufferAttachment &depth_attachment,
+                               const FramebufferAttachment &stencil_attachment,
+                               Span<const FramebufferAttachment> color_attachments) {
+    return fb_main.renderpass == render_pass && fb_cold.depth_attachment == depth_attachment &&
+           fb_cold.stencil_attachment == stencil_attachment &&
+           Span<const FramebufferAttachment>(fb_cold.color_attachments) == color_attachments;
+}
+inline bool Framebuffer_Equals(const FramebufferMain &fb_main, const FramebufferCold &fb_cold,
+                               RenderPassROHandle render_pass, const RenderTarget &depth_attachment,
+                               const RenderTarget &stencil_attachment, Span<const RenderTarget> color_attachments) {
+    return fb_main.renderpass == render_pass && fb_cold.depth_attachment == depth_attachment &&
+           fb_cold.stencil_attachment == stencil_attachment &&
+           Span<const FramebufferAttachment>(fb_cold.color_attachments) == color_attachments;
+}
+
+bool Framebuffer_LessThan(const FramebufferMain &fb_main, const FramebufferCold &fb_cold,
+                          RenderPassROHandle render_pass, const FramebufferAttachment &depth_attachment,
+                          const FramebufferAttachment &stencil_attachment,
+                          Span<const FramebufferAttachment> color_attachments);
+bool Framebuffer_LessThan(const FramebufferMain &fb_main, const FramebufferCold &fb_cold,
+                          RenderPassROHandle render_pass, const RenderTarget &depth_attachment,
+                          const RenderTarget &stencil_attachment, Span<const RenderTarget> color_attachments);
 
 } // namespace Ren

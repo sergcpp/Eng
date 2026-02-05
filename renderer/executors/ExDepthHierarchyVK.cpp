@@ -4,19 +4,23 @@
 #include <Ren/DescriptorPool.h>
 #include <Ren/VKCtx.h>
 
-#include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/depth_hierarchy_interface.h"
 
 void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
-    const Ren::Image &depth_tex = fg.AccessROImage(depth_tex_);
-    const Ren::BufferHandle atomic_buf = fg.AccessRWBuffer(atomic_buf_);
-    const Ren::Image &output_tex = fg.AccessRWImage(output_tex_);
+    const Ren::ImageROHandle depth_tex = fg.AccessROImage(depth_tex_);
+
+    const Ren::BufferRWHandle atomic_buf = fg.AccessRWBuffer(atomic_buf_);
+    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(output_tex_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
+    const auto &[input_main, input_cold] = storages.images.Get(depth_tex);
+    const auto &[output_main, output_cold] = storages.images.Get(output_tex);
+
+    VkCommandBuffer cmd_buf = fg.cmd_buf();
 
     const Ren::PipelineMain &pi = storages.pipelines.Get(pi_depth_hierarchy_).first;
     const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
@@ -24,18 +28,19 @@ void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
     VkDescriptorSetLayout descr_set_layout = pr.descr_set_layouts[0];
     Ren::DescrSizes descr_sizes;
     descr_sizes.img_sampler_count = 1;
-    descr_sizes.store_img_count = output_tex.params.mip_count;
+    descr_sizes.store_img_count = output_cold.params.mip_count;
     VkDescriptorSet descr_set = fg.descr_alloc().Alloc(descr_sizes, descr_set_layout);
 
     { // update descriptor set
         const Ren::BufferMain &atomic_buf_main = storages.buffers.Get(atomic_buf).first;
 
-        const VkDescriptorImageInfo depth_tex_info = depth_tex.vk_desc_image_info(1);
+        const VkDescriptorImageInfo depth_tex_info =
+            Image_GetDescriptorImageInfo(api, input_main, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         const VkDescriptorBufferInfo atomic_buf_info = {atomic_buf_main.buf, 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo depth_img_infos[7];
         for (int i = 0; i < 7; ++i) {
-            depth_img_infos[i] = output_tex.vk_desc_image_info(std::min(i, output_tex.params.mip_count - 1) + 1,
-                                                               VK_IMAGE_LAYOUT_GENERAL);
+            depth_img_infos[i] = Image_GetDescriptorImageInfo(
+                api, output_main, std::min(i, output_cold.params.mip_count - 1) + 1, VK_IMAGE_LAYOUT_GENERAL);
         }
 
         VkWriteDescriptorSet descr_writes[3];
@@ -66,15 +71,15 @@ void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
         api.vkUpdateDescriptorSets(api.device, 3, descr_writes, 0, nullptr);
     }
 
-    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.pipeline);
     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 1, &descr_set, 0, nullptr);
 
-    const int grp_x = (output_tex.params.w + DepthHierarchy::GRP_SIZE_X - 1) / DepthHierarchy::GRP_SIZE_X;
-    const int grp_y = (output_tex.params.h + DepthHierarchy::GRP_SIZE_Y - 1) / DepthHierarchy::GRP_SIZE_Y;
+    const int grp_x = Ren::DivCeil(int(output_cold.params.w), DepthHierarchy::GRP_SIZE_X);
+    const int grp_y = Ren::DivCeil(int(output_cold.params.h), DepthHierarchy::GRP_SIZE_Y);
 
     DepthHierarchy::Params uniform_params;
     uniform_params.depth_size =
-        Ren::Vec4i{view_state_->ren_res[0], view_state_->ren_res[1], output_tex.params.mip_count, grp_x * grp_y};
+        Ren::Vec4i{view_state_->ren_res[0], view_state_->ren_res[1], output_cold.params.mip_count, grp_x * grp_y};
     uniform_params.clip_info = view_state_->clip_info;
 
     api.vkCmdPushConstants(cmd_buf, pi.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uniform_params), &uniform_params);

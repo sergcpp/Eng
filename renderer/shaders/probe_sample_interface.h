@@ -6,10 +6,8 @@
 INTERFACE_START(ProbeSample)
 
 struct Params {
-    vec4 grid_origin;
-    ivec4 grid_scroll;
-    vec4 grid_spacing;
     uvec2 img_size;
+    uvec2 _pad;
 };
 
 const int GRP_SIZE_X = 8;

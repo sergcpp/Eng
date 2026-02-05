@@ -135,7 +135,6 @@ bool Ren::Buffer_Resize(const ApiContext &api, BufferMain &buf_main, BufferCold 
     }
 
     buf_main.buf = uint32_t(gl_buffer);
-    buf_main.generation = api.buffer_counter++;
     for (auto view : views) {
         Buffer_AddView(api, buf_main, buf_cold, view.first);
     }

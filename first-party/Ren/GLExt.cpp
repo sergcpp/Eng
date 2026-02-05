@@ -111,6 +111,9 @@ bool Ren::InitGLExtentions(ILog *log) {
     LOAD_GL_FUN(glUniformBlockBinding)
     LOAD_GL_FUN(glVertexAttribPointer)
     LOAD_GL_FUN(glVertexAttribIPointer)
+    LOAD_GL_FUN(glVertexAttribFormat)
+    LOAD_GL_FUN(glVertexAttribIFormat)
+    LOAD_GL_FUN(glVertexAttribBinding)
     LOAD_GL_FUN(glEnableVertexAttribArray)
     LOAD_GL_FUN(glDisableVertexAttribArray)
 
@@ -419,6 +422,7 @@ bool Ren::InitGLExtentions(ILog *log) {
     }
 
     LOAD_GL_FUN(glTextureView)
+    LOAD_GL_FUN(glGetVertexAttribiv)
 #else
     ren_glCreateTextures = ren_glCreateTextures_emu;
 

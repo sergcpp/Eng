@@ -135,10 +135,10 @@ class SceneManager {
     void ClearScene();
 
     void LoadEnvMap();
-    void ReleaseEnvMap(bool immediate = false);
+    void ReleaseEnvMap(bool immediately = false);
 
     void AllocGICache();
-    void ReleaseGICache(bool immediate = false);
+    void ReleaseGICache(bool immediately = false);
 
     void Alloc_TLAS();
     void Release_TLAS(bool immediate = false);

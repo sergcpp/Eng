@@ -4,6 +4,8 @@
 #include <Ren/DrawCall.h>
 
 #include "../../utils/ShaderLoader.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/sample_lights_interface.h"
 
 void Eng::ExSampleLights::Execute(const FgContext &fg) {
@@ -15,17 +17,17 @@ void Eng::ExSampleLights::Execute(const FgContext &fg) {
     }
 }
 
-void Eng::ExSampleLights::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
+void Eng::ExSampleLights::LazyInit(Ren::Context &ctx, ShaderLoader &sh) {
     if (!initialized_) {
         auto subgroup_select = [&ctx](std::string_view subgroup_shader, std::string_view nosubgroup_shader) {
             return ctx.capabilities.subgroup ? subgroup_shader : nosubgroup_shader;
         };
 
         if (ctx.capabilities.hwrt) {
-            pi_sample_lights_ = sh.LoadPipeline(subgroup_select("internal/sample_lights@HWRT.comp.glsl",
-                                                                "internal/sample_lights@HWRT;NO_SUBGROUP.comp.glsl"));
+            pi_sample_lights_ = sh.FindOrCreatePipeline(subgroup_select(
+                "internal/sample_lights@HWRT.comp.glsl", "internal/sample_lights@HWRT;NO_SUBGROUP.comp.glsl"));
         } else {
-            pi_sample_lights_ = sh.LoadPipeline(
+            pi_sample_lights_ = sh.FindOrCreatePipeline(
                 subgroup_select("internal/sample_lights.comp.glsl", "internal/sample_lights@NO_SUBGROUP.comp.glsl"));
         }
         initialized_ = true;
@@ -46,13 +48,13 @@ void Eng::ExSampleLights::Execute_SWRT(const FgContext &fg) {
     const Ren::BufferROHandle prim_ndx_buf = fg.AccessROBuffer(args_->swrt.prim_ndx_buf);
     const Ren::BufferROHandle mesh_instances_buf = fg.AccessROBuffer(args_->swrt.mesh_instances_buf);
 
-    const Ren::Image &albedo_tex = fg.AccessROImage(args_->albedo_tex);
-    const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::Image &norm_tex = fg.AccessROImage(args_->norm_tex);
-    const Ren::Image &spec_tex = fg.AccessROImage(args_->spec_tex);
+    const Ren::ImageROHandle albedo_tex = fg.AccessROImage(args_->albedo_tex);
+    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
+    const Ren::ImageROHandle norm_tex = fg.AccessROImage(args_->norm_tex);
+    const Ren::ImageROHandle spec_tex = fg.AccessROImage(args_->spec_tex);
 
-    const Ren::Image &out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
-    const Ren::Image &out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
+    const Ren::ImageRWHandle out_diffuse_tex = fg.AccessRWImage(args_->out_diffuse_tex);
+    const Ren::ImageRWHandle out_specular_tex = fg.AccessRWImage(args_->out_specular_tex);
 
     if (!args_->lights_buf) {
         return;
@@ -82,9 +84,8 @@ void Eng::ExSampleLights::Execute_SWRT(const FgContext &fg) {
         {Ren::eBindTarget::ImageRW, SampleLights::OUT_DIFFUSE_IMG_SLOT, out_diffuse_tex},
         {Ren::eBindTarget::ImageRW, SampleLights::OUT_SPECULAR_IMG_SLOT, out_specular_tex}};
 
-    const Ren::Vec3u grp_count =
-        Ren::Vec3u{(view_state_->ren_res[0] + SampleLights::GRP_SIZE_X - 1u) / SampleLights::GRP_SIZE_X,
-                   (view_state_->ren_res[1] + SampleLights::GRP_SIZE_Y - 1u) / SampleLights::GRP_SIZE_Y, 1u};
+    const Ren::Vec3u grp_count = Ren::Vec3u(Ren::DivCeil(view_state_->ren_res[0], SampleLights::GRP_SIZE_X),
+                                            Ren::DivCeil(view_state_->ren_res[1], SampleLights::GRP_SIZE_Y), 1u);
 
     // TODO: Avoid accessing cold data
     const Ren::BufferCold &lights_buf_cold = fg.storages().buffers.Get(lights_buf).second;

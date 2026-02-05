@@ -7,29 +7,35 @@
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
-
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/depth_hierarchy_interface.h"
 
 void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
-    const Ren::Image &depth_tex = fg.AccessROImage(depth_tex_);
-    const Ren::Image &output_tex = fg.AccessRWImage(output_tex_);
+    const Ren::ImageROHandle depth_tex = fg.AccessROImage(depth_tex_);
 
-    const Ren::PipelineMain &pi = fg.pipelines().Get(pi_depth_hierarchy_).first;
-    const Ren::ProgramMain &pr = fg.programs().Get(pi.prog).first;
+    const Ren::ImageRWHandle output_tex = fg.AccessRWImage(output_tex_);
+
+    const auto &[depth_main, depth_cold] = fg.storages().images.Get(depth_tex);
+    const auto &[output_main, output_cold] = fg.storages().images.Get(output_tex);
+
+    const Ren::StoragesRef &storages = fg.storages();
+
+    const Ren::PipelineMain &pi = storages.pipelines.Get(pi_depth_hierarchy_).first;
+    const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
 
     glUseProgram(pr.id);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, DepthHierarchy::DEPTH_TEX_SLOT, depth_tex.id());
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, DepthHierarchy::DEPTH_TEX_SLOT, depth_main.img);
 
     int i = 0;
-    for (; i < output_tex.params.mip_count; ++i) {
-        glBindImageTexture(DepthHierarchy::DEPTH_IMG_SLOT + i, output_tex.id(), i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+    for (; i < output_cold.params.mip_count; ++i) {
+        glBindImageTexture(DepthHierarchy::DEPTH_IMG_SLOT + i, output_main.img, i, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
     }
     for (; i < 7; ++i) {
-        glBindImageTexture(DepthHierarchy::DEPTH_IMG_SLOT + i, 0, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+        glBindImageTexture(DepthHierarchy::DEPTH_IMG_SLOT + i, 0, i, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
     }
 
-    const int grp_x = (output_tex.params.w + DepthHierarchy::GRP_SIZE_X - 1) / DepthHierarchy::GRP_SIZE_X;
-    const int grp_y = (output_tex.params.h + DepthHierarchy::GRP_SIZE_Y - 1) / DepthHierarchy::GRP_SIZE_Y;
+    const int grp_x = (output_cold.params.w + DepthHierarchy::GRP_SIZE_X - 1) / DepthHierarchy::GRP_SIZE_X;
+    const int grp_y = (output_cold.params.h + DepthHierarchy::GRP_SIZE_Y - 1) / DepthHierarchy::GRP_SIZE_Y;
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
 
@@ -53,7 +59,7 @@ void Eng::ExDepthHierarchy::Execute(const FgContext &fg) {
         DepthHierarchy::Params *stage_data =
             reinterpret_cast<DepthHierarchy::Params *>(Buffer_Map(api, temp_stage_buffer_main, temp_stage_buffer_cold));
         stage_data->depth_size =
-            Ren::Vec4i{view_state_->ren_res[0], view_state_->ren_res[1], output_tex.params.mip_count, grp_x * grp_y};
+            Ren::Vec4i{view_state_->ren_res[0], view_state_->ren_res[1], output_cold.params.mip_count, grp_x * grp_y};
         stage_data->clip_info = view_state_->clip_info;
 
         Buffer_Unmap(api, temp_stage_buffer_main, temp_stage_buffer_cold);

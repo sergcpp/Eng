@@ -7,7 +7,8 @@
 #include <Ren/RastState.h>
 #include <Ren/VKCtx.h>
 
-#include "../Renderer_Structs.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/shadow_interface.h"
 
 namespace ExSharedInternal {
@@ -54,17 +55,20 @@ void _clear_region(const Ren::ApiContext &api, VkCommandBuffer cmd_buf, const En
 }
 } // namespace ExShadowDepthInternal
 
-void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
+void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWHandle shadow_depth) {
     using namespace ExSharedInternal;
     using namespace ExShadowDepthInternal;
 
     using BDB = basic_draw_batch_t;
 
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
@@ -83,7 +87,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
                                          {Ren::eBindTarget::SBufRO, BIND_INST_NDX_BUF, instance_indices_buf},
                                          {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf}};
         simple_descr_sets[0] =
-            PrepareDescriptorSet(api, &fg.storages(), simple_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
+            PrepareDescriptorSet(api, storages, simple_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         simple_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
     }
 
@@ -99,7 +103,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
                                          {Ren::eBindTarget::SBufRO, BIND_MATERIALS_BUF, materials_buf},
                                          {Ren::eBindTarget::TexSampled, BIND_NOISE_TEX, noise_tex}};
         vege_descr_sets[0] =
-            PrepareDescriptorSet(api, &fg.storages(), vege_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
+            PrepareDescriptorSet(api, storages, vege_descr_set_layout, bindings, fg.descr_alloc(), fg.log());
         vege_descr_sets[1] = bindless_tex_->textures_descr_sets[0];
     }
 
@@ -110,9 +114,12 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
 
     const Ren::RenderPassMain &rp_main = storages.render_passes.Get(pi_solid_main[0]->render_pass).first;
 
+    const Ren::FramebufferHandle fb_main =
+        fg.FindOrCreateFramebuffer(pi_solid_main[0]->render_pass, shadow_depth, {}, {});
+
     VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_begin_info.renderPass = rp_main.handle;
-    rp_begin_info.framebuffer = shadow_fb_.vk_handle();
+    rp_begin_info.framebuffer = storages.framebuffers.Get(fb_main).first.handle;
     rp_begin_info.renderArea = {{0, 0}, {uint32_t(w_), uint32_t(h_)}};
     api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -125,11 +132,12 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
                                     simple_descr_sets, 0, nullptr);
 
         const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         static const uint64_t BitFlags[] = {0, BDB::BitBackSided, BDB::BitTwoSided};
         for (int pi = 0; pi < 3; ++pi) {
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_main[pi]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_main[pi]->pipeline);
             for (int i = 0; i < int((*p_list_)->shadow_lists.count); ++i) {
                 const shadow_list_t &sh_list = (*p_list_)->shadow_lists.data[i];
                 if (!sh_list.dirty && !sh_list.shadow_batch_count) {
@@ -221,12 +229,13 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
                                     simple_descr_sets, 0, nullptr);
 
         const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input, storages.buffers, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+                                VK_INDEX_TYPE_UINT32);
 
         static const uint64_t BitFlags[] = {BDB::BitAlphaTest, BDB::BitAlphaTest | BDB::BitBackSided,
                                             BDB::BitAlphaTest | BDB::BitTwoSided};
         for (int pi = 0; pi < 3; ++pi) {
-            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_main[pi]->handle);
+            api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_main[pi]->pipeline);
             for (int i = 0; i < int((*p_list_)->shadow_lists.count); ++i) {
                 const shadow_list_t &sh_list = (*p_list_)->shadow_lists.data[i];
                 if (!sh_list.dirty && !sh_list.shadow_batch_count) {

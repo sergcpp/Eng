@@ -62,3 +62,11 @@ void Ren::Sampler_Destroy(const ApiContext &api, SamplerMain &sampler_main, Samp
     sampler_main = {};
     sampler_cold = {};
 }
+
+void Ren::Sampler_DestroyImmediately(const ApiContext& api, SamplerMain& sampler_main, SamplerCold& sampler_cold) {
+    if (sampler_main.handle) {
+        api.vkDestroySampler(api.device, sampler_main.handle, nullptr);
+    }
+    sampler_main = {};
+    sampler_cold = {};
+}

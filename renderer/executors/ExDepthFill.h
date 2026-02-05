@@ -1,12 +1,16 @@
 #pragma once
 
-#include "../Renderer_DrawList.h"
+#include <Ren/Common.h>
+#include <Ren/Framebuffer.h>
+
 #include "../framegraph/FgNode.h"
 
-#include <Ren/Pipeline.h>
-#include <Ren/VertexInput.h>
-
 namespace Eng {
+struct DrawList;
+class ShaderLoader;
+struct BindlessTextureData;
+struct view_state_t;
+
 class ExDepthFill final : public FgExecutor {
     bool initialized = false;
 
@@ -26,15 +30,13 @@ class ExDepthFill final : public FgExecutor {
     FgBufROHandle instance_indices_buf_;
     FgBufROHandle shared_data_buf_;
     FgBufROHandle materials_buf_;
-    FgResRef noise_tex_;
+    FgImgROHandle noise_tex_;
 
-    FgResRef depth_tex_;
-    FgResRef velocity_tex_;
+    FgImgRWHandle depth_tex_;
+    FgImgRWHandle velocity_tex_;
 
-    void LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
-                  Ren::BufferROHandle ndx_buf, const Ren::WeakImgRef &depth_tex, const Ren::WeakImgRef &velocity_tex);
-    void DrawDepth(const FgContext &fg, Ren::BufferROHandle vtx_buf1, Ren::BufferROHandle vtx_buf2,
-                   Ren::BufferROHandle ndx_buf);
+    void LazyInit(Ren::Context &ctx, ShaderLoader &sh, Ren::ImageRWHandle depth_tex, Ren::ImageRWHandle velocity_tex);
+    void DrawDepth(const FgContext &fg, Ren::ImageRWHandle depth_tex, Ren::ImageRWHandle velocity_tex);
 
     Ren::RenderPassHandle rp_depth_only_[2], rp_depth_velocity_[2];
 
@@ -45,15 +47,12 @@ class ExDepthFill final : public FgExecutor {
     Ren::PipelineHandle pi_skin_static_solid_[2], pi_skin_static_transp_[2];
     Ren::PipelineHandle pi_skin_moving_solid_[2], pi_skin_moving_transp_[2];
 
-    Ren::Framebuffer depth_fill_fb_[Ren::MaxFramesInFlight][2], depth_fill_vel_fb_[Ren::MaxFramesInFlight][2];
-    int fb_to_use_ = 0;
-
   public:
     ExDepthFill(const DrawList **list, const view_state_t *view_state, bool clear_depth, const FgBufROHandle vtx_buf1,
                 const FgBufROHandle vtx_buf2, const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
                 const BindlessTextureData *bindless_tex, const FgBufROHandle instances_buf,
-                const FgBufROHandle instance_indices_buf, const FgBufROHandle shared_data_buf, const FgResRef noise_tex,
-                const FgResRef depth_tex, const FgResRef velocity_tex) {
+                const FgBufROHandle instance_indices_buf, const FgBufROHandle shared_data_buf,
+                const FgImgROHandle noise_tex, const FgImgRWHandle depth_tex, const FgImgRWHandle velocity_tex) {
         view_state_ = view_state;
         bindless_tex_ = bindless_tex;
         clear_depth_ = clear_depth;

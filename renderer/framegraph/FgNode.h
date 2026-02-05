@@ -2,10 +2,11 @@
 
 #include <Sys/InplaceFunction.h>
 
-#include "FgBuilder.h"
 #include "FgResource.h"
 
 namespace Eng {
+class FgBuilder;
+class FgContext;
 class FgExecutor {
   public:
     virtual ~FgExecutor() {}
@@ -35,10 +36,6 @@ class FgNode {
     FgNode(std::string_view name, const int16_t index, eFgQueueType queue, FgBuilder &builder)
         : name_(name), index_(index), queue_(queue), builder_(builder) {}
 
-    template <typename T, class... Args> T *AllocNodeData(Args &&...args) {
-        return builder_.AllocNodeData<T>(std::forward<Args>(args)...);
-    }
-
     template <typename F> void set_execute_cb(F &&f) { execute_cb_ = f; }
 
     void set_executor(std::unique_ptr<FgExecutor> &&exec) {
@@ -54,70 +51,56 @@ class FgNode {
     Ren::Span<const FgResource> input() const { return input_; }
     Ren::Span<const FgResource> output() const { return output_; }
 
-    FgResource *FindUsageOf(eFgResType type, uint16_t index);
+    FgResource *FindUsageOf(eFgResType type, uint32_t index);
 
     // Non-owning version
     void set_executor(FgExecutor *exec) { p_executor_ = exec; }
 
     FgBufROHandle AddTransferInput(FgBufROHandle handle);
-    FgBufROHandle AddTransferInput(Ren::BufferHandle handle);
     FgBufRWHandle AddTransferOutput(std::string_view name, const FgBufDesc &desc);
     FgBufRWHandle AddTransferOutput(FgBufRWHandle handle);
-    FgBufRWHandle AddTransferOutput(Ren::BufferHandle handle);
 
-    FgResRef AddTransferImageInput(const Ren::WeakImgRef &tex);
-    FgResRef AddTransferImageInput(FgResRef handle);
-    FgResRef AddTransferImageOutput(std::string_view name, const FgImgDesc &desc);
-    FgResRef AddTransferImageOutput(const Ren::WeakImgRef &tex);
-    FgResRef AddTransferImageOutput(FgResRef handle);
+    FgImgROHandle AddTransferImageInput(FgImgROHandle handle);
+    FgImgRWHandle AddTransferImageOutput(std::string_view name, const FgImgDesc &desc);
+    FgImgRWHandle AddTransferImageOutput(FgImgRWHandle handle);
 
     FgBufROHandle AddStorageReadonlyInput(FgBufROHandle handle, Ren::Bitmask<Ren::eStage> stages);
-    FgBufROHandle AddStorageReadonlyInput(Ren::BufferHandle buf, Ren::Bitmask<Ren::eStage> stages);
     FgBufRWHandle AddStorageOutput(std::string_view name, const FgBufDesc &desc, Ren::Bitmask<Ren::eStage> stages);
     FgBufRWHandle AddStorageOutput(FgBufRWHandle handle, Ren::Bitmask<Ren::eStage> stages);
-    FgBufRWHandle AddStorageOutput(Ren::BufferHandle buf, Ren::Bitmask<Ren::eStage> stages);
 
-    FgResRef AddStorageImageOutput(std::string_view name, const FgImgDesc &desc, Ren::Bitmask<Ren::eStage> stages);
-    FgResRef AddStorageImageOutput(FgResRef handle, Ren::Bitmask<Ren::eStage> stages);
-    FgResRef AddStorageImageOutput(const Ren::WeakImgRef &tex, Ren::Bitmask<Ren::eStage> stages);
+    FgImgRWHandle AddStorageImageOutput(std::string_view name, const FgImgDesc &desc, Ren::Bitmask<Ren::eStage> stages);
+    FgImgRWHandle AddStorageImageOutput(FgImgRWHandle handle, Ren::Bitmask<Ren::eStage> stages);
 
-    FgResRef AddClearImageOutput(std::string_view name, const FgImgDesc &desc) {
+    FgImgRWHandle AddClearImageOutput(std::string_view name, const FgImgDesc &desc) {
         return AddTransferImageOutput(name, desc);
     }
-    FgResRef AddClearImageOutput(const Ren::WeakImgRef &tex) { return AddTransferImageOutput(tex); }
-    FgResRef AddClearImageOutput(FgResRef handle) { return AddTransferImageOutput(handle); }
+    FgImgRWHandle AddClearImageOutput(FgImgRWHandle handle) { return AddTransferImageOutput(handle); }
 
-    FgResRef AddColorOutput(std::string_view name, const FgImgDesc &desc);
-    FgResRef AddColorOutput(FgResRef handle);
-    FgResRef AddColorOutput(const Ren::WeakImgRef &tex);
-    FgResRef AddColorOutput(std::string_view name);
-    FgResRef AddDepthOutput(std::string_view name, const FgImgDesc &desc);
-    FgResRef AddDepthOutput(FgResRef handle);
-    FgResRef AddDepthOutput(const Ren::WeakImgRef &tex);
+    FgImgRWHandle AddColorOutput(std::string_view name, const FgImgDesc &desc);
+    FgImgRWHandle AddColorOutput(FgImgRWHandle handle);
+    FgImgRWHandle AddDepthOutput(std::string_view name, const FgImgDesc &desc);
+    FgImgRWHandle AddDepthOutput(FgImgRWHandle handle);
 
     // TODO: try to get rid of this
-    FgBufROHandle ReplaceTransferInput(int slot_index, Ren::BufferHandle buf);
-    FgResRef ReplaceColorOutput(int slot_index, const Ren::WeakImgRef &tex);
+    FgBufROHandle ReplaceTransferInput(int slot_index, FgBufROHandle handle);
+    FgImgRWHandle ReplaceColorOutput(int slot_index, FgImgRWHandle handle);
 
     FgBufROHandle AddUniformBufferInput(FgBufROHandle handle, Ren::Bitmask<Ren::eStage> stages);
 
-    FgResRef AddTextureInput(FgResRef handle, Ren::Bitmask<Ren::eStage> stages);
-    FgResRef AddTextureInput(const Ren::WeakImgRef &tex, Ren::Bitmask<Ren::eStage> stages);
-    FgResRef AddTextureInput(std::string_view name, Ren::Bitmask<Ren::eStage> stages);
+    FgImgROHandle AddTextureInput(FgImgROHandle handle, Ren::Bitmask<Ren::eStage> stages);
 
-    FgResRef AddHistoryTextureInput(FgResRef handle, Ren::Bitmask<Ren::eStage> stages);
-    FgResRef AddHistoryTextureInput(std::string_view name, Ren::Bitmask<Ren::eStage> stages);
+    FgImgROHandle AddHistoryTextureInput(FgImgROHandle handle, Ren::Bitmask<Ren::eStage> stages);
+    FgImgROHandle AddHistoryTextureInput(std::string_view name, Ren::Bitmask<Ren::eStage> stages);
 
-    FgResRef AddCustomTextureInput(FgResRef handle, Ren::eResState desired_state, Ren::Bitmask<Ren::eStage> stages);
+    FgImgROHandle AddCustomTextureInput(FgImgROHandle handle, Ren::eResState desired_state,
+                                        Ren::Bitmask<Ren::eStage> stages);
 
     FgBufROHandle AddVertexBufferInput(FgBufROHandle handle);
-    FgBufROHandle AddVertexBufferInput(Ren::BufferHandle buf);
     FgBufROHandle AddIndexBufferInput(FgBufROHandle handle);
-    FgBufROHandle AddIndexBufferInput(Ren::BufferHandle buf);
     FgBufROHandle AddIndirectBufferInput(FgBufROHandle handle);
 
     FgBufROHandle AddASBuildReadonlyInput(FgBufROHandle handle);
-    FgBufRWHandle AddASBuildOutput(Ren::BufferHandle handle);
+    FgBufRWHandle AddASBuildOutput(FgBufRWHandle handle);
     FgBufRWHandle AddASBuildOutput(std::string_view name, const FgBufDesc &desc);
 
     void Execute(const FgContext &fg) {

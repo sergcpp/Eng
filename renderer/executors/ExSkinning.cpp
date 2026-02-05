@@ -5,6 +5,6 @@
 
 void Eng::ExSkinning::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh) {
     if (!pi_skinning_) {
-        pi_skinning_ = sh.LoadPipeline("internal/skinning.comp.glsl");
+        pi_skinning_ = sh.FindOrCreatePipeline("internal/skinning.comp.glsl");
     }
 }

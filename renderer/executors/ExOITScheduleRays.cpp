@@ -3,14 +3,16 @@
 #include <Ren/Context.h>
 
 #include "../../utils/ShaderLoader.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 
 Eng::ExOITScheduleRays::ExOITScheduleRays(const DrawList **p_list, const view_state_t *view_state,
                                           const FgBufROHandle vtx_buf1, const FgBufROHandle vtx_buf2,
                                           const FgBufROHandle ndx_buf, const FgBufROHandle materials_buf,
-                                          const BindlessTextureData *bindless_tex, const FgResRef noise_tex,
-                                          const FgResRef dummy_white, const FgBufROHandle instances_buf,
+                                          const BindlessTextureData *bindless_tex, const FgImgROHandle noise_tex,
+                                          const FgImgROHandle dummy_white, const FgBufROHandle instances_buf,
                                           const FgBufROHandle instance_indices_buf, const FgBufROHandle shared_data_buf,
-                                          const FgResRef depth_tex, const FgBufROHandle oit_depth_buf,
+                                          const FgImgRWHandle depth_tex, const FgBufROHandle oit_depth_buf,
                                           const FgBufRWHandle ray_counter, const FgBufRWHandle ray_list,
                                           const FgBufRWHandle ray_bitmask) {
     view_state_ = view_state;
@@ -36,18 +38,13 @@ Eng::ExOITScheduleRays::ExOITScheduleRays(const DrawList **p_list, const view_st
 }
 
 void Eng::ExOITScheduleRays::Execute(const FgContext &fg) {
-    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
-    Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(depth_tex_);
+    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(depth_tex_);
 
-    LazyInit(fg.ren_ctx(), fg.sh(), vtx_buf1, vtx_buf2, ndx_buf, depth_tex);
+    LazyInit(fg.ren_ctx(), fg.sh(), depth_tex);
     DrawTransparent(fg, depth_tex);
 }
 
-void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
-                                      const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
-                                      const Ren::WeakImgRef &depth_tex) {
+void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, ShaderLoader &sh, const Ren::ImageRWHandle depth_tex) {
     const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
                                             Ren::eStoreOp::Store};
     if (!initialized) {
@@ -57,40 +54,36 @@ void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, 
         const bool bindless = true;
 #endif
 
-        static const int buf1_stride = 16, buf2_stride = 16;
+        const int buf1_stride = 16, buf2_stride = 16;
 
         Ren::VertexInputHandle vi_simple, vi_vegetation;
         { // VertexInput for simple and skinned meshes
             const Ren::VtxAttribDesc attribs[] = {
-                // Attributes from buffer 1
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)},
-                // Attributes from buffer 2
-                {vtx_buf2, VTX_NOR_LOC, 4, Ren::eType::Int16_snorm, buf2_stride, 0},
-                {vtx_buf2, VTX_TAN_LOC, 2, Ren::eType::Int16_snorm, buf2_stride, 4 * sizeof(uint16_t)}};
-            vi_simple = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)},
+                {1, VTX_NOR_LOC, 4, Ren::eType::Int16_snorm, buf2_stride, 0, 0},
+                {1, VTX_TAN_LOC, 2, Ren::eType::Int16_snorm, buf2_stride, 0, 4 * sizeof(uint16_t)}};
+            vi_simple = sh.FindOrCreateVertexInput(attribs);
         }
         { // VertexInput for vegetation meshes (uses additional vertex color attribute)
             const Ren::VtxAttribDesc attribs[] = {
-                // Attributes from buffer 1
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)},
-                // Attributes from buffer 2
-                {vtx_buf2, VTX_NOR_LOC, 4, Ren::eType::Int16_snorm, buf2_stride, 0},
-                {vtx_buf2, VTX_TAN_LOC, 2, Ren::eType::Int16_snorm, buf2_stride, 4 * sizeof(uint16_t)},
-                {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
-            vi_vegetation = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)},
+                {1, VTX_NOR_LOC, 4, Ren::eType::Int16_snorm, buf2_stride, 0, 0},
+                {1, VTX_TAN_LOC, 2, Ren::eType::Int16_snorm, buf2_stride, 0, 4 * sizeof(uint16_t)},
+                {1, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 0, 6 * sizeof(uint16_t)}};
+            vi_vegetation = sh.FindOrCreateVertexInput(attribs);
         }
 
-        const Ren::ProgramHandle oit_blend_simple_prog = sh.LoadProgram(
+        const Ren::ProgramHandle oit_blend_simple_prog = sh.FindOrCreateProgram(
             bindless ? "internal/oit_schedule_rays.vert.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.vert.glsl",
             bindless ? "internal/oit_schedule_rays.frag.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.frag.glsl");
-        const Ren::ProgramHandle oit_blend_vegetation_prog = sh.LoadProgram(
+        const Ren::ProgramHandle oit_blend_vegetation_prog = sh.FindOrCreateProgram(
             bindless ? "internal/oit_schedule_rays@VEGETATION.vert.glsl"
                      : "internal/oit_schedule_rays@VEGETATION;NO_BINDLESS.vert.glsl",
             bindless ? "internal/oit_schedule_rays.frag.glsl" : "internal/oit_schedule_rays@NO_BINDLESS.frag.glsl");
 
-        const Ren::RenderPassHandle rp_oit_schedule_rays = sh.LoadRenderPass(depth_target, {});
+        const Ren::RenderPassHandle rp_oit_schedule_rays = sh.FindOrCreateRenderPass(depth_target, {});
 
         { // simple and skinned
             Ren::RastState rast_state;
@@ -98,15 +91,18 @@ void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, 
             rast_state.depth.write_enabled = false;
             rast_state.depth.compare_op = uint8_t(Ren::eCompareOp::Greater);
 
-            pi_simple_[2] = sh.LoadPipeline(rast_state, oit_blend_simple_prog, vi_simple, rp_oit_schedule_rays, 0);
+            pi_simple_[2] =
+                sh.FindOrCreatePipeline(rast_state, oit_blend_simple_prog, vi_simple, rp_oit_schedule_rays, 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
-            pi_simple_[0] = sh.LoadPipeline(rast_state, oit_blend_simple_prog, vi_simple, rp_oit_schedule_rays, 0);
+            pi_simple_[0] =
+                sh.FindOrCreatePipeline(rast_state, oit_blend_simple_prog, vi_simple, rp_oit_schedule_rays, 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Front);
 
-            pi_simple_[1] = sh.LoadPipeline(rast_state, oit_blend_simple_prog, vi_simple, rp_oit_schedule_rays, 0);
+            pi_simple_[1] =
+                sh.FindOrCreatePipeline(rast_state, oit_blend_simple_prog, vi_simple, rp_oit_schedule_rays, 0);
         }
         { // vegetation
             Ren::RastState rast_state;
@@ -115,24 +111,14 @@ void Eng::ExOITScheduleRays::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, 
             rast_state.depth.compare_op = uint8_t(Ren::eCompareOp::Greater);
 
             pi_vegetation_[1] =
-                sh.LoadPipeline(rast_state, oit_blend_vegetation_prog, vi_vegetation, rp_oit_schedule_rays, 0);
+                sh.FindOrCreatePipeline(rast_state, oit_blend_vegetation_prog, vi_vegetation, rp_oit_schedule_rays, 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
             pi_vegetation_[0] =
-                sh.LoadPipeline(rast_state, oit_blend_vegetation_prog, vi_vegetation, rp_oit_schedule_rays, 0);
+                sh.FindOrCreatePipeline(rast_state, oit_blend_vegetation_prog, vi_vegetation, rp_oit_schedule_rays, 0);
         }
 
         initialized = true;
-    }
-
-    fb_to_use_ = (fb_to_use_ + 1) % 2;
-
-    const Ren::PipelineMain &pi_simple_main = ctx.pipelines().Get(pi_simple_[0]).first;
-    const Ren::RenderPassMain &rp_main = ctx.render_passes().Get(pi_simple_main.render_pass).first;
-
-    if (!main_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(
-            &ctx.api(), rp_main, depth_tex->params.w, depth_tex->params.h, depth_target, depth_target, {}, ctx.log())) {
-        ctx.log()->Error("[ExOITScheduleRays::LazyInit]: main_draw_fb_ init failed!");
     }
 }

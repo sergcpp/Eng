@@ -19,9 +19,8 @@
 #include "Renderer_Names.h"
 
 void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool debug_denoise,
-                                        const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
-                                        const AccelerationStructureData &acc_struct_data,
-                                        const BindlessTextureData &bindless, const FgResRef depth_hierarchy,
+                                        const CommonBuffers &common_buffers, const AccelerationStructures &acc_structs,
+                                        const BindlessTextureData &bindless, const FgImgROHandle depth_hierarchy,
                                         const FgBufROHandle rt_geo_instances_res,
                                         const FgBufROHandle rt_obj_instances_res, FrameTextures &frame_textures) {
     using Stg = Ren::eStage;
@@ -40,10 +39,9 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
 
         struct PassData {
             FgBufRWHandle ray_counter;
-            FgResRef ray_length_tex;
         };
 
-        auto *data = ssr_prepare.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
 
         { // ray counter
             FgBufDesc desc = {};
@@ -57,38 +55,37 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
             const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(data->ray_counter);
 
             const auto &[buf_main, buf_cold] = fg.storages().buffers.Get(ray_counter_buf);
-            Ren::Buffer_Fill(fg.ren_ctx().api(), buf_main, 0, buf_cold.size, 0, fg.cmd_buf());
-
-            // ray_counter_buf.Fill(0, ray_counter_buf.size(), 0, fg.cmd_buf());
+            Buffer_Fill(fg.ren_ctx().api(), buf_main, 0, buf_cold.size, 0, fg.cmd_buf());
         });
     }
 
     const int tile_count = ((view_state_.ren_res[0] + 7) / 8) * ((view_state_.ren_res[1] + 7) / 8);
 
     FgBufRWHandle ray_list, tile_list;
-    FgResRef refl_tex, noise_tex;
+    FgImgRWHandle refl_tex, noise_tex;
 
     { // Classify pixel quads
         auto &ssr_classify = fg_builder_.AddNode("SSR CLASSIFY");
 
         struct PassData {
-            FgResRef depth;
-            FgResRef specular;
-            FgResRef normal;
-            FgResRef variance_history;
+            FgImgROHandle depth;
+            FgImgROHandle specular;
+            FgImgROHandle normal;
+            FgImgROHandle variance_history;
             FgBufROHandle bn_pmj_seq;
             FgBufRWHandle ray_counter;
             FgBufRWHandle ray_list;
             FgBufRWHandle tile_list;
-            FgResRef out_refl_tex, out_noise_tex;
+            FgImgRWHandle out_refl_tex, out_noise_tex;
         };
 
-        auto *data = ssr_classify.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->depth = ssr_classify.AddTextureInput(frame_textures.depth, Stg::ComputeShader);
         data->specular = ssr_classify.AddTextureInput(frame_textures.specular, Stg::ComputeShader);
         data->normal = ssr_classify.AddTextureInput(frame_textures.normal, Stg::ComputeShader);
         data->variance_history = ssr_classify.AddHistoryTextureInput(SPECULAR_VARIANCE_TEX, Stg::ComputeShader);
-        data->bn_pmj_seq = ssr_classify.AddStorageReadonlyInput(bn_pmj_2D_64spp_seq_buf_, Stg::ComputeShader);
+        data->bn_pmj_seq =
+            ssr_classify.AddStorageReadonlyInput(common_buffers.bn_pmj_2D_64spp_seq_buf, Stg::ComputeShader);
         ray_counter = data->ray_counter = ssr_classify.AddStorageOutput(ray_counter, Stg::ComputeShader);
 
         { // packed ray list
@@ -126,17 +123,18 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         ssr_classify.set_execute_cb([this, data, tile_count, SamplesPerQuad](const FgContext &fg) {
             using namespace SSRClassifyTiles;
 
-            const Ren::Image &depth_tex = fg.AccessROImage(data->depth);
-            const Ren::Image &spec_tex = fg.AccessROImage(data->specular);
-            const Ren::Image &norm_tex = fg.AccessROImage(data->normal);
-            const Ren::Image &variance_tex = fg.AccessROImage(data->variance_history);
+            const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth);
+            const Ren::ImageROHandle spec_tex = fg.AccessROImage(data->specular);
+            const Ren::ImageROHandle norm_tex = fg.AccessROImage(data->normal);
+            const Ren::ImageROHandle variance_tex = fg.AccessROImage(data->variance_history);
             const Ren::BufferROHandle bn_pmj_seq = fg.AccessROBuffer(data->bn_pmj_seq);
 
             const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(data->ray_counter);
             const Ren::BufferHandle ray_list_buf = fg.AccessRWBuffer(data->ray_list);
             const Ren::BufferHandle tile_list_buf = fg.AccessRWBuffer(data->tile_list);
-            const Ren::Image &refl_tex = fg.AccessRWImage(data->out_refl_tex);
-            const Ren::Image &noise_tex = fg.AccessRWImage(data->out_noise_tex);
+
+            const Ren::ImageRWHandle refl_tex = fg.AccessRWImage(data->out_refl_tex);
+            const Ren::ImageRWHandle noise_tex = fg.AccessRWImage(data->out_noise_tex);
 
             const Ren::Binding bindings[] = {
                 {Trg::TexSampled, DEPTH_TEX_SLOT, {depth_tex, 1}}, {Trg::TexSampled, SPEC_TEX_SLOT, spec_tex},
@@ -170,7 +168,7 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
             FgBufRWHandle indir_disp_buf;
         };
 
-        auto *data = write_indir.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         ray_counter = data->ray_counter = write_indir.AddStorageOutput(ray_counter, Stg::ComputeShader);
 
         { // Indirect arguments
@@ -202,19 +200,22 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         auto &ssr_trace_hq = fg_builder_.AddNode("SSR TRACE HQ");
 
         struct PassData {
-            FgResRef noise_tex;
+            FgImgROHandle noise_tex;
             FgBufROHandle shared_data;
-            FgResRef color_tex, normal_tex, depth_hierarchy;
+            FgImgROHandle color_tex, normal_tex;
+            FgImgROHandle depth_hierarchy;
 
-            FgResRef albedo_tex, specular_tex, ltc_luts_tex, irradiance_tex, distance_tex, offset_tex;
+            FgImgROHandle albedo_tex, specular_tex;
+            FgImgROHandle irradiance_tex, distance_tex, offset_tex;
+            FgImgROHandle ltc_luts;
 
             FgBufROHandle in_ray_list, indir_args;
             FgBufRWHandle inout_ray_counter;
-            FgResRef refl_tex;
+            FgImgRWHandle refl_tex;
             FgBufRWHandle out_ray_list;
         };
 
-        auto *data = ssr_trace_hq.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->noise_tex = ssr_trace_hq.AddTextureInput(noise_tex, Stg::ComputeShader);
         data->shared_data = ssr_trace_hq.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
         data->color_tex = ssr_trace_hq.AddTextureInput(frame_textures.color, Stg::ComputeShader);
@@ -224,7 +225,7 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         if (frame_textures.gi_cache_irradiance) {
             data->albedo_tex = ssr_trace_hq.AddTextureInput(frame_textures.albedo, Stg::ComputeShader);
             data->specular_tex = ssr_trace_hq.AddTextureInput(frame_textures.specular, Stg::ComputeShader);
-            data->ltc_luts_tex = ssr_trace_hq.AddTextureInput(ltc_luts_, Stg::ComputeShader);
+            data->ltc_luts = ssr_trace_hq.AddTextureInput(frame_textures.ltc_luts, Stg::ComputeShader);
             data->irradiance_tex = ssr_trace_hq.AddTextureInput(frame_textures.gi_cache_irradiance, Stg::ComputeShader);
             data->distance_tex = ssr_trace_hq.AddTextureInput(frame_textures.gi_cache_distance, Stg::ComputeShader);
             data->offset_tex = ssr_trace_hq.AddTextureInput(frame_textures.gi_cache_offset, Stg::ComputeShader);
@@ -246,27 +247,28 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         ssr_trace_hq.set_execute_cb([this, data](const FgContext &fg) {
             using namespace SSRTraceHQ;
 
-            const Ren::Image &noise_tex = fg.AccessROImage(data->noise_tex);
+            const Ren::ImageROHandle noise_tex = fg.AccessROImage(data->noise_tex);
             const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::Image &color_tex = fg.AccessROImage(data->color_tex);
-            const Ren::Image &normal_tex = fg.AccessROImage(data->normal_tex);
-            const Ren::Image &depth_hierarchy_tex = fg.AccessROImage(data->depth_hierarchy);
+            const Ren::ImageROHandle color_tex = fg.AccessROImage(data->color_tex);
+            const Ren::ImageROHandle normal_tex = fg.AccessROImage(data->normal_tex);
+            const Ren::ImageROHandle depth_hierarchy_tex = fg.AccessROImage(data->depth_hierarchy);
             const Ren::BufferROHandle in_ray_list_buf = fg.AccessROBuffer(data->in_ray_list);
             const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
-            const Ren::Image *albedo_tex = nullptr, *specular_tex = nullptr, *ltc_luts_tex = nullptr,
-                             *irr_tex = nullptr, *dist_tex = nullptr, *off_tex = nullptr;
+            Ren::ImageROHandle albedo_tex, specular_tex;
+            Ren::ImageROHandle irr_tex, dist_tex, off_tex;
+            Ren::ImageROHandle ltc_luts;
             if (data->irradiance_tex) {
-                albedo_tex = &fg.AccessROImage(data->albedo_tex);
-                specular_tex = &fg.AccessROImage(data->specular_tex);
-                ltc_luts_tex = &fg.AccessROImage(data->ltc_luts_tex);
+                albedo_tex = fg.AccessROImage(data->albedo_tex);
+                specular_tex = fg.AccessROImage(data->specular_tex);
+                ltc_luts = fg.AccessROImage(data->ltc_luts);
 
-                irr_tex = &fg.AccessROImage(data->irradiance_tex);
-                dist_tex = &fg.AccessROImage(data->distance_tex);
-                off_tex = &fg.AccessROImage(data->offset_tex);
+                irr_tex = fg.AccessROImage(data->irradiance_tex);
+                dist_tex = fg.AccessROImage(data->distance_tex);
+                off_tex = fg.AccessROImage(data->offset_tex);
             }
 
-            const Ren::Image &out_refl_tex = fg.AccessRWImage(data->refl_tex);
+            const Ren::ImageRWHandle out_refl_tex = fg.AccessRWImage(data->refl_tex);
             const Ren::BufferHandle inout_ray_counter_buf = fg.AccessRWBuffer(data->inout_ray_counter);
             const Ren::BufferHandle out_ray_list_buf = fg.AccessRWBuffer(data->out_ray_list);
 
@@ -280,25 +282,24 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
                                                            {Trg::SBufRW, INOUT_RAY_COUNTER_SLOT, inout_ray_counter_buf},
                                                            {Trg::SBufRW, OUT_RAY_LIST_SLOT, out_ray_list_buf}};
             if (irr_tex) {
-                bindings.emplace_back(Trg::TexSampled, ALBEDO_TEX_SLOT, *albedo_tex);
-                bindings.emplace_back(Trg::TexSampled, SPEC_TEX_SLOT, *specular_tex);
-                bindings.emplace_back(Trg::TexSampled, LTC_LUTS_TEX_SLOT, *ltc_luts_tex);
+                bindings.emplace_back(Trg::TexSampled, ALBEDO_TEX_SLOT, albedo_tex);
+                bindings.emplace_back(Trg::TexSampled, SPEC_TEX_SLOT, specular_tex);
+                bindings.emplace_back(Trg::TexSampled, LTC_LUTS_TEX_SLOT, ltc_luts);
 
-                bindings.emplace_back(Trg::TexSampled, IRRADIANCE_TEX_SLOT, *irr_tex);
-                bindings.emplace_back(Trg::TexSampled, DISTANCE_TEX_SLOT, *dist_tex);
-                bindings.emplace_back(Trg::TexSampled, OFFSET_TEX_SLOT, *off_tex);
+                bindings.emplace_back(Trg::TexSampled, IRRADIANCE_TEX_SLOT, irr_tex);
+                bindings.emplace_back(Trg::TexSampled, DISTANCE_TEX_SLOT, dist_tex);
+                bindings.emplace_back(Trg::TexSampled, OFFSET_TEX_SLOT, off_tex);
             }
 
             Params uniform_params;
             uniform_params.resolution = Ren::Vec4u(view_state_.ren_res[0], view_state_.ren_res[1], 0, 0);
 
-            DispatchComputeIndirect(fg.cmd_buf(), pi_ssr_trace_hq_[0][irr_tex != nullptr], fg.storages(),
-                                    indir_args_buf, 0, bindings, &uniform_params, sizeof(uniform_params),
-                                    fg.descr_alloc(), fg.log());
+            DispatchComputeIndirect(fg.cmd_buf(), pi_ssr_trace_hq_[0][bool(irr_tex)], fg.storages(), indir_args_buf, 0,
+                                    bindings, &uniform_params, sizeof(uniform_params), fg.descr_alloc(), fg.log());
         });
     }
 
-    if ((ctx_.capabilities.hwrt || ctx_.capabilities.swrt) && acc_struct_data.rt_tlas_buf[int(eTLASIndex::Main)] &&
+    if ((ctx_.capabilities.hwrt || ctx_.capabilities.swrt) && acc_structs.rt_tlas_buf[int(eTLASIndex::Main)] &&
         int(settings.reflections_quality) >= int(eReflectionsQuality::Raytraced_Normal)) {
         FgBufRWHandle indir_rt_disp_buf;
 
@@ -310,7 +311,7 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
                 FgBufRWHandle indir_disp_buf;
             };
 
-            auto *data = rt_disp_args.AllocNodeData<PassData>();
+            auto *data = fg_builder_.AllocTempData<PassData>();
             ray_counter = data->ray_counter = rt_disp_args.AddStorageOutput(ray_counter, Stg::ComputeShader);
 
             { // Indirect arguments
@@ -342,17 +343,17 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         { // Trace reflection rays
             auto &rt_refl = fg_builder_.AddNode("RT REFLECTIONS");
 
-            auto *data = rt_refl.AllocNodeData<ExRTReflections::Args>();
+            auto *data = fg_builder_.AllocTempData<ExRTReflections::Args>();
 
             const auto stage = Stg::ComputeShader;
 
             data->geo_data = rt_refl.AddStorageReadonlyInput(rt_geo_instances_res, stage);
-            data->materials = rt_refl.AddStorageReadonlyInput(persistent_data.materials_buf, stage);
-            data->vtx_buf1 = rt_refl.AddStorageReadonlyInput(persistent_data.vertex_buf1, stage);
-            data->vtx_buf2 = rt_refl.AddStorageReadonlyInput(persistent_data.vertex_buf2, stage);
-            data->ndx_buf = rt_refl.AddStorageReadonlyInput(persistent_data.indices_buf, stage);
+            data->materials = rt_refl.AddStorageReadonlyInput(common_buffers.materials_buf, stage);
+            data->vtx_buf1 = rt_refl.AddStorageReadonlyInput(common_buffers.vertex_buf1, stage);
+            data->vtx_buf2 = rt_refl.AddStorageReadonlyInput(common_buffers.vertex_buf2, stage);
+            data->ndx_buf = rt_refl.AddStorageReadonlyInput(common_buffers.indices_buf, stage);
             data->shared_data = rt_refl.AddUniformBufferInput(common_buffers.shared_data, stage);
-            data->noise_tex = rt_refl.AddTextureInput(noise_tex, stage);
+            data->noise = rt_refl.AddTextureInput(noise_tex, stage);
             data->depth_tex = rt_refl.AddTextureInput(frame_textures.depth, stage);
             data->normal_tex = rt_refl.AddTextureInput(frame_textures.normal, stage);
             data->env_tex = rt_refl.AddTextureInput(frame_textures.envmap, stage);
@@ -363,36 +364,34 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
                 data->ray_list = rt_refl.AddStorageReadonlyInput(ray_list, stage);
             }
             data->indir_args = rt_refl.AddIndirectBufferInput(indir_rt_disp_buf);
-            data->tlas_buf = rt_refl.AddStorageReadonlyInput(acc_struct_data.rt_tlas_buf[int(eTLASIndex::Main)], stage);
-            data->lights_buf = rt_refl.AddStorageReadonlyInput(common_buffers.lights, stage);
-            data->shadow_depth_tex = rt_refl.AddTextureInput(shadow_depth_tex_, stage);
-            data->shadow_color_tex = rt_refl.AddTextureInput(shadow_color_tex_, stage);
-            data->ltc_luts_tex = rt_refl.AddTextureInput(ltc_luts_, stage);
-            data->cells_buf = rt_refl.AddStorageReadonlyInput(common_buffers.rt_cells, stage);
-            data->items_buf = rt_refl.AddStorageReadonlyInput(common_buffers.rt_items, stage);
+            data->tlas_buf = rt_refl.AddStorageReadonlyInput(acc_structs.rt_tlas_buf[int(eTLASIndex::Main)], stage);
+            data->lights = rt_refl.AddStorageReadonlyInput(common_buffers.lights, stage);
+            data->shadow_depth = rt_refl.AddTextureInput(frame_textures.shadow_depth, stage);
+            data->shadow_color = rt_refl.AddTextureInput(frame_textures.shadow_color, stage);
+            data->ltc_luts = rt_refl.AddTextureInput(frame_textures.ltc_luts, stage);
+            data->cells = rt_refl.AddStorageReadonlyInput(common_buffers.rt_cells, stage);
+            data->items = rt_refl.AddStorageReadonlyInput(common_buffers.rt_items, stage);
 
             if (!ctx_.capabilities.hwrt) {
-                data->swrt.root_node = persistent_data.swrt.rt_root_node;
-                data->swrt.rt_blas_buf = rt_refl.AddStorageReadonlyInput(persistent_data.swrt.rt_blas_buf, stage);
-                data->swrt.prim_ndx_buf =
-                    rt_refl.AddStorageReadonlyInput(persistent_data.swrt.rt_prim_indices_buf, stage);
+                data->swrt.root_node = acc_structs.swrt.rt_root_node;
+                data->swrt.rt_blas_buf = rt_refl.AddStorageReadonlyInput(acc_structs.swrt.rt_blas_buf, stage);
+                data->swrt.prim_ndx_buf = rt_refl.AddStorageReadonlyInput(acc_structs.swrt.rt_prim_indices_buf, stage);
                 data->swrt.mesh_instances_buf = rt_refl.AddStorageReadonlyInput(rt_obj_instances_res, stage);
             }
 
-            data->tlas = acc_struct_data.rt_tlases[int(eTLASIndex::Main)];
+            data->tlas = acc_structs.rt_tlases[int(eTLASIndex::Main)];
 
-            data->probe_volume = &persistent_data.probe_volumes[0];
             if (settings.gi_quality != eGIQuality::Off) {
                 data->irradiance_tex = rt_refl.AddTextureInput(frame_textures.gi_cache_irradiance, stage);
                 data->distance_tex = rt_refl.AddTextureInput(frame_textures.gi_cache_distance, stage);
                 data->offset_tex = rt_refl.AddTextureInput(frame_textures.gi_cache_offset, stage);
             }
 
-            if (persistent_data.stoch_lights_buf) {
+            if (common_buffers.stoch_lights_buf) {
                 data->stoch_lights_buf =
-                    rt_refl.AddStorageReadonlyInput(persistent_data.stoch_lights_buf, Stg::ComputeShader);
+                    rt_refl.AddStorageReadonlyInput(common_buffers.stoch_lights_buf, Stg::ComputeShader);
                 data->light_nodes_buf =
-                    rt_refl.AddStorageReadonlyInput(persistent_data.stoch_lights_nodes_buf, Stg::ComputeShader);
+                    rt_refl.AddStorageReadonlyInput(common_buffers.stoch_lights_nodes_buf, Stg::ComputeShader);
             }
 
             refl_tex = data->out_refl_tex[0] = rt_refl.AddStorageImageOutput(refl_tex, stage);
@@ -404,24 +403,27 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         }
     }
 
-    FgResRef reproj_refl_tex, avg_refl_tex;
-    FgResRef sample_count_tex, variance_temp_tex;
+    FgImgRWHandle reproj_refl_tex;
+    FgImgRWHandle avg_refl_tex;
+    FgImgRWHandle sample_count_tex, variance_temp_tex;
 
     { // Denoiser reprojection
         auto &ssr_reproject = fg_builder_.AddNode("SSR REPROJECT");
 
         struct PassData {
             FgBufROHandle shared_data;
-            FgResRef depth_tex, norm_tex, velocity_tex;
-            FgResRef depth_hist_tex, norm_hist_tex, refl_hist_tex, variance_hist_tex, sample_count_hist_tex;
-            FgResRef refl_tex;
+            FgImgROHandle depth_tex, norm_tex, velocity_tex;
+            FgImgROHandle depth_hist_tex, norm_hist_tex;
+            FgImgROHandle refl_hist_tex, sample_count_hist_tex, variance_hist_tex;
+            FgImgROHandle refl_tex;
             FgBufROHandle tile_list, indir_args;
             uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
-            FgResRef out_reprojected_tex, out_avg_refl_tex;
-            FgResRef out_variance_tex, out_sample_count_tex;
+            FgImgRWHandle out_reprojected_tex;
+            FgImgRWHandle out_avg_refl_tex;
+            FgImgRWHandle out_variance_tex, out_sample_count_tex;
         };
 
-        auto *data = ssr_reproject.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->shared_data = ssr_reproject.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
         data->depth_tex = ssr_reproject.AddTextureInput(frame_textures.depth, Stg::ComputeShader);
         data->norm_tex = ssr_reproject.AddTextureInput(frame_textures.normal, Stg::ComputeShader);
@@ -430,7 +432,7 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         data->norm_hist_tex = ssr_reproject.AddHistoryTextureInput(frame_textures.normal, Stg::ComputeShader);
         data->refl_hist_tex = ssr_reproject.AddHistoryTextureInput("GI Specular Filtered", Stg::ComputeShader);
         data->variance_hist_tex = ssr_reproject.AddHistoryTextureInput(SPECULAR_VARIANCE_TEX, Stg::ComputeShader);
-        refl_tex = data->refl_tex = ssr_reproject.AddTextureInput(refl_tex, Stg::ComputeShader);
+        data->refl_tex = ssr_reproject.AddTextureInput(refl_tex, Stg::ComputeShader);
 
         data->tile_list = ssr_reproject.AddStorageReadonlyInput(tile_list, Stg::ComputeShader);
         data->indir_args = ssr_reproject.AddIndirectBufferInput(indir_disp_buf);
@@ -487,22 +489,22 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
 
         ssr_reproject.set_execute_cb([this, data, tile_count](const FgContext &fg) {
             const Ren::BufferROHandle shared_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
-            const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
-            const Ren::Image &velocity_tex = fg.AccessROImage(data->velocity_tex);
-            const Ren::Image &depth_hist_tex = fg.AccessROImage(data->depth_hist_tex);
-            const Ren::Image &norm_hist_tex = fg.AccessROImage(data->norm_hist_tex);
-            const Ren::Image &refl_hist_tex = fg.AccessROImage(data->refl_hist_tex);
-            const Ren::Image &variance_hist_tex = fg.AccessROImage(data->variance_hist_tex);
-            const Ren::Image &sample_count_hist_tex = fg.AccessROImage(data->sample_count_hist_tex);
-            const Ren::Image &relf_tex = fg.AccessROImage(data->refl_tex);
+            const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
+            const Ren::ImageROHandle norm_tex = fg.AccessROImage(data->norm_tex);
+            const Ren::ImageROHandle velocity_tex = fg.AccessROImage(data->velocity_tex);
+            const Ren::ImageROHandle depth_hist_tex = fg.AccessROImage(data->depth_hist_tex);
+            const Ren::ImageROHandle norm_hist_tex = fg.AccessROImage(data->norm_hist_tex);
+            const Ren::ImageROHandle refl_hist_tex = fg.AccessROImage(data->refl_hist_tex);
+            const Ren::ImageROHandle variance_hist_tex = fg.AccessROImage(data->variance_hist_tex);
+            const Ren::ImageROHandle sample_count_hist_tex = fg.AccessROImage(data->sample_count_hist_tex);
+            const Ren::ImageROHandle relf_tex = fg.AccessROImage(data->refl_tex);
             const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
             const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
-            const Ren::Image &out_reprojected_tex = fg.AccessRWImage(data->out_reprojected_tex);
-            const Ren::Image &out_avg_refl_tex = fg.AccessRWImage(data->out_avg_refl_tex);
-            const Ren::Image &out_variance_tex = fg.AccessRWImage(data->out_variance_tex);
-            const Ren::Image &out_sample_count_tex = fg.AccessRWImage(data->out_sample_count_tex);
+            const Ren::ImageRWHandle out_reprojected_tex = fg.AccessRWImage(data->out_reprojected_tex);
+            const Ren::ImageRWHandle out_avg_refl_tex = fg.AccessRWImage(data->out_avg_refl_tex);
+            const Ren::ImageRWHandle out_variance_tex = fg.AccessRWImage(data->out_variance_tex);
+            const Ren::ImageRWHandle out_sample_count_tex = fg.AccessRWImage(data->out_sample_count_tex);
 
             { // Process tiles
                 using namespace SSRReproject;
@@ -548,21 +550,22 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         });
     }
 
-    FgResRef prefiltered_refl;
+    FgImgRWHandle prefiltered_refl;
 
     { // Denoiser prefilter
         auto &ssr_prefilter = fg_builder_.AddNode("SSR PREFILTER");
 
         struct PassData {
             FgBufROHandle shared_data;
-            FgResRef depth_tex, spec_tex, norm_tex, refl_tex, avg_refl_tex;
-            FgResRef sample_count_tex, variance_tex;
+            FgImgROHandle depth_tex, spec_tex, norm_tex;
+            FgImgROHandle refl_tex, avg_refl_tex;
+            FgImgROHandle sample_count_tex, variance_tex;
             FgBufROHandle tile_list, indir_args;
             uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
-            FgResRef out_refl_tex;
+            FgImgRWHandle out_refl_tex;
         };
 
-        auto *data = ssr_prefilter.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->shared_data = ssr_prefilter.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
         data->depth_tex = ssr_prefilter.AddTextureInput(frame_textures.depth, Stg::ComputeShader);
         data->spec_tex = ssr_prefilter.AddTextureInput(frame_textures.specular, Stg::ComputeShader);
@@ -590,17 +593,17 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
 
         ssr_prefilter.set_execute_cb([this, data, tile_count](const FgContext &fg) {
             const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
-            const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
-            const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
-            const Ren::Image &refl_tex = fg.AccessROImage(data->refl_tex);
-            const Ren::Image &avg_refl_tex = fg.AccessROImage(data->avg_refl_tex);
-            const Ren::Image &sample_count_tex = fg.AccessROImage(data->sample_count_tex);
-            const Ren::Image &variance_tex = fg.AccessROImage(data->variance_tex);
+            const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
+            const Ren::ImageROHandle spec_tex = fg.AccessROImage(data->spec_tex);
+            const Ren::ImageROHandle norm_tex = fg.AccessROImage(data->norm_tex);
+            const Ren::ImageROHandle refl_tex = fg.AccessROImage(data->refl_tex);
+            const Ren::ImageROHandle avg_refl_tex = fg.AccessROImage(data->avg_refl_tex);
+            const Ren::ImageROHandle sample_count_tex = fg.AccessROImage(data->sample_count_tex);
+            const Ren::ImageROHandle variance_tex = fg.AccessROImage(data->variance_tex);
             const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
             const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
-            const Ren::Image &out_refl_tex = fg.AccessRWImage(data->out_refl_tex);
+            const Ren::ImageRWHandle out_refl_tex = fg.AccessRWImage(data->out_refl_tex);
 
             { // Filter tiles
                 using namespace SSRFilter;
@@ -641,21 +644,23 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         });
     }
 
-    FgResRef gi_specular_tex, ssr_variance_tex;
+    FgImgRWHandle gi_specular_tex, ssr_variance_tex;
 
     { // Denoiser accumulation
         auto &ssr_temporal = fg_builder_.AddNode("SSR TEMPORAL");
 
         struct PassData {
             FgBufROHandle shared_data;
-            FgResRef norm_tex, avg_refl_tex, refl_tex, reproj_refl_tex;
-            FgResRef variance_tex, sample_count_tex;
+            FgImgROHandle norm_tex;
+            FgImgROHandle refl_tex, reproj_refl_tex, avg_refl_tex;
+            FgImgROHandle variance_tex, sample_count_tex;
             FgBufROHandle tile_list, indir_args;
             uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
-            FgResRef out_refl_tex, out_variance_tex;
+            FgImgRWHandle out_refl_tex;
+            FgImgRWHandle out_variance_tex;
         };
 
-        auto *data = ssr_temporal.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->shared_data = ssr_temporal.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
         data->norm_tex = ssr_temporal.AddTextureInput(frame_textures.normal, Stg::ComputeShader);
         data->avg_refl_tex = ssr_temporal.AddTextureInput(avg_refl_tex, Stg::ComputeShader);
@@ -696,17 +701,17 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
 
         ssr_temporal.set_execute_cb([this, data, tile_count](const FgContext &fg) {
             const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
-            const Ren::Image &avg_refl_tex = fg.AccessROImage(data->avg_refl_tex);
-            const Ren::Image &refl_tex = fg.AccessROImage(data->refl_tex);
-            const Ren::Image &reproj_refl_tex = fg.AccessROImage(data->reproj_refl_tex);
-            const Ren::Image &variance_tex = fg.AccessROImage(data->variance_tex);
-            const Ren::Image &sample_count_tex = fg.AccessROImage(data->sample_count_tex);
+            const Ren::ImageROHandle norm_tex = fg.AccessROImage(data->norm_tex);
+            const Ren::ImageROHandle avg_refl_tex = fg.AccessROImage(data->avg_refl_tex);
+            const Ren::ImageROHandle refl_tex = fg.AccessROImage(data->refl_tex);
+            const Ren::ImageROHandle reproj_refl_tex = fg.AccessROImage(data->reproj_refl_tex);
+            const Ren::ImageROHandle variance_tex = fg.AccessROImage(data->variance_tex);
+            const Ren::ImageROHandle sample_count_tex = fg.AccessROImage(data->sample_count_tex);
             const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
             const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
-            const Ren::Image &out_refl_tex = fg.AccessRWImage(data->out_refl_tex);
-            const Ren::Image &out_variance_tex = fg.AccessRWImage(data->out_variance_tex);
+            const Ren::ImageRWHandle out_refl_tex = fg.AccessRWImage(data->out_refl_tex);
+            const Ren::ImageRWHandle out_variance_tex = fg.AccessRWImage(data->out_variance_tex);
 
             { // Process tiles
                 using namespace SSRResolveTemporal;
@@ -746,24 +751,24 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
         });
     }
 
-    FgResRef refl_final = gi_specular_tex;
+    FgImgRWHandle refl_final = gi_specular_tex;
 
     if (EnableBlur) {
-        FgResRef gi_specular2_tex;
+        FgImgRWHandle gi_specular2_tex;
 
         { // Denoiser blur
             auto &ssr_filter = fg_builder_.AddNode("SSR FILTER");
 
             struct PassData {
                 FgBufROHandle shared_data;
-                FgResRef depth_tex, spec_tex, norm_tex, refl_tex;
-                FgResRef sample_count_tex, variance_tex;
+                FgImgROHandle depth_tex, spec_tex, norm_tex;
+                FgImgROHandle refl_tex, sample_count_tex, variance_tex;
                 FgBufROHandle tile_list, indir_args;
                 uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
-                FgResRef out_refl_tex;
+                FgImgRWHandle out_refl_tex;
             };
 
-            auto *data = ssr_filter.AllocNodeData<PassData>();
+            auto *data = fg_builder_.AllocTempData<PassData>();
             data->shared_data = ssr_filter.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
             data->depth_tex = ssr_filter.AddTextureInput(frame_textures.depth, Stg::ComputeShader);
             data->spec_tex = ssr_filter.AddTextureInput(frame_textures.specular, Stg::ComputeShader);
@@ -790,16 +795,16 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
 
             ssr_filter.set_execute_cb([this, data, tile_count](const FgContext &fg) {
                 const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-                const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
-                const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
-                const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
-                const Ren::Image &refl_tex = fg.AccessROImage(data->refl_tex);
-                const Ren::Image &sample_count_tex = fg.AccessROImage(data->sample_count_tex);
-                const Ren::Image &variance_tex = fg.AccessROImage(data->variance_tex);
+                const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
+                const Ren::ImageROHandle spec_tex = fg.AccessROImage(data->spec_tex);
+                const Ren::ImageROHandle norm_tex = fg.AccessROImage(data->norm_tex);
+                const Ren::ImageROHandle refl_tex = fg.AccessROImage(data->refl_tex);
+                const Ren::ImageROHandle sample_count_tex = fg.AccessROImage(data->sample_count_tex);
+                const Ren::ImageROHandle variance_tex = fg.AccessROImage(data->variance_tex);
                 const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
                 const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
-                const Ren::Image &out_refl_tex = fg.AccessRWImage(data->out_refl_tex);
+                const Ren::ImageRWHandle out_refl_tex = fg.AccessRWImage(data->out_refl_tex);
 
                 { // Filter tiles
                     using namespace SSRFilter;
@@ -839,21 +844,21 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
             });
         }
 
-        FgResRef gi_specular3_tex;
+        FgImgRWHandle gi_specular3_tex;
 
         { // Denoiser blur 2
             auto &ssr_post_filter = fg_builder_.AddNode("SSR POST FILTER");
 
             struct PassData {
                 FgBufROHandle shared_data;
-                FgResRef depth_tex, spec_tex, norm_tex, refl_tex;
-                FgResRef sample_count_tex, variance_tex;
+                FgImgROHandle depth_tex, spec_tex, norm_tex;
+                FgImgROHandle refl_tex, sample_count_tex, variance_tex;
                 FgBufROHandle tile_list, indir_args;
                 uint32_t indir_args_offset1 = 0, indir_args_offset2 = 0;
-                FgResRef out_refl_tex;
+                FgImgRWHandle out_refl_tex;
             };
 
-            auto *data = ssr_post_filter.AllocNodeData<PassData>();
+            auto *data = fg_builder_.AllocTempData<PassData>();
             data->shared_data = ssr_post_filter.AddUniformBufferInput(common_buffers.shared_data, Stg::ComputeShader);
             data->depth_tex = ssr_post_filter.AddTextureInput(frame_textures.depth, Stg::ComputeShader);
             data->spec_tex = ssr_post_filter.AddTextureInput(frame_textures.specular, Stg::ComputeShader);
@@ -880,16 +885,16 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
 
             ssr_post_filter.set_execute_cb([this, data, tile_count](const FgContext &fg) {
                 const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-                const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
-                const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
-                const Ren::Image &norm_tex = fg.AccessROImage(data->norm_tex);
-                const Ren::Image &refl_tex = fg.AccessROImage(data->refl_tex);
-                const Ren::Image &sample_count_tex = fg.AccessROImage(data->sample_count_tex);
-                const Ren::Image &variance_tex = fg.AccessROImage(data->variance_tex);
+                const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
+                const Ren::ImageROHandle spec_tex = fg.AccessROImage(data->spec_tex);
+                const Ren::ImageROHandle norm_tex = fg.AccessROImage(data->norm_tex);
+                const Ren::ImageROHandle refl_tex = fg.AccessROImage(data->refl_tex);
+                const Ren::ImageROHandle sample_count_tex = fg.AccessROImage(data->sample_count_tex);
+                const Ren::ImageROHandle variance_tex = fg.AccessROImage(data->variance_tex);
                 const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(data->tile_list);
                 const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(data->indir_args);
 
-                const Ren::Image &out_refl_tex = fg.AccessRWImage(data->out_refl_tex);
+                const Ren::ImageRWHandle out_refl_tex = fg.AccessRWImage(data->out_refl_tex);
 
                 { // Filter tiles
                     using namespace SSRFilter;
@@ -929,17 +934,18 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
             });
         }
 
-        FgResRef gi_specular4_tex;
+        FgImgRWHandle gi_specular4_tex;
 
         { // Denoiser stabilization
             auto &ssr_stabilization = fg_builder_.AddNode("SSR STABILIZATION");
 
             struct PassData {
-                FgResRef depth_tex, velocity_tex, ssr_tex, ssr_hist_tex;
-                FgResRef out_ssr_tex;
+                FgImgROHandle depth_tex, velocity_tex;
+                FgImgROHandle ssr_tex, ssr_hist_tex;
+                FgImgRWHandle out_ssr_tex;
             };
 
-            auto *data = ssr_stabilization.AllocNodeData<PassData>();
+            auto *data = fg_builder_.AllocTempData<PassData>();
             data->depth_tex = ssr_stabilization.AddTextureInput(frame_textures.depth, Stg::ComputeShader);
             data->velocity_tex = ssr_stabilization.AddTextureInput(frame_textures.velocity, Stg::ComputeShader);
             data->ssr_tex = ssr_stabilization.AddTextureInput(gi_specular3_tex, Stg::ComputeShader);
@@ -961,12 +967,12 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
             ssr_stabilization.set_execute_cb([this, data](const FgContext &fg) {
                 using namespace SSRStabilization;
 
-                const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
-                const Ren::Image &velocity_tex = fg.AccessROImage(data->velocity_tex);
-                const Ren::Image &gi_tex = fg.AccessROImage(data->ssr_tex);
-                const Ren::Image &gi_hist_tex = fg.AccessROImage(data->ssr_hist_tex);
+                const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
+                const Ren::ImageROHandle velocity_tex = fg.AccessROImage(data->velocity_tex);
+                const Ren::ImageROHandle gi_tex = fg.AccessROImage(data->ssr_tex);
+                const Ren::ImageROHandle gi_hist_tex = fg.AccessROImage(data->ssr_hist_tex);
 
-                const Ren::Image &out_gi_tex = fg.AccessRWImage(data->out_ssr_tex);
+                const Ren::ImageRWHandle out_gi_tex = fg.AccessRWImage(data->out_ssr_tex);
 
                 const Ren::Binding bindings[] = {{Trg::TexSampled, DEPTH_TEX_SLOT, {depth_tex, 1}},
                                                  {Trg::TexSampled, VELOCITY_TEX_SLOT, velocity_tex},
@@ -998,18 +1004,17 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
 
     struct PassData {
         FgBufROHandle shared_data;
-        FgResRef depth_tex;
-        FgResRef normal_tex;
-        FgResRef albedo_tex;
-        FgResRef spec_tex;
-        FgResRef refl_tex;
-        FgResRef ltc_luts;
+        FgImgROHandle depth_tex;
+        FgImgROHandle normal_tex;
+        FgImgROHandle albedo_tex;
+        FgImgROHandle spec_tex;
+        FgImgROHandle refl_tex;
+        FgImgROHandle ltc_luts;
 
-        FgResRef output_tex;
+        FgImgRWHandle output_tex;
     };
 
-    auto *data = ssr_compose.AllocNodeData<PassData>();
-
+    auto *data = fg_builder_.AllocTempData<PassData>();
     data->shared_data = ssr_compose.AddUniformBufferInput(common_buffers.shared_data,
                                                           Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
     data->depth_tex = ssr_compose.AddTextureInput(frame_textures.depth, Stg::FragmentShader);
@@ -1022,21 +1027,21 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
     } else {
         data->refl_tex = ssr_compose.AddTextureInput(refl_final, Stg::FragmentShader);
     }
-    data->ltc_luts = ssr_compose.AddTextureInput(ltc_luts_, Stg::FragmentShader);
+    data->ltc_luts = ssr_compose.AddTextureInput(frame_textures.ltc_luts, Stg::FragmentShader);
     frame_textures.color = data->output_tex = ssr_compose.AddColorOutput(frame_textures.color);
 
     ssr_compose.set_execute_cb([this, data](const FgContext &fg) {
         using namespace SSRCompose;
 
         const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-        const Ren::Image &depth_tex = fg.AccessROImage(data->depth_tex);
-        const Ren::Image &normal_tex = fg.AccessROImage(data->normal_tex);
-        const Ren::Image &albedo_tex = fg.AccessROImage(data->albedo_tex);
-        const Ren::Image &spec_tex = fg.AccessROImage(data->spec_tex);
-        const Ren::Image &refl_tex = fg.AccessROImage(data->refl_tex);
-        const Ren::Image &ltc_luts = fg.AccessROImage(data->ltc_luts);
+        const Ren::ImageROHandle depth_tex = fg.AccessROImage(data->depth_tex);
+        const Ren::ImageROHandle normal_tex = fg.AccessROImage(data->normal_tex);
+        const Ren::ImageROHandle albedo_tex = fg.AccessROImage(data->albedo_tex);
+        const Ren::ImageROHandle spec_tex = fg.AccessROImage(data->spec_tex);
+        const Ren::ImageROHandle refl_tex = fg.AccessROImage(data->refl_tex);
+        const Ren::ImageROHandle ltc_luts = fg.AccessROImage(data->ltc_luts);
 
-        Ren::WeakImgRef output_tex = fg.AccessRWImageRef(data->output_tex);
+        const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
 
         Ren::RastState rast_state;
         rast_state.depth.test_enabled = false;
@@ -1068,29 +1073,31 @@ void Eng::Renderer::AddHQSpecularPasses(const bool deferred_shading, const bool 
             Params uniform_params;
             uniform_params.transform = Ren::Vec4f{0.0f, 0.0f, 1.0f, 1.0f};
 
-            prim_draw_.DrawPrim(PrimDraw::ePrim::Quad, blit_ssr_compose_prog_, {}, render_targets, rast_state,
-                                fg.rast_state(), bindings, &uniform_params, sizeof(uniform_params), 0);
+            prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad, blit_ssr_compose_prog_, {}, render_targets,
+                                rast_state, fg.rast_state(), bindings, &uniform_params, sizeof(uniform_params), 0,
+                                fg.framebuffers());
         }
     });
 }
 
-void Eng::Renderer::AddLQSpecularPasses(const CommonBuffers &common_buffers, const FgResRef depth_down_2x,
+void Eng::Renderer::AddLQSpecularPasses(const CommonBuffers &common_buffers, const FgImgROHandle depth_down_2x,
                                         FrameTextures &frame_textures) {
     using Stg = Ren::eStage;
     using Trg = Ren::eBindTarget;
 
-    FgResRef ssr_temp1;
+    FgImgRWHandle ssr_temp1;
     { // Trace
         auto &ssr_trace = fg_builder_.AddNode("SSR TRACE");
 
         struct PassData {
             FgBufROHandle shared_data;
-            FgResRef normal_tex;
-            FgResRef depth_down_2x_tex;
-            FgResRef output_tex;
+            FgImgROHandle normal_tex;
+            FgImgROHandle depth_down_2x_tex;
+
+            FgImgRWHandle output_tex;
         };
 
-        auto *data = ssr_trace.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->shared_data = ssr_trace.AddUniformBufferInput(common_buffers.shared_data,
                                                             Ren::Bitmask{Stg::VertexShader} | Stg::FragmentShader);
         data->normal_tex = ssr_trace.AddTextureInput(frame_textures.normal, Stg::FragmentShader);
@@ -1109,10 +1116,10 @@ void Eng::Renderer::AddLQSpecularPasses(const CommonBuffers &common_buffers, con
 
         ssr_trace.set_execute_cb([this, data](const FgContext &fg) {
             const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(data->shared_data);
-            const Ren::Image &normal_tex = fg.AccessROImage(data->normal_tex);
-            const Ren::Image &depth_down_2x_tex = fg.AccessROImage(data->depth_down_2x_tex);
+            const Ren::ImageROHandle normal_tex = fg.AccessROImage(data->normal_tex);
+            const Ren::ImageROHandle depth_down_2x_tex = fg.AccessROImage(data->depth_down_2x_tex);
 
-            Ren::WeakImgRef output_tex = fg.AccessRWImageRef(data->output_tex);
+            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
 
             Ren::RastState rast_state;
             rast_state.depth.test_enabled = false;
@@ -1134,21 +1141,22 @@ void Eng::Renderer::AddLQSpecularPasses(const CommonBuffers &common_buffers, con
                 uniform_params.transform =
                     Ren::Vec4f{0.0f, 0.0f, float(view_state_.ren_res[0] / 2), float(view_state_.ren_res[1] / 2)};
 
-                prim_draw_.DrawPrim(PrimDraw::ePrim::Quad, blit_ssr_prog_, {}, render_targets, rast_state,
-                                    fg.rast_state(), bindings, &uniform_params, sizeof(SSRTrace::Params), 0);
+                prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad, blit_ssr_prog_, {}, render_targets, rast_state,
+                                    fg.rast_state(), bindings, &uniform_params, sizeof(SSRTrace::Params), 0,
+                                    fg.framebuffers());
             }
         });
     }
-    FgResRef ssr_temp2;
+    FgImgRWHandle ssr_temp2;
     { // Dilate
         auto &ssr_dilate = fg_builder_.AddNode("SSR DILATE");
 
         struct PassData {
-            FgResRef ssr_tex;
-            FgResRef output_tex;
+            FgImgROHandle ssr_tex;
+            FgImgRWHandle output_tex;
         };
 
-        auto *data = ssr_dilate.AllocNodeData<PassData>();
+        auto *data = fg_builder_.AllocTempData<PassData>();
         data->ssr_tex = ssr_dilate.AddTextureInput(ssr_temp1, Stg::FragmentShader);
 
         { // Auxilary texture for reflections (rg - uvs, b - influence)
@@ -1163,9 +1171,9 @@ void Eng::Renderer::AddLQSpecularPasses(const CommonBuffers &common_buffers, con
         }
 
         ssr_dilate.set_execute_cb([this, data](const FgContext &fg) {
-            const Ren::Image &ssr_tex = fg.AccessROImage(data->ssr_tex);
+            const Ren::ImageROHandle ssr_tex = fg.AccessROImage(data->ssr_tex);
 
-            Ren::WeakImgRef output_tex = fg.AccessRWImageRef(data->output_tex);
+            const Ren::ImageRWHandle output_tex = fg.AccessRWImage(data->output_tex);
 
             Ren::RastState rast_state;
             rast_state.depth.test_enabled = false;
@@ -1183,8 +1191,9 @@ void Eng::Renderer::AddLQSpecularPasses(const CommonBuffers &common_buffers, con
                 SSRDilate::Params uniform_params;
                 uniform_params.transform = Ren::Vec4f{0.0f, 0.0f, rast_state.viewport[2], rast_state.viewport[3]};
 
-                prim_draw_.DrawPrim(PrimDraw::ePrim::Quad, blit_ssr_dilate_prog_, {}, render_targets, rast_state,
-                                    fg.rast_state(), bindings, &uniform_params, sizeof(SSRDilate::Params), 0);
+                prim_draw_.DrawPrim(fg.cmd_buf(), PrimDraw::ePrim::Quad, blit_ssr_dilate_prog_, {}, render_targets,
+                                    rast_state, fg.rast_state(), bindings, &uniform_params, sizeof(SSRDilate::Params),
+                                    0, fg.framebuffers());
             }
         });
     }

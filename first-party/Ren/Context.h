@@ -3,6 +3,7 @@
 #include "Anim.h"
 #include "Buffer.h"
 #include "Common.h"
+#include "Framebuffer.h"
 #include "Image.h"
 #include "ImageAtlas.h"
 #include "ImageRegion.h"
@@ -20,7 +21,6 @@ namespace Ren {
 const int ImageAtlasWidth = 1024, ImageAtlasHeight = 512, ImageAtlasLayers = 4;
 const int StageBufferCount = 2;
 
-struct ApiContext;
 class DescrMultiPoolAlloc;
 
 struct StageBufRef {
@@ -66,23 +66,25 @@ class Context {
 
     MeshStorage meshes_;
     MaterialStorage materials_;
-    ImageStorage images_;
+    ImageStorage images_old_;
     ImageRegionStorage image_regions_;
     AnimSeqStorage anims_;
 
-    SortedDualStorage<VertexInputMain, VertexInputCold> vtx_inputs_;
-    NamedDualStorage<ShaderMain, ShaderCold> shaders_;
-    SortedDualStorage<ProgramMain, ProgramCold> programs_;
-    SortedDualStorage<PipelineMain, PipelineCold> pipelines_;
-    SortedDualStorage<RenderPassMain, RenderPassCold> render_passes_;
-    NamedDualStorage<BufferMain, BufferCold> buffers_;
-    SortedDualStorage<SamplerMain, SamplerCold> samplers_;
+    DualStorage<VertexInputMain, VertexInputCold> vtx_inputs_;
+    DualStorage<ShaderMain, ShaderCold> shaders_;
+    DualStorage<ProgramMain, ProgramCold> programs_;
+    DualStorage<PipelineMain, PipelineCold> pipelines_;
+    DualStorage<RenderPassMain, RenderPassCold> render_passes_;
+    DualStorage<BufferMain, BufferCold> buffers_;
+    DualStorage<ImageMain, ImageCold> images_;
+    DualStorage<SamplerMain, SamplerCold> samplers_;
+    DualStorage<FramebufferMain, FramebufferCold> framebuffers_;
 
-    StoragesRef storages_ =
-        StoragesRef{vtx_inputs_, shaders_, programs_, pipelines_, render_passes_, buffers_, samplers_};
+    StoragesRef storages_ = StoragesRef{vtx_inputs_, shaders_, programs_, pipelines_,   render_passes_,
+                                        buffers_,    images_,  samplers_, framebuffers_};
 
-    BufferHandle default_vertex_buf1_, default_vertex_buf2_, default_skin_vertex_buf_, default_delta_vertex_buf_,
-        default_indices_buf_;
+    std::unique_ptr<ResizableBuffer> default_vertex_buf1_, default_vertex_buf2_, default_skin_vertex_buf_,
+        default_delta_vertex_buf_, default_indices_buf_;
     std::unique_ptr<MemAllocators> default_mem_allocs_;
 
     std::unique_ptr<DescrMultiPoolAlloc> default_descr_alloc_[MaxFramesInFlight];
@@ -116,32 +118,36 @@ class Context {
 
     ILog *log() const { return log_; }
 
-    ImageStorage &images() { return images_; }
+    ImageStorage &images_old() { return images_old_; }
     MaterialStorage &materials() { return materials_; }
 
-    SortedDualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() { return vtx_inputs_; }
-    NamedDualStorage<ShaderMain, ShaderCold> &shaders() { return shaders_; }
-    SortedDualStorage<ProgramMain, ProgramCold> &programs() { return programs_; }
-    SortedDualStorage<PipelineMain, PipelineCold> &pipelines() { return pipelines_; }
-    SortedDualStorage<RenderPassMain, RenderPassCold> &render_passes() { return render_passes_; }
-    NamedDualStorage<BufferMain, BufferCold> &buffers() { return buffers_; }
-    SortedDualStorage<SamplerMain, SamplerCold> &samplers() { return samplers_; }
+    DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() { return vtx_inputs_; }
+    DualStorage<ShaderMain, ShaderCold> &shaders() { return shaders_; }
+    DualStorage<ProgramMain, ProgramCold> &programs() { return programs_; }
+    DualStorage<PipelineMain, PipelineCold> &pipelines() { return pipelines_; }
+    DualStorage<RenderPassMain, RenderPassCold> &render_passes() { return render_passes_; }
+    DualStorage<BufferMain, BufferCold> &buffers() { return buffers_; }
+    DualStorage<ImageMain, ImageCold> &images() { return images_; }
+    DualStorage<SamplerMain, SamplerCold> &samplers() { return samplers_; }
+    DualStorage<FramebufferMain, FramebufferCold> &framebuffers() { return framebuffers_; }
 
-    const SortedDualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() const { return vtx_inputs_; }
-    const NamedDualStorage<ShaderMain, ShaderCold> &shaders() const { return shaders_; }
-    const SortedDualStorage<ProgramMain, ProgramCold> &programs() const { return programs_; }
-    const SortedDualStorage<PipelineMain, PipelineCold> &pipelines() const { return pipelines_; }
-    const SortedDualStorage<RenderPassMain, RenderPassCold> &render_passes() const { return render_passes_; }
-    const NamedDualStorage<BufferMain, BufferCold> &buffers() const { return buffers_; }
-    const SortedDualStorage<SamplerMain, SamplerCold> &samplers() const { return samplers_; }
+    const DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() const { return vtx_inputs_; }
+    const DualStorage<ShaderMain, ShaderCold> &shaders() const { return shaders_; }
+    const DualStorage<ProgramMain, ProgramCold> &programs() const { return programs_; }
+    const DualStorage<PipelineMain, PipelineCold> &pipelines() const { return pipelines_; }
+    const DualStorage<RenderPassMain, RenderPassCold> &render_passes() const { return render_passes_; }
+    const DualStorage<BufferMain, BufferCold> &buffers() const { return buffers_; }
+    const DualStorage<ImageMain, ImageCold> &images() const { return images_; }
+    const DualStorage<SamplerMain, SamplerCold> &samplers() const { return samplers_; }
+    const DualStorage<FramebufferMain, FramebufferCold> &framebuffers() const { return framebuffers_; }
 
     const StoragesRef &storages() const { return storages_; }
 
-    BufferHandle default_vertex_buf1() const { return default_vertex_buf1_; }
-    BufferHandle default_vertex_buf2() const { return default_vertex_buf2_; }
-    BufferHandle default_skin_vertex_buf() const { return default_skin_vertex_buf_; }
-    BufferHandle default_delta_vertex_buf() const { return default_delta_vertex_buf_; }
-    BufferHandle default_indices_buf() const { return default_indices_buf_; }
+    ResizableBuffer &default_vertex_buf1() const { return *default_vertex_buf1_; }
+    ResizableBuffer &default_vertex_buf2() const { return *default_vertex_buf2_; }
+    ResizableBuffer &default_skin_vertex_buf() const { return *default_skin_vertex_buf_; }
+    ResizableBuffer &default_delta_vertex_buf() const { return *default_delta_vertex_buf_; }
+    ResizableBuffer &default_indices_buf() const { return *default_indices_buf_; }
 
     MemAllocators *default_mem_allocs() { return default_mem_allocs_.get(); }
     DescrMultiPoolAlloc &default_descr_alloc() const;
@@ -163,13 +169,13 @@ class Context {
     MeshRef LoadMesh(std::string_view name, const float *positions, int vtx_count, const uint32_t *indices,
                      int ndx_count, eMeshLoadStatus *load_status);
     MeshRef LoadMesh(std::string_view name, const float *positions, int vtx_count, const uint32_t *indices,
-                     int ndx_count, BufferHandle vertex_buf1, BufferHandle vertex_buf2, BufferHandle index_buf,
-                     eMeshLoadStatus *load_status);
+                     int ndx_count, ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2,
+                     ResizableBuffer &index_buf, eMeshLoadStatus *load_status);
     MeshRef LoadMesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
                      eMeshLoadStatus *load_status);
     MeshRef LoadMesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
-                     BufferHandle vertex_buf1, BufferHandle vertex_buf2, BufferHandle index_buf,
-                     BufferHandle skin_vertex_buf, BufferHandle delta_buf, eMeshLoadStatus *load_status);
+                     ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
+                     ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf, eMeshLoadStatus *load_status);
 
     /*** Material ***/
     MaterialRef LoadMaterial(std::string_view name, std::string_view mat_src, eMatLoadStatus *status,
@@ -180,45 +186,42 @@ class Context {
 
     // Program
 #if defined(REN_GL_BACKEND)
-    ShaderHandle LoadShader(std::string_view name, std::string_view shader_src, eShaderType type);
+    ShaderHandle CreateShader(const Ren::String &name, std::string_view shader_src, eShaderType type);
 #endif
-    ShaderHandle LoadShader(std::string_view name, Span<const uint8_t> spirv_data, eShaderType type);
+    ShaderHandle CreateShader(const Ren::String &name, Span<const uint8_t> spirv_data, eShaderType type);
+    void ReleaseShader(ShaderHandle handle);
 
-    ProgramHandle LoadProgram(ShaderROHandle vs, ShaderROHandle fs, ShaderROHandle tcs, ShaderROHandle tes,
-                              ShaderROHandle gs);
-    ProgramHandle LoadProgram(ShaderROHandle cs);
+    ProgramHandle CreateProgram(ShaderROHandle vs, ShaderROHandle fs, ShaderROHandle tcs, ShaderROHandle tes,
+                                ShaderROHandle gs);
+    ProgramHandle CreateProgram(ShaderROHandle cs);
+    void ReleaseProgram(ProgramHandle handle);
 
 #if defined(REN_VK_BACKEND)
-    ProgramHandle LoadProgram2(ShaderROHandle rgs, ShaderROHandle chs, ShaderROHandle ahs, ShaderROHandle ms,
-                               ShaderROHandle is);
+    ProgramHandle CreateProgram2(ShaderROHandle rgs, ShaderROHandle chs, ShaderROHandle ahs, ShaderROHandle ms,
+                                 ShaderROHandle is);
 #endif
 
     void ReleasePrograms();
 
     // VertexInput
-    VertexInputHandle FindOrCreateVertexInput(Span<const VtxAttribDesc> attribs, BufferROHandle elem_buf);
-    void ReleaseVertexInput(const VertexInputHandle handle);
+    VertexInputHandle CreateVertexInput(Span<const VtxAttribDesc> attribs);
+    void ReleaseVertexInput(VertexInputHandle handle);
     void ReleaseVertexInputs();
 
     // RenderPass
-    RenderPassHandle FindOrCreateRenderPass(const RenderTargetInfo &depth_rt, Span<const RenderTargetInfo> color_rts);
-    RenderPassHandle FindOrCreateRenderPass(const RenderTarget &depth_rt, Span<const RenderTarget> color_rts) {
-        SmallVector<RenderTargetInfo, 4> infos;
-        for (int i = 0; i < color_rts.size(); ++i) {
-            infos.emplace_back(color_rts[i]);
-        }
-        return FindOrCreateRenderPass(RenderTargetInfo{depth_rt}, infos);
-    }
-    void ReleaseRenderPass(const RenderPassHandle handle);
+    RenderPassHandle CreateRenderPass(const RenderTargetInfo &depth_rt, Span<const RenderTargetInfo> color_rts);
+    RenderPassHandle CreateRenderPass(const RenderTarget &depth_rt, Span<const RenderTarget> color_rts);
+    void ReleaseRenderPass(RenderPassHandle handle, bool immediately = false);
     void ReleaseRenderPasses();
 
     // Pipeline
-    PipelineHandle FindOrCreatePipeline(const ProgramROHandle prog, int subgroup_size = -1);
-    PipelineHandle FindOrCreatePipeline(const RastState &rast_state, ProgramROHandle prog,
-                                        VertexInputROHandle vtx_input, RenderPassROHandle render_pass,
-                                        uint32_t subpass_index);
+    PipelineHandle CreatePipeline(const ProgramROHandle prog, int subgroup_size = -1);
+    PipelineHandle CreatePipeline(const RastState &rast_state, ProgramROHandle prog, VertexInputROHandle vtx_input,
+                                  RenderPassROHandle render_pass, uint32_t subpass_index);
+    PipelineHandle CreatePipeline(PipelineMain &&pi_main, PipelineCold &&pi_cold);
+    void ReleasePipeline(PipelineHandle handle, bool immediately = false);
 
-    /*** Image ***/
+    // Image
     ImgRef LoadImage(std::string_view name, const ImgParams &p, MemAllocators *mem_allocs, eImgLoadStatus *load_status);
     ImgRef LoadImage(std::string_view name, const ImgHandle &handle, const ImgParams &p, MemAllocation &&alloc,
                      eImgLoadStatus *load_status);
@@ -227,9 +230,30 @@ class Context {
     ImgRef LoadImageCube(std::string_view name, Span<const uint8_t> data[6], const ImgParams &p,
                          MemAllocators *mem_allocs, eImgLoadStatus *load_status);
 
+    ImageHandle CreateImage(const String &name, Span<const uint8_t> data, const ImgParams &p,
+                            MemAllocators *mem_allocs);
+    ImageHandle CreateImage(const String &name, Span<const uint8_t> data[6], const ImgParams &p,
+                            MemAllocators *mem_allocs);
+    ImageHandle CreateImage(const String &name, const ImgParams &p, const ImageMain &img_main, MemAllocation &&alloc);
+    void ReleaseImage(ImageHandle handle, bool immediately = false);
+    int CreateImageView(ImageHandle handle, eFormat format, int mip_level, int mip_count, int base_layer,
+                        int layer_count);
+
+    void CmdClearImage(ImageHandle handle, const ClearColor &col, CommandBuffer cmd_buf);
+    void CmdCopyImageToBuffer(ImageROHandle img, BufferRWHandle buf, CommandBuffer cmd_buf, uint32_t data_off);
+    void CmdCopyImageToImage(CommandBuffer cmd_buf, ImageROHandle src, uint32_t src_level, uint32_t src_x,
+                             uint32_t src_y, uint32_t src_z, ImageRWHandle dst, uint32_t dst_level, uint32_t dst_x,
+                             uint32_t dst_y, uint32_t dst_z, uint32_t dst_face, uint32_t w, uint32_t h, uint32_t d);
+
     void VisitImages(eImgFlags mask, const std::function<void(Image &img)> &callback);
     int NumImagesNotReady();
     void ReleaseImages();
+
+    // Framebuffer
+    FramebufferHandle CreateFramebuffer(RenderPassROHandle render_pass, const FramebufferAttachment &depth,
+                                        const FramebufferAttachment &stencil,
+                                        Span<const FramebufferAttachment> color_attachments);
+    void ReleaseFramebuffer(FramebufferHandle handle, bool immediately = false);
 
     /** Image regions (placed on default atlas) **/
     ImageRegionRef LoadImageRegion(std::string_view name, Span<const uint8_t> data, const ImgParams &p,
@@ -240,7 +264,8 @@ class Context {
     void ReleaseTextureRegions();
 
     // Samplers
-    SamplerHandle FindOrCreateSampler(SamplingParams params);
+    SamplerHandle CreateSampler(SamplingParams params);
+    void ReleaseSampler(SamplerHandle handle, bool immediately = false);
     void ReleaseSamplers();
 
     /*** Anims ***/
@@ -249,16 +274,20 @@ class Context {
     void ReleaseAnims();
 
     // Buffers
-    BufferHandle FindOrCreateBuffer(std::string_view name, eBufType type, uint32_t initial_size,
-                                    uint32_t size_alignment = 1, MemAllocators *mem_allocs = nullptr);
-    BufferHandle CreateBuffer(std::string_view name, eBufType type, const BufferMain &buf_main, MemAllocation &&alloc,
+    BufferHandle CreateBuffer(const String &name, eBufType type, uint32_t initial_size, uint32_t size_alignment = 1,
+                              MemAllocators *mem_allocs = nullptr);
+    BufferHandle CreateBuffer(const String &name, eBufType type, const BufferMain &buf_main, MemAllocation &&alloc,
                               uint32_t initial_size, uint32_t size_alignment = 1);
-    int FindOrCreateBufferView(BufferHandle handle, eFormat format);
     bool ResizeBuffer(BufferHandle handle, uint32_t new_size, bool keep_content = true,
                       bool release_immediately = false);
+    int FindOrCreateBufferView(BufferHandle handle, eFormat format);
     uint8_t *MapBufferRange(BufferHandle handle, uint32_t offset, uint32_t size, bool persistent = false);
     uint8_t *MapBuffer(BufferHandle handle, bool persistent = false);
     void UnmapBuffer(BufferHandle handle);
+    SubAllocation AllocBufferSubRegion(BufferHandle handle, uint32_t req_size, uint32_t req_alignment,
+                                       std::string_view tag, const BufferMain *init_buf = nullptr,
+                                       CommandBuffer cmd_buf = {}, uint32_t init_off = 0);
+    bool FreeBufferSubRegion(BufferHandle handle, SubAllocation alloc);
     void ReleaseBuffer(BufferHandle handle, bool immediately = false);
     void ReleaseBuffers();
 
@@ -271,7 +300,7 @@ class Context {
     int backend_frame() const;
     int active_present_image() const;
 
-    ImgRef backbuffer_ref() const;
+    ImageHandle backbuffer_img() const;
 
     int WriteTimestamp(bool start);
     uint64_t GetTimestampIntervalDurationUs(int query_start, int query_end) const;

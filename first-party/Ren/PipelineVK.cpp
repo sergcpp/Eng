@@ -52,7 +52,7 @@ static_assert(sizeof(TraceRaysIndirectCommand) == sizeof(VkTraceRaysIndirectComm
 
 bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
                         const DualStorage<ProgramMain, ProgramCold> &programs,
-                        NamedDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
+                        DualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
                         PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log, int subgroup_size) {
     const ProgramMain &prog_main = programs.Get(prog).first;
 
@@ -173,7 +173,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
         info.layout = pipeline_main.layout;
 
         const VkResult res =
-            api.vkCreateComputePipelines(api.device, api.pipeline_cache, 1, &info, nullptr, &pipeline_main.handle);
+            api.vkCreateComputePipelines(api.device, api.pipeline_cache, 1, &info, nullptr, &pipeline_main.pipeline);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create pipeline!");
             return false;
@@ -188,7 +188,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
         info.pGroups = pipeline_cold.rt_shader_groups.cdata();
 
         const VkResult res = api.vkCreateRayTracingPipelinesKHR(api.device, VK_NULL_HANDLE, api.pipeline_cache, 1,
-                                                                &info, nullptr, &pipeline_main.handle);
+                                                                &info, nullptr, &pipeline_main.pipeline);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create pipeline!");
             return false;
@@ -216,7 +216,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
             const uint32_t data_size = HandleCount * handle_size;
             SmallVector<uint8_t, 128> handles_data(data_size);
 
-            const VkResult _res = api.vkGetRayTracingShaderGroupHandlesKHR(api.device, pipeline_main.handle, 0,
+            const VkResult _res = api.vkGetRayTracingShaderGroupHandlesKHR(api.device, pipeline_main.pipeline, 0,
                                                                            HandleCount, data_size, &handles_data[0]);
             if (_res != VK_SUCCESS) {
                 log->Error("Failed to get shader group handles!");
@@ -226,20 +226,19 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
             const VkDeviceSize sbt_size =
                 pipeline_cold.rgen_region.size + pipeline_cold.miss_region.size + pipeline_cold.hit_region.size;
 
-            const String sbt_name_str{pipeline_name + " [SBT Buffer]"};
-            pipeline_cold.rt_sbt_buf = buffers.Emplace(sbt_name_str);
+            pipeline_cold.rt_sbt_buf = buffers.Emplace();
 
             const auto &[sbt_main, sbt_cold] = buffers.Get(pipeline_cold.rt_sbt_buf);
-            if (!Ren::Buffer_Init(api, sbt_main, sbt_cold, sbt_name_str, eBufType::ShaderBinding, uint32_t(sbt_size),
-                                  log)) {
+            if (!Buffer_Init(api, sbt_main, sbt_cold, String{pipeline_name + " [SBT Buffer]"}, eBufType::ShaderBinding,
+                             uint32_t(sbt_size), log)) {
                 log->Error("Failed to initialize SBT buffer!");
                 return false;
             }
 
             BufferMain sbt_stage_buf_main = {};
             BufferCold sbt_stage_buf_cold = {};
-            if (!Ren::Buffer_Init(api, sbt_stage_buf_main, sbt_stage_buf_cold, String{"SBT Staging Buffer"},
-                                  eBufType::Upload, uint32_t(sbt_size), log)) {
+            if (!Buffer_Init(api, sbt_stage_buf_main, sbt_stage_buf_cold, String{"SBT Staging Buffer"},
+                             eBufType::Upload, uint32_t(sbt_size), log)) {
                 log->Error("Failed to initialize SBT staging buffer!");
                 return false;
             }
@@ -353,8 +352,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
     { // create graphics pipeline
         SmallVector<VkVertexInputBindingDescription, 8> bindings;
         SmallVector<VkVertexInputAttributeDescription, 8> attribs;
-        Ren::VertexInput_FillVKDescriptions(storages.vtx_inputs.Get(vtx_input).first, storages.buffers, bindings,
-                                            attribs);
+        VertexInput_FillVKDescriptions(storages.vtx_inputs.Get(vtx_input).first, bindings, attribs);
 
         VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = {
             VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
@@ -505,7 +503,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
         }
 
         const VkResult res = api.vkCreateGraphicsPipelines(api.device, api.pipeline_cache, 1, &pipeline_create_info,
-                                                           nullptr, &pipeline_main.handle);
+                                                           nullptr, &pipeline_main.pipeline);
         if (res != VK_SUCCESS) {
             log->Error("Failed to create graphics pipeline!");
             return false;
@@ -524,8 +522,19 @@ void Ren::Pipeline_Destroy(const ApiContext &api, PipelineMain &pipeline_main, P
     if (pipeline_main.layout != VK_NULL_HANDLE) {
         api.pipeline_layouts_to_destroy[api.backend_frame].emplace_back(pipeline_main.layout);
     }
-    if (pipeline_main.handle != VK_NULL_HANDLE) {
-        api.pipelines_to_destroy[api.backend_frame].emplace_back(pipeline_main.handle);
+    if (pipeline_main.pipeline != VK_NULL_HANDLE) {
+        api.pipelines_to_destroy[api.backend_frame].emplace_back(pipeline_main.pipeline);
+    }
+    pipeline_main = {};
+    pipeline_cold = {};
+}
+
+void Ren::Pipeline_DestroyImmediately(const ApiContext &api, PipelineMain &pipeline_main, PipelineCold &pipeline_cold) {
+    if (pipeline_main.layout != VK_NULL_HANDLE) {
+        api.vkDestroyPipelineLayout(api.device, pipeline_main.layout, nullptr);
+    }
+    if (pipeline_main.pipeline != VK_NULL_HANDLE) {
+        api.vkDestroyPipeline(api.device, pipeline_main.pipeline, nullptr);
     }
     pipeline_main = {};
     pipeline_cold = {};

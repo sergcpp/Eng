@@ -7,6 +7,19 @@ static const std::string_view g_type_names[] = {
 };
 #undef X
 static_assert(std::size(g_type_names) == int(eType::_Count));
+
+extern const int g_type_sizes[] = {
+    -1,               // Undefined
+    sizeof(uint16_t), // Float16
+    sizeof(float),    // Float32
+    sizeof(uint32_t), // Uint32
+    sizeof(uint16_t), // Uint16
+    sizeof(uint16_t), // Uint16UNorm
+    sizeof(int16_t),  // Int16SNorm
+    sizeof(uint8_t),  // Uint8UNorm
+    sizeof(int32_t),  // Int32
+};
+static_assert(std::size(g_type_sizes) == int(eType::_Count));
 } // namespace Ren
 
 std::string_view Ren::TypeName(const eType type) { return g_type_names[uint8_t(type)]; }

@@ -11,6 +11,8 @@ extern "C" {
 
 #include "../scene/SceneData.h"
 #include "PrimDraw.h"
+#include "framegraph/FgBuilder.h"
+
 #include "executors/ExPostprocess.h"
 #include "executors/ExReadExposure.h"
 
@@ -62,16 +64,16 @@ class Renderer {
                                  Ren::SmallVectorImpl<Ren::PipelineHandle> &out_pipelines) const;
 
     void PrepareDrawList(const SceneData &scene, const Ren::Camera &cam, const Ren::Camera &ext_cam, DrawList &list);
-    void ExecuteDrawList(const DrawList &list, const PersistentGpuData &persistent_data, const Ren::ImgRef target = {},
+    void ExecuteDrawList(const DrawList &list, const PersistentGpuData &persistent_data, Ren::ImageHandle target = {},
                          bool blit_to_backbuffer = false);
 
     void SetTonemapLUT(int res, Ren::eFormat format, Ren::Span<const uint8_t> data);
 
     void BlitPixelsTonemap(const uint8_t *data, int w, int h, int stride, Ren::eFormat format, float gamma,
-                           float min_exposure, float max_exposure, const Ren::ImgRef &target, bool compressed,
+                           float min_exposure, float max_exposure, Ren::ImageHandle target, bool compressed,
                            bool blit_to_backbuffer = false);
-    void BlitImageTonemap(const Ren::ImgRef &result, int w, int h, Ren::eFormat format, float gamma, float min_exposure,
-                          float max_exposure, const Ren::ImgRef &target, bool compressed,
+    void BlitImageTonemap(Ren::ImageHandle result, int w, int h, Ren::eFormat format, float gamma, float min_exposure,
+                          float max_exposure, Ren::ImageHandle target, bool compressed,
                           bool blit_to_backbuffer = false);
     render_settings_t settings = {};
 
@@ -82,17 +84,17 @@ class Renderer {
     Sys::ThreadPool &threads_;
     SWcull_ctx cull_ctx_ = {};
 
-    Ren::ImgRef dummy_black_, dummy_white_, rand2d_8x8_, rand2d_dirs_4x4_, brdf_lut_, ltc_luts_, cone_rt_lut_,
-        noise_tex_;
-    Ren::ImgRef tonemap_lut_;
+    Ren::ImageHandle noise_tex_;
+    Ren::ImageHandle dummy_black_, dummy_white_, brdf_lut_, ltc_luts_, cone_rt_lut_;
+    Ren::ImageHandle tonemap_lut_;
     Ren::BufferHandle bn_pmj_2D_64spp_seq_buf_;
     Ren::BufferHandle pmj_samples_buf_;
-    Ren::ImgRef stbn_1D_64spp_;
-    Ren::ImgRef sky_transmittance_lut_, sky_multiscatter_lut_, sky_moon_tex_, sky_weather_tex_, sky_cirrus_tex_,
+    Ren::ImageHandle stbn_1D_64spp_;
+    Ren::ImageHandle sky_transmittance_lut_, sky_multiscatter_lut_, sky_moon_tex_, sky_weather_tex_, sky_cirrus_tex_,
         sky_curl_tex_;
-    Ren::ImgRef sky_noise3d_tex_;
+    Ren::ImageHandle sky_noise3d_tex_;
 
-    Ren::ImgRef shadow_depth_tex_, shadow_color_tex_;
+    Ren::ImageHandle shadow_depth_, shadow_color_;
     Ren::SamplerHandle nearest_sampler_, linear_sampler_;
     eTAAMode taa_mode_ = eTAAMode::Off;
     bool dof_enabled_ = false;
@@ -168,10 +170,9 @@ class Renderer {
     FgBuilder fg_builder_;
     std::optional<render_settings_t> cached_settings_;
     int cached_rp_index_ = 0;
-    Ren::WeakImgRef env_map_;
-    Ren::WeakImgRef lm_direct_, lm_indir_, lm_indir_sh_[4];
+    Ren::ImageROHandle env_map_;
     const DrawList *p_list_;
-    Ren::SmallVector<std::variant<FgResRef, FgBufRWHandle>, 8> backbuffer_sources_;
+    Ren::SmallVector<std::variant<FgBufRWHandle, FgImgRWHandle>, 8> backbuffer_sources_;
     float min_exposure_ = 1.0f, max_exposure_ = 1.0f;
     std::optional<float> custom_pre_exposure_;
 
@@ -221,93 +222,135 @@ class Renderer {
     struct CommonBuffers {
         FgBufRWHandle cells, rt_cells, lights, decals, items, rt_items;
         FgBufRWHandle skin_transforms, shape_keys, instance_indices, shared_data, atomic_cnt;
+
+        // External
+        FgBufRWHandle vertex_buf1, vertex_buf2, indices_buf;
+        FgBufRWHandle skin_vertex_buf, delta_buf;
+
+        FgBufROHandle pmj_samples_buf;
+        FgBufROHandle bn_pmj_2D_64spp_seq_buf;
+
+        FgBufROHandle instance_buf;
+        FgBufROHandle materials_buf;
+
+        FgBufROHandle stoch_lights_buf, stoch_lights_nodes_buf;
+    };
+
+    struct AccelerationStructures {
+        FgBufRWHandle rt_tlas_buf[int(eTLASIndex::_Count)];
+        struct {
+            uint32_t rt_tlas_build_scratch_size = 0;
+        } hwrt;
+        struct {
+            FgBufROHandle rt_prim_indices_buf;
+            uint32_t rt_root_node = 0;
+            FgBufROHandle rt_blas_buf;
+        } swrt;
+
+        Ren::IAccStructure *rt_tlases[int(eTLASIndex::_Count)] = {};
     };
 
     struct FrameTextures {
         FgImgDesc color_desc;
-        FgResRef color;
+        FgImgRWHandle color;
         FgImgDesc albedo_desc;
-        FgResRef albedo;
+        FgImgRWHandle albedo;
         FgImgDesc specular_desc;
-        FgResRef specular;
+        FgImgRWHandle specular;
         FgImgDesc normal_desc;
-        FgResRef normal;
+        FgImgRWHandle normal;
         FgImgDesc depth_desc;
-        FgResRef depth, opaque_depth;
+        FgImgRWHandle depth, opaque_depth;
         FgImgDesc velocity_desc;
-        FgResRef velocity;
-        FgResRef disocclusion_mask;
+        FgImgRWHandle velocity;
+        FgImgROHandle disocclusion_mask;
 
-        FgResRef envmap;
-        FgResRef shadow_depth, shadow_color;
-        FgResRef ssao;
-        FgResRef gi;
-        FgResRef sun_shadow;
-        FgResRef exposure;
-
-        FgResRef gi_cache_irradiance;
-        FgResRef gi_cache_distance;
-        FgResRef gi_cache_offset;
-
+        FgImgROHandle exposure;
+        FgImgROHandle sun_shadow;
         FgBufRWHandle oit_depth_buf;
+
+        FgImgROHandle ssao;
+        FgImgROHandle gi_diffuse;
+
+        // External
+        FgImgRWHandle envmap;
+        FgImgRWHandle shadow_depth, shadow_color;
+
+        FgImgROHandle noise_tex;
+        FgImgROHandle dummy_white;
+        FgImgROHandle dummy_black;
+        FgImgROHandle ltc_luts;
+        FgImgROHandle brdf_lut;
+        FgImgROHandle cone_rt_lut;
+        FgImgROHandle stbn_1D_64spp;
+        FgImgROHandle tonemap_lut;
+
+        FgImgRWHandle gi_cache_irradiance;
+        FgImgRWHandle gi_cache_distance;
+        FgImgRWHandle gi_cache_offset;
+
+        FgImgROHandle sky_transmittance_lut;
+        FgImgROHandle sky_multiscatter_lut;
+        FgImgROHandle sky_moon_tex;
+        FgImgROHandle sky_weather_tex;
+        FgImgROHandle sky_cirrus_tex;
+        FgImgROHandle sky_curl_tex;
+        FgImgROHandle sky_noise3d_tex;
     };
 
     void AddBuffersUpdatePass(CommonBuffers &common_buffers, const PersistentGpuData &persistent_data);
     void AddLightBuffersUpdatePass(CommonBuffers &common_buffers);
-    void AddGBufferFillPass(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
-                            const BindlessTextureData &bindless, FrameTextures &frame_textures);
+    void AddGBufferFillPass(const CommonBuffers &common_buffers, const BindlessTextureData &bindless,
+                            FrameTextures &frame_textures);
     void AddDeferredShadingPass(const CommonBuffers &common_buffers, FrameTextures &frame_textures, bool enable_gi);
     void AddEmissivePass(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                          const BindlessTextureData &bindless, FrameTextures &frame_textures);
     void AddForwardOpaquePass(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                               const BindlessTextureData &bindless, FrameTextures &frame_textures);
 
-    void AddFillStaticVelocityPass(const CommonBuffers &common_buffers, FgResRef depth_tex,
-                                   FgResRef &inout_velocity_tex);
-    FgResRef AddTSRPasses(const CommonBuffers &common_buffers, FrameTextures &frame_textures, bool static_accumulation);
-    FgResRef AddSharpenPass(FgResRef input_tex, FgResRef exposure_tex, bool compressed);
-    FgResRef AddMotionBlurPasses(FgResRef input_tex, FrameTextures &frame_textures);
-    void AddDownsampleDepthPass(const CommonBuffers &common_buffers, FgResRef depth_tex, FgResRef &out_depth_down_2x);
+    void AddFillStaticVelocityPass(const CommonBuffers &common_buffers, FgImgRWHandle depth_tex,
+                                   FgImgRWHandle &inout_velocity_tex);
+    FgImgRWHandle AddTSRPasses(const CommonBuffers &common_buffers, FrameTextures &frame_textures,
+                               bool static_accumulation);
+    FgImgRWHandle AddSharpenPass(FgImgROHandle input_tex, FgImgROHandle exposure_tex, bool compressed);
+    FgImgRWHandle AddMotionBlurPasses(FgImgROHandle input_tex, FrameTextures &frame_textures);
+    FgImgRWHandle AddDownsampleDepthPass(const CommonBuffers &common_buffers, FgImgROHandle depth_tex);
 
     // GI Cache
-    void AddGICachePasses(const Ren::WeakImgRef &env_map, const CommonBuffers &common_buffers,
-                          const PersistentGpuData &persistent_data, const AccelerationStructureData &acc_struct_data,
-                          const BindlessTextureData &bindless, FgBufROHandle rt_geo_instances_res,
-                          FgBufROHandle rt_obj_instances_res, FrameTextures &frame_textures);
-
-    // GI Diffuse
-    void AddDiffusePasses(const Ren::WeakImgRef &env_map, const Ren::WeakImgRef &lm_direct,
-                          const Ren::WeakImgRef lm_indir_sh[4], bool debug_denoise, const CommonBuffers &common_buffers,
-                          const PersistentGpuData &persistent_data, const AccelerationStructureData &acc_struct_data,
-                          const BindlessTextureData &bindless, FgResRef depth_hierarchy,
+    void AddGICachePasses(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
+                          const AccelerationStructures &acc_structs, const BindlessTextureData &bindless,
                           FgBufROHandle rt_geo_instances_res, FgBufROHandle rt_obj_instances_res,
                           FrameTextures &frame_textures);
-    void AddSSAOPasses(FgResRef depth_down_2x, FgResRef depth_tex, FgResRef &out_ssao);
-    FgResRef AddGTAOPasses(eSSAOQuality quality, FgResRef depth_tex, FgResRef velocity_tex, FgResRef norm_tex);
+
+    // GI Diffuse
+    void AddDiffusePasses(bool debug_denoise, const CommonBuffers &common_buffers,
+                          const AccelerationStructures &acc_struct, const BindlessTextureData &bindless,
+                          FgImgROHandle depth_hierarchy, FgBufROHandle rt_geo_instances_res,
+                          FgBufROHandle rt_obj_instances_res, FrameTextures &frame_textures);
+    FgImgRWHandle AddSSAOPasses(FgImgROHandle depth_down_2x, FgImgROHandle depth_tex);
+    FgImgRWHandle AddGTAOPasses(eSSAOQuality quality, FgImgROHandle depth_tex, FgImgROHandle velocity_tex,
+                                FgImgROHandle norm_tex);
 
     // GI Specular
     void AddHQSpecularPasses(bool deferred_shading, bool debug_denoise, const CommonBuffers &common_buffers,
-                             const PersistentGpuData &persistent_data, const AccelerationStructureData &acc_struct_data,
-                             const BindlessTextureData &bindless, FgResRef depth_hierarchy,
-                             FgBufROHandle rt_geo_instances_res, FgBufROHandle rt_obj_instances_res,
-                             FrameTextures &frame_textures);
-    void AddLQSpecularPasses(const CommonBuffers &common_buffers, FgResRef depth_down_2x,
+                             const AccelerationStructures &acc_structs, const BindlessTextureData &bindless,
+                             FgImgROHandle depth_hierarchy, FgBufROHandle rt_geo_instances_res,
+                             FgBufROHandle rt_obj_instances_res, FrameTextures &frame_textures);
+    void AddLQSpecularPasses(const CommonBuffers &common_buffers, FgImgROHandle depth_down_2x,
                              FrameTextures &frame_textures);
 
     // Sun Shadows
-    FgResRef AddHQSunShadowsPasses(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
-                                   const AccelerationStructureData &acc_struct_data,
-                                   const BindlessTextureData &bindless, FgBufROHandle rt_geo_instances_res,
-                                   FgBufROHandle rt_obj_instances_res, const FrameTextures &frame_textures,
-                                   bool debug_denoise);
-    FgResRef AddLQSunShadowsPass(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
-                                 const AccelerationStructureData &acc_struct_data, const BindlessTextureData &bindless,
-                                 const FrameTextures &frame_textures);
+    FgImgRWHandle AddHQSunShadowsPasses(const CommonBuffers &common_buffers, const AccelerationStructures &acc_structs,
+                                        const BindlessTextureData &bindless, FgBufROHandle rt_geo_instances_res,
+                                        FgBufROHandle rt_obj_instances_res, const FrameTextures &frame_textures,
+                                        bool debug_denoise);
+    FgImgRWHandle AddLQSunShadowsPass(const CommonBuffers &common_buffers, const BindlessTextureData &bindless,
+                                      const FrameTextures &frame_textures);
 
     // Transparency
-    void AddOITPasses(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
-                      const AccelerationStructureData &acc_struct_data, const BindlessTextureData &bindless,
-                      FgResRef depth_hierarchy, FgBufROHandle rt_geo_instances_res, FgBufROHandle rt_obj_instances_res,
+    void AddOITPasses(const CommonBuffers &common_buffers, const AccelerationStructures &acc_structs,
+                      const BindlessTextureData &bindless, FgImgROHandle depth_hierarchy,
+                      FgBufROHandle rt_geo_instances_res, FgBufROHandle rt_obj_instances_res,
                       FrameTextures &frame_textures);
     void AddForwardTransparentPass(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
                                    const BindlessTextureData &bindless, FrameTextures &frame_textures);
@@ -315,22 +358,23 @@ class Renderer {
     // Volumetrics
     void InitSkyResources();
     void AddSkydomePass(const CommonBuffers &common_buffers, FrameTextures &frame_textures);
-    void AddSunColorUpdatePass(CommonBuffers &common_buffers);
-    void AddVolumetricPasses(const CommonBuffers &common_buffers, const PersistentGpuData &persistent_data,
-                             const AccelerationStructureData &acc_struct_data, FgBufROHandle rt_geo_instances_res,
-                             FgBufROHandle rt_obj_instances_res, FrameTextures &frame_textures);
+    void AddSunColorUpdatePass(CommonBuffers &common_buffers, const FrameTextures &frame_textures);
+    void AddVolumetricPasses(const CommonBuffers &common_buffers, const AccelerationStructures &acc_structs,
+                             FgBufROHandle rt_geo_instances_res, FgBufROHandle rt_obj_instances_res,
+                             FrameTextures &frame_textures);
 
     // Debugging
-    FgResRef AddDebugVelocityPass(FgResRef velocity);
-    FgResRef AddDebugGBufferPass(const FrameTextures &frame_textures, int pi_index);
+    FgImgRWHandle AddDebugVelocityPass(FgImgROHandle velocity);
+    FgImgRWHandle AddDebugGBufferPass(const FrameTextures &frame_textures, int pi_index);
 
     void GatherDrawables(const SceneData &scene, const Ren::Camera &cam, const Ren::Camera &ext_cam, DrawList &list);
 
     void UpdatePixelFilterTable(ePixelFilter filter, float filter_width);
 
     // Postprocess
-    FgResRef AddAutoexposurePasses(FgResRef hdr_texture, Ren::Vec2f adaptation_speed = Ren::Vec2f{0.15f, 0.01f});
-    FgResRef AddBloomPasses(FgResRef hdr_texture, FgResRef exposure_texture, bool compressed);
+    FgImgRWHandle AddAutoexposurePasses(FgImgROHandle hdr_texture,
+                                        Ren::Vec2f adaptation_speed = Ren::Vec2f{0.15f, 0.01f});
+    FgImgRWHandle AddBloomPasses(FgImgROHandle hdr_texture, FgImgROHandle exposure_texture, bool compressed);
 
     // Parallel Jobs
     static void GatherObjectsForZSlice_Job(const Ren::Frustum &frustum, const SceneData &scene,

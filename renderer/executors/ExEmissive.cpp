@@ -3,22 +3,19 @@
 #include <Ren/Context.h>
 
 #include "../../utils/ShaderLoader.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 
 void Eng::ExEmissive::Execute(const FgContext &fg) {
-    const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(vtx_buf1_);
-    const Ren::BufferROHandle vtx_buf2 = fg.AccessROBuffer(vtx_buf2_);
-    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+    const Ren::ImageRWHandle color_tex = fg.AccessRWImage(out_color_tex_);
+    const Ren::ImageRWHandle depth_tex = fg.AccessRWImage(out_depth_tex_);
 
-    Ren::WeakImgRef color_tex = fg.AccessRWImageRef(out_color_tex_);
-    Ren::WeakImgRef depth_tex = fg.AccessRWImageRef(out_depth_tex_);
-
-    LazyInit(fg.ren_ctx(), fg.sh(), vtx_buf1, vtx_buf2, ndx_buf, color_tex, depth_tex);
-    DrawOpaque(fg);
+    LazyInit(fg.ren_ctx(), fg.sh(), color_tex, depth_tex);
+    DrawOpaque(fg, color_tex, depth_tex);
 }
 
-void Eng::ExEmissive::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::BufferROHandle vtx_buf1,
-                               const Ren::BufferROHandle vtx_buf2, const Ren::BufferROHandle ndx_buf,
-                               const Ren::WeakImgRef &color_tex, const Ren::WeakImgRef &depth_tex) {
+void Eng::ExEmissive::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const Ren::ImageRWHandle color_tex,
+                               const Ren::ImageRWHandle depth_tex) {
     const Ren::RenderTarget color_targets[] = {{color_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store}};
     const Ren::RenderTarget depth_target = {depth_tex, Ren::eLoadOp::Load, Ren::eStoreOp::Store, Ren::eLoadOp::Load,
                                             Ren::eStoreOp::Store};
@@ -30,36 +27,33 @@ void Eng::ExEmissive::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const R
         const bool bindless = true;
 #endif
 
-        static const int buf1_stride = 16, buf2_stride = 16;
+        const int buf1_stride = 16, buf2_stride = 16;
 
         Ren::VertexInputHandle vi_simple, vi_vegetation;
 
         { // VertexInput for simple and skinned meshes
             const Ren::VtxAttribDesc attribs[] = {
-                // Attributes from buffer 1
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)}};
-            vi_simple = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)}};
+            vi_simple = sh.FindOrCreateVertexInput(attribs);
         }
 
         { // VertexInput for vegetation meshes (uses additional vertex color attribute)
             const Ren::VtxAttribDesc attribs[] = {
-                // Attributes from buffer 1
-                {vtx_buf1, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0},
-                {vtx_buf1, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 3 * sizeof(float)},
-                // Attributes from buffer 2
-                {vtx_buf2, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 6 * sizeof(uint16_t)}};
-            vi_vegetation = sh.LoadVertexInput(attribs, ndx_buf);
+                {0, VTX_POS_LOC, 3, Ren::eType::Float32, buf1_stride, 0, 0},
+                {0, VTX_UV1_LOC, 2, Ren::eType::Float16, buf1_stride, 0, 3 * sizeof(float)},
+                {1, VTX_AUX_LOC, 1, Ren::eType::Uint32, buf2_stride, 0, 6 * sizeof(uint16_t)}};
+            vi_vegetation = sh.FindOrCreateVertexInput(attribs);
         }
 
-        const Ren::ProgramHandle emissive_simple_prog =
-            sh.LoadProgram(bindless ? "internal/emissive.vert.glsl" : "internal/emissive@NO_BINDLESS.vert.glsl",
-                           bindless ? "internal/emissive.frag.glsl" : "internal/emissive@NO_BINDLESS.frag.glsl");
-        const Ren::ProgramHandle emissive_vegetation_prog = sh.LoadProgram(
+        const Ren::ProgramHandle emissive_simple_prog = sh.FindOrCreateProgram(
+            bindless ? "internal/emissive.vert.glsl" : "internal/emissive@NO_BINDLESS.vert.glsl",
+            bindless ? "internal/emissive.frag.glsl" : "internal/emissive@NO_BINDLESS.frag.glsl");
+        const Ren::ProgramHandle emissive_vegetation_prog = sh.FindOrCreateProgram(
             bindless ? "internal/emissive@VEGETATION.vert.glsl" : "internal/emissive@VEGETATION;NO_BINDLESS.vert.glsl",
             bindless ? "internal/emissive.frag.glsl" : "internal/emissive@NO_BINDLESS.frag.glsl");
 
-        const Ren::RenderPassHandle rp_main_draw = sh.LoadRenderPass(depth_target, color_targets);
+        const Ren::RenderPassHandle rp_main_draw = sh.FindOrCreateRenderPass(depth_target, color_targets);
 
         { // simple and skinned
             Ren::RastState rast_state;
@@ -69,15 +63,15 @@ void Eng::ExEmissive::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const R
             rast_state.blend.src_color = rast_state.blend.src_alpha = uint8_t(Ren::eBlendFactor::One);
             rast_state.blend.dst_color = rast_state.blend.dst_alpha = uint8_t(Ren::eBlendFactor::One);
 
-            pi_simple_[2] = sh.LoadPipeline(rast_state, emissive_simple_prog, vi_simple, rp_main_draw, 0);
+            pi_simple_[2] = sh.FindOrCreatePipeline(rast_state, emissive_simple_prog, vi_simple, rp_main_draw, 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
-            pi_simple_[0] = sh.LoadPipeline(rast_state, emissive_simple_prog, vi_simple, rp_main_draw, 0);
+            pi_simple_[0] = sh.FindOrCreatePipeline(rast_state, emissive_simple_prog, vi_simple, rp_main_draw, 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Front);
 
-            pi_simple_[1] = sh.LoadPipeline(rast_state, emissive_simple_prog, vi_simple, rp_main_draw, 0);
+            pi_simple_[1] = sh.FindOrCreatePipeline(rast_state, emissive_simple_prog, vi_simple, rp_main_draw, 0);
         }
         { // vegetation
             Ren::RastState rast_state;
@@ -87,24 +81,15 @@ void Eng::ExEmissive::LazyInit(Ren::Context &ctx, Eng::ShaderLoader &sh, const R
             rast_state.blend.src_color = rast_state.blend.src_alpha = uint8_t(Ren::eBlendFactor::One);
             rast_state.blend.dst_color = rast_state.blend.dst_alpha = uint8_t(Ren::eBlendFactor::One);
 
-            pi_vegetation_[1] = sh.LoadPipeline(rast_state, emissive_vegetation_prog, vi_vegetation, rp_main_draw, 0);
+            pi_vegetation_[1] =
+                sh.FindOrCreatePipeline(rast_state, emissive_vegetation_prog, vi_vegetation, rp_main_draw, 0);
 
             rast_state.poly.cull = uint8_t(Ren::eCullFace::Back);
 
-            pi_vegetation_[0] = sh.LoadPipeline(rast_state, emissive_vegetation_prog, vi_vegetation, rp_main_draw, 0);
+            pi_vegetation_[0] =
+                sh.FindOrCreatePipeline(rast_state, emissive_vegetation_prog, vi_vegetation, rp_main_draw, 0);
         }
 
         initialized = true;
-    }
-
-    fb_to_use_ = (fb_to_use_ + 1) % 2;
-
-    const Ren::PipelineMain &pi_simple_main = ctx.pipelines().Get(pi_simple_[0]).first;
-    const Ren::RenderPassMain &rp_main = ctx.render_passes().Get(pi_simple_main.render_pass).first;
-
-    if (!main_draw_fb_[ctx.backend_frame()][fb_to_use_].Setup(&ctx.api(), rp_main, depth_tex->params.w,
-                                                              depth_tex->params.h, depth_target, depth_target,
-                                                              color_targets, ctx.log())) {
-        ctx.log()->Error("[ExEmissive::LazyInit]: main_draw_fb_ init failed!");
     }
 }

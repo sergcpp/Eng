@@ -286,7 +286,6 @@ bool Ren::Buffer_Resize(const ApiContext &api, BufferMain &buf_main, BufferCold 
     }
 
     buf_main.buf = new_buf;
-    buf_main.generation = api.buffer_counter++;
     for (auto view : views) {
         Buffer_AddView(api, buf_main, buf_cold, view.first);
     }
@@ -355,13 +354,10 @@ Ren::SubAllocation Ren::Buffer_AllocSubRegion(const ApiContext &api, BufferMain 
     }
 
     FreelistAlloc::Allocation alloc = buf_cold.sub_alloc->Alloc(req_alignment, req_size);
-    while (alloc.pool == 0xffff) {
-        const auto new_size = req_alignment * ((uint32_t(buf_cold.size * 1.25f) + req_alignment - 1) / req_alignment);
-        if (!Buffer_Resize(api, buf_main, buf_cold, new_size, log)) {
-            return {};
-        }
-        alloc = buf_cold.sub_alloc->Alloc(req_alignment, req_size);
+    if (alloc.pool == 0xffff) {
+        return {};
     }
+
     assert(alloc.pool == 0);
     assert(buf_cold.sub_alloc->IntegrityCheck());
     const SubAllocation ret = {alloc.offset, alloc.block};

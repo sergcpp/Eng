@@ -40,25 +40,25 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         uint32_t mem_size = 0;
         uint32_t mem_alignment = 0;
 
-        std::variant<std::monostate, Ren::BufferMain, Ren::ImgHandle> handle;
+        std::variant<std::monostate, Ren::BufferMain, Ren::ImageMain> main;
     };
 
     const Ren::ApiContext &api = ctx_.api();
 
     std::vector<resource_t> all_resources;
     std::vector<int> resources_by_memory_type[32];
-    std::vector<int> buffer_to_resource(buffers_.Capacity(), -1);
-    std::vector<int> image_to_resource(images_.capacity(), -1);
+    std::vector<int> buffer_to_resource(name_to_buffer_.capacity(), -1);
+    std::vector<int> image_to_resource(name_to_image_.capacity(), -1);
 
     SCOPE_EXIT({
         for (resource_t &res : all_resources) {
-            if (std::holds_alternative<std::monostate>(res.handle)) {
+            if (std::holds_alternative<std::monostate>(res.main)) {
                 continue;
             }
             if (res.type == eFgResType::Buffer) {
-                api.vkDestroyBuffer(api.device, std::get<Ren::BufferMain>(res.handle).buf, nullptr);
+                api.vkDestroyBuffer(api.device, std::get<Ren::BufferMain>(res.main).buf, nullptr);
             } else if (res.type == eFgResType::Image) {
-                api.vkDestroyImage(api.device, std::get<Ren::ImgHandle>(res.handle).img, nullptr);
+                api.vkDestroyImage(api.device, std::get<Ren::ImageMain>(res.main).img, nullptr);
             }
         }
     });
@@ -66,8 +66,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
     //
     // Gather resources info
     //
-    const auto &all_buffers = buffers_.items_by_name();
-    for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+    for (auto it = std::begin(name_to_buffer_); it != std::end(name_to_buffer_); ++it) {
         const auto &[fgbuf_main, fgbuf_cold] = buffers_.GetUnsafe(it->val);
         if (fgbuf_cold.external || !fgbuf_cold.lifetime.is_used()) {
             continue;
@@ -123,14 +122,14 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             new_res.mem_alignment =
                 std::max(new_res.mem_alignment, api.acc_props.minAccelerationStructureScratchOffsetAlignment);
         }
-        new_res.handle = new_buf;
+        new_res.main = new_buf;
         resources_by_memory_type[memory_type].push_back(int(all_resources.size()) - 1);
         buffer_to_resource[it->val] = int(all_resources.size()) - 1;
     }
 
-    for (auto it = std::begin(images_); it != std::end(images_); ++it) {
-        FgAllocImg &t = *it;
-        if (t.external || !t.lifetime.is_used()) {
+    for (auto it = std::begin(name_to_image_); it != std::end(name_to_image_); ++it) {
+        const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->val);
+        if (fgimg_cold.external || !fgimg_cold.lifetime.is_used()) {
             continue;
         }
 
@@ -138,28 +137,28 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         new_res.type = eFgResType::Image;
         new_res.index = uint16_t(it.index());
         if (EnableResourceAliasing) {
-            GetResourceFrameLifetime(t, new_res.lifetime);
+            GetResourceFrameLifetime(fgimg_cold, new_res.lifetime);
         } else {
             // In case of no aliasing lifetime spans for the whole frame
             new_res.lifetime[0][0] = new_res.lifetime[1][0] = 0;
             new_res.lifetime[0][1] = new_res.lifetime[1][1] = uint16_t(reordered_nodes_.size());
         }
 
-        Ren::ImgParams &p = t.desc;
-        if (t.history_index != -1) {
+        Ren::ImgParams &p = fgimg_cold.desc;
+        if (fgimg_cold.history_index != 0xffffffff) {
             // combine usage flags
-            FgAllocImg &hist_img = images_[t.history_index];
+            FgAllocImgCold &hist_img = images_.GetUnsafe(fgimg_cold.history_index).second;
             p.usage |= hist_img.desc.usage;
             hist_img.desc.usage = p.usage;
         }
-        if (t.history_of != -1) {
+        if (fgimg_cold.history_of != 0xffffffff) {
             // combine usage flags
-            FgAllocImg &hist_img = images_[t.history_of];
+            FgAllocImgCold &hist_img = images_.GetUnsafe(fgimg_cold.history_of).second;
             p.usage |= hist_img.desc.usage;
             hist_img.desc.usage = p.usage;
         }
 
-        Ren::ImgHandle new_img = {};
+        Ren::ImageMain new_img = {};
         { // create new image
             int mip_count = p.mip_count;
             if (!mip_count) {
@@ -186,7 +185,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
 
             const VkResult res = api.vkCreateImage(api.device, &img_info, nullptr, &new_img.img);
             if (res != VK_SUCCESS) {
-                ctx_.log()->Error("Failed to create image %s!", t.name.c_str());
+                ctx_.log()->Error("Failed to create image %s!", fgimg_cold.name.c_str());
                 return false;
             }
 
@@ -194,7 +193,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             VkDebugUtilsObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
             name_info.objectType = VK_OBJECT_TYPE_IMAGE;
             name_info.objectHandle = uint64_t(new_img.img);
-            name_info.pObjectName = t.name.c_str();
+            name_info.pObjectName = fgimg_cold.name.c_str();
             api.vkSetDebugUtilsObjectNameEXT(api.device, &name_info);
 #endif
         }
@@ -209,9 +208,9 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
 
         new_res.mem_size = uint32_t(memory_requirements.size);
         new_res.mem_alignment = uint32_t(memory_requirements.alignment);
-        new_res.handle = new_img;
+        new_res.main = new_img;
         resources_by_memory_type[memory_type].push_back(int(all_resources.size()) - 1);
-        image_to_resource[it.index()] = int(all_resources.size()) - 1;
+        image_to_resource[it->val] = int(all_resources.size()) - 1;
     }
 
     //
@@ -258,7 +257,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         }
 
         uint32_t total_heap_size = 0;
-        for (uint32_t ht : heap_tops) {
+        for (const uint32_t ht : heap_tops) {
             total_heap_size = std::max(total_heap_size, ht);
         }
 
@@ -295,11 +294,11 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             resource_t &res = all_resources[res_index];
             res.mem_heap = int8_t(memory_heaps_.size()) - 1;
             if (res.type == eFgResType::Buffer) {
-                result = api.vkBindBufferMemory(api.device, std::get<Ren::BufferMain>(res.handle).buf, heap.mem,
+                result = api.vkBindBufferMemory(api.device, std::get<Ren::BufferMain>(res.main).buf, heap.mem,
                                                 res.mem_offset);
             } else if (res.type == eFgResType::Image) {
-                result = api.vkBindImageMemory(api.device, std::get<Ren::ImgHandle>(res.handle).img, heap.mem,
-                                               res.mem_offset);
+                result =
+                    api.vkBindImageMemory(api.device, std::get<Ren::ImageMain>(res.main).img, heap.mem, res.mem_offset);
             }
             if (result != VK_SUCCESS) {
                 ctx_.log()->Error("Failed to bind memory!");
@@ -308,7 +307,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         }
     }
 
-    for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+    for (auto it = std::begin(name_to_buffer_); it != std::end(name_to_buffer_); ++it) {
         const auto &[fgbuf_main, fgbuf_cold] = buffers_.GetUnsafe(it->val);
         if (fgbuf_cold.external || !fgbuf_cold.lifetime.is_used()) {
             continue;
@@ -319,11 +318,10 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             const resource_t &resource = all_resources[buffer_to_resource[it->val]];
             Ren::MemAllocation alloc = {resource.mem_offset, resource.mem_size, resource.mem_heap};
             fgbuf_main.handle =
-                ctx_.CreateBuffer(fgbuf_cold.name, fgbuf_cold.desc.type, std::get<Ren::BufferMain>(resource.handle),
+                ctx_.CreateBuffer(fgbuf_cold.name, fgbuf_cold.desc.type, std::get<Ren::BufferMain>(resource.main),
                                   std::move(alloc), fgbuf_cold.desc.size, 16);
         } else {
-            fgbuf_main.handle =
-                ctx_.FindOrCreateBuffer(fgbuf_cold.name, fgbuf_cold.desc.type, fgbuf_cold.desc.size, 16);
+            fgbuf_main.handle = ctx_.CreateBuffer(fgbuf_cold.name, fgbuf_cold.desc.type, fgbuf_cold.desc.size, 16);
         }
 
         const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
@@ -332,26 +330,30 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             assert(view_index == i);
         }
     }
-    for (auto it = std::begin(images_); it != std::end(images_); ++it) {
-        FgAllocImg &img = *it;
-        if (img.external || !img.lifetime.is_used()) {
+    for (auto it = std::begin(name_to_image_); it != std::end(name_to_image_); ++it) {
+        const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->val);
+        if (fgimg_cold.external || !fgimg_cold.lifetime.is_used()) {
             continue;
         }
-        img.alias_of = -1;
-        assert(!img.ref);
-        assert(image_to_resource[it.index()] != -1);
+        fgimg_cold.alias_of = -1;
+        assert(!fgimg_main.handle_to_own);
+        assert(image_to_resource[it->val] != -1);
 
-        const resource_t &resource = all_resources[image_to_resource[it.index()]];
+        const resource_t &resource = all_resources[image_to_resource[it->val]];
         Ren::MemAllocation alloc = {resource.mem_offset, resource.mem_size, resource.mem_heap};
 
-        Ren::eImgLoadStatus status;
-        img.strong_ref =
-            ctx_.LoadImage(img.name, std::get<Ren::ImgHandle>(resource.handle), img.desc, std::move(alloc), &status);
-        assert(status == Ren::eImgLoadStatus::CreatedDefault);
-        img.ref = img.strong_ref;
-        for (int i = 0; i < int(img.desc.views.size()); ++i) {
-            const auto &v = img.desc.views[i];
-            const int view_index = img.ref->AddView(v.format, v.mip_level, v.mip_count, v.base_layer, v.layer_count);
+        fgimg_main.handle_to_own = ctx_.CreateImage(fgimg_cold.name, fgimg_cold.desc,
+                                                    std::get<Ren::ImageMain>(resource.main), std::move(alloc));
+        fgimg_main.handle_to_use = fgimg_main.handle_to_own;
+
+        const auto &[img_main, img_cold] = ctx_.images().Get(fgimg_main.handle_to_own);
+        Image_SetSampling(ctx_.api(), img_main, img_cold, fgimg_cold.desc.sampling, ctx_.log());
+        Image_AddDefaultViews(ctx_.api(), img_main, img_cold, ctx_.log());
+
+        for (int i = 0; i < int(fgimg_cold.desc.views.size()); ++i) {
+            const auto &v = fgimg_cold.desc.views[i];
+            const int view_index = Image_AddView(ctx_.api(), img_main, img_cold, v.format, v.mip_level, v.mip_count,
+                                                 v.base_layer, v.layer_count);
             assert(view_index == i + 1);
         }
     }
@@ -367,10 +369,15 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
     std::vector<region_t> deactivated_regions;
     for (int j = 0; j < 2; ++j) {
         // Reset resources
-        for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+        for (auto it = std::begin(name_to_buffer_); it != std::end(name_to_buffer_); ++it) {
             const auto &[fgbuf_main, fgbuf_cold] = buffers_.GetUnsafe(it->val);
             buffers_.SetGeneration(it->val, 0);
             fgbuf_cold.used_in_stages = {};
+        }
+        for (auto it = std::begin(name_to_image_); it != std::end(name_to_image_); ++it) {
+            const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->val);
+            images_.SetGeneration(it->val, 0);
+            fgimg_cold.used_in_stages = {};
         }
         for (int i = 0; i < int(reordered_nodes_.size()); ++i) {
             FgNode *node = reordered_nodes_[i];
@@ -393,17 +400,18 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                         deactivated_regions.push_back(region_t{alloc.offset, alloc.block, res});
                     }
                 } else if (res.type == eFgResType::Image) {
-                    const FgAllocImg &img = images_.at(res.index);
-                    if (img.external) {
+                    const auto &[fgimg_main, fgimg_cold] = images_.Get(Ren::Handle<FgAllocImgMain>{res.opaque_handle});
+                    if (fgimg_cold.external) {
                         continue;
                     }
-                    const Ren::MemAllocation &alloc = img.ref->mem_alloc();
+                    const auto &[img_main, img_cold] = ctx_.images().Get(fgimg_main.handle_to_own);
+                    const Ren::MemAllocation &alloc = img_cold.alloc;
                     if (alloc.pool == 0xffff) {
                         // this is dedicated allocation
                         continue;
                     }
-                    assert(image_to_resource[res.index] != -1);
-                    const resource_t &r = all_resources[image_to_resource[res.index]];
+                    assert(image_to_resource[res.opaque_handle >> 32] != -1);
+                    const resource_t &r = all_resources[image_to_resource[res.opaque_handle >> 32]];
                     if (r.lifetime[j][1] == i + 1 &&
                         (i != int(reordered_nodes_.size()) - 1 || r.lifetime[!j][0] != 0)) {
                         deactivated_regions.push_back(region_t{alloc.offset, alloc.block, res});
@@ -415,9 +423,9 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                 const Ren::MemAllocation *this_alloc = nullptr;
                 bool deactivate = false;
                 if (res.type == eFgResType::Buffer) {
-                    this_res = &buffers_.Get(Ren::Handle<FgAllocBufMain>{res.opaque_handle}).second;
-                    const FgAllocBufMain &fgbuf_main =
-                        buffers_.Get(Ren::Handle<FgAllocBufMain>{res.opaque_handle}).first;
+                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(Ren::Handle<FgAllocBufMain>{res.opaque_handle});
+                    this_res = &fgbuf_cold;
+
                     buffers_.SetGeneration(uint32_t(res.opaque_handle >> 32),
                                            uint32_t(res.opaque_handle & 0xffffffffu) + 1);
                     if (fgbuf_main.handle) {
@@ -431,11 +439,16 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                     }
                 } else /*if (res.type == eFgResType::Image)*/ {
                     assert(res.type == eFgResType::Image);
-                    this_res = &images_.at(res.index);
-                    if (images_.at(res.index).ref) {
-                        this_alloc = &images_.at(res.index).ref->mem_alloc();
-                        if (image_to_resource[res.index] != -1) {
-                            const resource_t &r = all_resources[image_to_resource[res.index]];
+                    const auto &[fgimg_main, fgimg_cold] = images_.Get(Ren::Handle<FgAllocImgMain>{res.opaque_handle});
+                    this_res = &fgimg_cold;
+
+                    images_.SetGeneration(uint32_t(res.opaque_handle >> 32),
+                                          uint32_t(res.opaque_handle & 0xffffffffu) + 1);
+                    if (fgimg_main.handle_to_own) {
+                        const auto &[img_main, img_cold] = ctx_.images().Get(fgimg_main.handle_to_own);
+                        this_alloc = &img_cold.alloc;
+                        if (image_to_resource[res.opaque_handle >> 32] != -1) {
+                            const resource_t &r = all_resources[image_to_resource[res.opaque_handle >> 32]];
                             deactivate = (r.lifetime[j][1] == i + 1 &&
                                           (i != int(reordered_nodes_.size()) - 1 || r.lifetime[!j][0] != 0));
                         }
@@ -454,8 +467,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                 if (this_res->lifetime.first_used_node() == i) { // Resource activation
                     // Remove from deactivated regions
                     for (auto it = begin(deactivated_regions); it != end(deactivated_regions);) {
-                        if (it->res.type == res.type && it->res.index == res.index &&
-                            (it->res.opaque_handle >> 32) == (res.opaque_handle >> 32)) {
+                        if (it->res.type == res.type && it->res.index == (res.opaque_handle >> 32)) {
                             it = deactivated_regions.erase(it);
                         } else {
                             ++it;
@@ -463,32 +475,31 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                     }
                     // Find overlapping regions
                     for (auto it = begin(deactivated_regions); it != end(deactivated_regions);) {
-                        assert(it->res.type != res.type || it->res.index != res.index ||
-                               (it->res.opaque_handle >> 32) != (res.opaque_handle >> 32));
+                        assert(it->res.type != res.type || it->res.index != (res.opaque_handle >> 32));
                         FgAllocRes *other_res = nullptr;
                         if (it->res.type == eFgResType::Buffer) {
-                            other_res = &buffers_.GetUnsafe(uint32_t(it->res.opaque_handle >> 32)).second;
+                            const auto &[fgbuf_main, fgbuf_cold] = buffers_.GetUnsafe(it->res.index);
+                            other_res = &fgbuf_cold;
 
-                            const auto &[buf_main, buf_cold] = ctx_.buffers().Get(
-                                buffers_.GetUnsafe(uint32_t(it->res.opaque_handle >> 32)).first.handle);
-                            const Ren::MemAllocation &other_alloc = buf_cold.alloc;
-                            if (other_alloc.pool != this_alloc->pool) {
+                            const Ren::BufferCold &buf_cold = ctx_.buffers().Get(fgbuf_main.handle).second;
+                            if (buf_cold.alloc.pool != this_alloc->pool) {
                                 ++it;
                                 continue;
                             }
                         } else if (it->res.type == eFgResType::Image) {
-                            other_res = &images_.at(it->res.index);
-                            const Ren::MemAllocation &other_alloc = images_.at(it->res.index).ref->mem_alloc();
-                            if (other_alloc.pool != this_alloc->pool) {
+                            const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->res.index);
+                            other_res = &fgimg_cold;
+
+                            const Ren::ImageCold &img_cold = ctx_.images().Get(fgimg_main.handle_to_own).second;
+                            if (img_cold.alloc.pool != this_alloc->pool) {
                                 ++it;
                                 continue;
                             }
                         }
                         if (it->offset < this_alloc->offset + this_alloc->block &&
                             it->offset + it->size > this_alloc->offset) {
-                            if (!it->barrier_placed) {
+                            if (!std::exchange(it->barrier_placed, true)) {
                                 insert_sorted(this_res->overlaps_with, it->res);
-                                it->barrier_placed = true;
                             }
                             other_res->aliased_in_stages |= StagesForState(res.desired_state);
 
@@ -547,18 +558,18 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
         Ren::DebugMarker exec_marker(ctx_.api(), cmd_buf, "Eng::FgBuilder::ClearResources_MemHeaps");
 
         // Swap history images
-        for (FgAllocImg &img : images_) {
-            if (img.history_index != -1) {
-                auto &hist_img = images_.at(img.history_index);
-                if (hist_img.ref) {
-                    assert(hist_img.lifetime.is_used());
-                    std::swap(img.ref, hist_img.ref);
+        for (auto it = std::begin(name_to_image_); it != std::end(name_to_image_); ++it) {
+            const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->val);
+            if (fgimg_cold.history_index != 0xffffffff) {
+                const auto &[hist_main, hist_cold] = images_.GetUnsafe(fgimg_cold.history_index);
+                if (hist_main.handle_to_use) {
+                    assert(hist_cold.lifetime.is_used());
+                    std::swap(fgimg_main.handle_to_use, hist_main.handle_to_use);
                 }
             }
         }
         // Reset resources
-        const auto &all_buffers = buffers_.items_by_name();
-        for (auto it = std::begin(all_buffers); it != std::end(all_buffers); ++it) {
+        for (auto it = std::begin(name_to_buffer_); it != std::end(name_to_buffer_); ++it) {
             buffers_.SetGeneration(it->val, 0);
 
             const auto &[fgbuf_main, fgbuf_cold] = buffers_.GetUnsafe(it->val);
@@ -568,11 +579,14 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
                 fgbuf_cold.used_in_stages = StagesForState(buf_main.resource_state);
             }
         }
-        for (FgAllocImg &img : images_) {
-            img._img_generation = 0;
-            img.used_in_stages = {};
-            if (img.ref) {
-                img.used_in_stages = StagesForState(img.ref->resource_state);
+        for (auto it = std::begin(name_to_image_); it != std::end(name_to_image_); ++it) {
+            images_.SetGeneration(it->val, 0);
+
+            const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->val);
+            fgimg_cold.used_in_stages = {};
+            if (fgimg_main.handle_to_use) {
+                const auto &[img_main, img_cold] = ctx_.images().Get(fgimg_main.handle_to_use);
+                fgimg_cold.used_in_stages = StagesForState(img_main.resource_state);
             }
         }
 
@@ -591,53 +605,50 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
             Ren::Bitmask<Ren::eStage> src_stages, dst_stages;
 
             std::vector<Ren::BufferHandle> bufs_to_clear;
-            std::vector<Ren::ImgRef> imgs_to_clear;
+            std::vector<Ren::ImageHandle> imgs_to_clear;
 
-            // for (const FgResource &res : node->input_) {
-            //     HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
-            // }
             for (const FgResource &res : node->output_) {
                 if (res.type == eFgResType::Buffer) {
                     const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(Ren::Handle<FgAllocBufMain>{res.opaque_handle});
-                    if (fgbuf_cold.external) {
-                        continue;
+                    if (!fgbuf_cold.external) {
+                        bufs_to_clear.push_back(fgbuf_main.handle);
+                        HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
                     }
-                    bufs_to_clear.push_back(fgbuf_main.handle);
-                    HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
-
                     buffers_.SetGeneration(uint32_t(res.opaque_handle >> 32),
                                            uint32_t(res.opaque_handle & 0xffffffffu) + 1);
                 } else if (res.type == eFgResType::Image) {
-                    FgAllocImg &img = images_.at(res.index);
-                    if (img.external) {
-                        continue;
+                    const auto &[fgimg_main, fgimg_cold] = images_.Get(Ren::Handle<FgAllocImgMain>{res.opaque_handle});
+                    if (!fgimg_cold.external) {
+                        imgs_to_clear.push_back(fgimg_main.handle_to_use);
+                        HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
                     }
-                    imgs_to_clear.push_back(img.ref);
-                    HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
+                    images_.SetGeneration(uint32_t(res.opaque_handle >> 32),
+                                          uint32_t(res.opaque_handle & 0xffffffffu) + 1);
                 }
             }
             TransitionResourceStates(ctx_.api(), ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages,
                                      res_transitions);
-            for (const Ren::BufferHandle b : bufs_to_clear) {
-                const Ren::BufferMain &buf_main = ctx_.buffers().Get(b).first;
+            for (const Ren::BufferHandle buf : bufs_to_clear) {
+                const Ren::BufferMain &buf_main = ctx_.buffers().Get(buf).first;
                 if (buf_main.resource_state == Ren::eResState::CopyDst) {
-                    ClearBuffer_AsTransfer(b, cmd_buf);
+                    ClearBuffer_AsTransfer(buf, cmd_buf);
                 } else if (buf_main.resource_state == Ren::eResState::UnorderedAccess) {
-                    ClearBuffer_AsStorage(b, cmd_buf);
+                    ClearBuffer_AsStorage(buf, cmd_buf);
                 } else if (buf_main.resource_state == Ren::eResState::BuildASWrite) {
                     // NOTE: Skipped
                 } else {
                     assert(false);
                 }
             }
-            for (Ren::ImgRef &t : imgs_to_clear) {
-                if (t->resource_state == Ren::eResState::CopyDst) {
-                    ClearImage_AsTransfer(t, cmd_buf);
-                } else if (t->resource_state == Ren::eResState::UnorderedAccess) {
-                    ClearImage_AsStorage(t, cmd_buf);
-                } else if (t->resource_state == Ren::eResState::RenderTarget ||
-                           t->resource_state == Ren::eResState::DepthWrite) {
-                    ClearImage_AsTarget(t, cmd_buf);
+            for (Ren::ImageHandle img : imgs_to_clear) {
+                const Ren::ImageMain &img_main = ctx_.images().Get(img).first;
+                if (img_main.resource_state == Ren::eResState::CopyDst) {
+                    ClearImage_AsTransfer(img, cmd_buf);
+                } else if (img_main.resource_state == Ren::eResState::UnorderedAccess) {
+                    ClearImage_AsStorage(img, cmd_buf);
+                } else if (img_main.resource_state == Ren::eResState::RenderTarget ||
+                           img_main.resource_state == Ren::eResState::DepthWrite) {
+                    ClearImage_AsTarget(img, cmd_buf);
                 } else {
                     assert(false);
                 }

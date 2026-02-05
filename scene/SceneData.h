@@ -135,8 +135,8 @@ struct Environment {
     Ren::Vec2f curr_wind_scroll_lf, curr_wind_scroll_hf;
     Ren::Vec3f env_col;
     float env_map_rot = 0.0f;
-    Ren::ImgRef env_map;
-    Ren::ImgRef lm_direct, lm_indir, lm_indir_sh[4];
+    Ren::ImageHandle env_map;
+    Ren::ImageHandle lm_direct, lm_indir, lm_indir_sh[4];
     float sun_shadow_bias[2] = {4.0f, 8.0f};
     uint32_t generation = 0;
 
@@ -221,8 +221,8 @@ struct PersistentGpuData {
     Ren::BufferHandle instance_buf;
     Ren::BufferHandle materials_buf;
     Ren::BufferHandle stoch_lights_buf, stoch_lights_nodes_buf;
-    Ren::BufferHandle vertex_buf1, vertex_buf2, indices_buf;
-    Ren::BufferHandle skin_vertex_buf, delta_buf;
+    std::unique_ptr<Ren::ResizableBuffer> vertex_buf1, vertex_buf2, indices_buf;
+    std::unique_ptr<Ren::ResizableBuffer> skin_vertex_buf, delta_buf;
     std::unique_ptr<Ren::MemAllocators> mem_allocs;
 #if defined(REN_VK_BACKEND)
     std::unique_ptr<Ren::DescrPool> textures_descr_pool;
@@ -246,17 +246,17 @@ struct PersistentGpuData {
     Ren::BufferHandle rt_tlas_buf[3];
 
     struct {
-        Ren::BufferHandle rt_prim_indices_buf;
+        std::unique_ptr<Ren::ResizableBuffer> rt_prim_indices_buf;
         uint32_t rt_root_node = 0;
-        Ren::BufferHandle rt_blas_buf;
+        std::unique_ptr<Ren::ResizableBuffer> rt_blas_buf;
         Ren::SparseArray<mesh_t> rt_meshes;
     } swrt;
 
     std::unique_ptr<Ren::IAccStructure> rt_tlas[3];
 
-    Ren::ImgRef probe_irradiance;
-    Ren::ImgRef probe_distance;
-    Ren::ImgRef probe_offset;
+    Ren::ImageHandle probe_irradiance;
+    Ren::ImageHandle probe_distance;
+    Ren::ImageHandle probe_offset;
     std::vector<probe_volume_t> probe_volumes;
 
     PersistentGpuData(Ren::Context &ctx);
@@ -278,6 +278,7 @@ struct SceneData {
     Ren::ImageStorage textures;
     Ren::MaterialStorage materials;
     std::vector<uint32_t> material_changes;
+    std::vector<Ren::SamplerHandle> samplers;
     std::unique_ptr<PersistentGpuData> persistent_data;
     std::pair<uint32_t, uint32_t> mat_update_ranges[4];
     Ren::MeshStorage meshes;

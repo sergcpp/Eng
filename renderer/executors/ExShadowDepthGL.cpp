@@ -5,7 +5,8 @@
 #include <Ren/GL.h>
 #include <Ren/RastState.h>
 
-#include "../Renderer_Structs.h"
+#include "../Renderer_DrawList.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/shadow_interface.h"
 
 namespace ExSharedInternal {
@@ -42,7 +43,7 @@ void _adjust_bias_and_viewport(Ren::RastState &rast_state, const Eng::shadow_lis
 }
 } // namespace ExShadowDepthInternal
 
-void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
+void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWHandle shadow_depth) {
     using namespace ExSharedInternal;
     using namespace ExShadowDepthInternal;
 
@@ -62,12 +63,15 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
 
+    const Ren::BufferROHandle attrib_bufs[] = {fg.AccessROBuffer(vtx_buf1_), fg.AccessROBuffer(vtx_buf2_)};
+    const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(ndx_buf_);
+
     const Ren::BufferROHandle unif_shared_data_buf = fg.AccessROBuffer(shared_data_buf_);
     const Ren::BufferROHandle instances_buf = fg.AccessROBuffer(instances_buf_);
     const Ren::BufferROHandle instance_indices_buf = fg.AccessROBuffer(instance_indices_buf_);
     const Ren::BufferROHandle materials_buf = fg.AccessROBuffer(materials_buf_);
 
-    const Ren::Image &noise_tex = fg.AccessROImage(noise_tex_);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(noise_tex_);
 
     const Ren::StoragesRef &storages = fg.storages();
 
@@ -86,9 +90,16 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
     const Ren::BufferMain &unif_shared_data_buf_main = storages.buffers.Get(unif_shared_data_buf).first;
     glBindBufferBase(GL_UNIFORM_BUFFER, BIND_UB_SHARED_DATA_BUF, GLuint(unif_shared_data_buf_main.buf));
 
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex.id());
+    const Ren::ImageMain &noise_tex_main = storages.images.Get(noise_tex).first;
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, BIND_NOISE_TEX, noise_tex_main.img);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, shadow_fb_.id());
+    const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines.Get(pi_solid_[0]).first,
+                                                 &storages.pipelines.Get(pi_solid_[1]).first,
+                                                 &storages.pipelines.Get(pi_solid_[2]).first};
+
+    const Ren::FramebufferHandle fb_main =
+        fg.FindOrCreateFramebuffer(pi_solid_main[0]->render_pass, shadow_depth, {}, {});
+    glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(fb_main).first.id);
 
     glClearDepthf(0.0f);
 
@@ -101,12 +112,8 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
     { // draw opaque objects
         Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-SOLID");
 
-        const Ren::PipelineMain *pi_solid_main[3] = {&storages.pipelines.Get(pi_solid_[0]).first,
-                                                     &storages.pipelines.Get(pi_solid_[1]).first,
-                                                     &storages.pipelines.Get(pi_solid_[2]).first};
-
         const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input).first;
-        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
         static const uint64_t BitFlags[] = {0, BDB::BitBackSided, BDB::BitTwoSided};
         for (int pi = 0; pi < 3; ++pi) {
@@ -187,7 +194,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg) {
         Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-ALPHA");
 
         const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input).first;
-        glBindVertexArray(VertexInput_GetVAO(vi, storages.buffers));
+        VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
         static const uint64_t BitFlags[] = {BDB::BitAlphaTest, BDB::BitAlphaTest | BDB::BitBackSided,
                                             BDB::BitAlphaTest | BDB::BitTwoSided};

@@ -102,7 +102,7 @@ void test_mesh() {
         };
 
         auto on_sampler_needed = [&test](const SamplingParams params) -> SamplerHandle {
-            return test.FindOrCreateSampler(params);
+            return test.CreateSampler(params);
         };
 
         auto on_material_needed = [&](std::string_view name) {
@@ -141,6 +141,10 @@ void test_mesh() {
 
         MaterialRef mat_ref = m_ref->groups()[0].front_mat;
         require(!mat_ref->ready());
+
+        for (const SamplerHandle s : mat_ref->samplers) {
+            test.ReleaseSampler(s);
+        }
     }
 
     /*{

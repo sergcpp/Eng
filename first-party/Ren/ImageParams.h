@@ -74,45 +74,6 @@ inline bool operator==(const ImgParams &lhs, const ImgParams &rhs) {
 }
 inline bool operator!=(const ImgParams &lhs, const ImgParams &rhs) { return !operator==(lhs, rhs); }
 
-struct ImgParamsPacked {
-    uint16_t w = 0, h = 0;
-    uint8_t d = 0;
-    uint8_t mip_count : 5;
-    uint8_t samples : 3;
-    uint8_t flags : 4;
-    uint8_t usage : 4;
-    eFormat format = eFormat::Undefined;
-    SamplingParamsPacked sampling;
-
-    ImgParamsPacked() : ImgParamsPacked(ImgParams{}) {}
-    ImgParamsPacked(const ImgParams &p)
-        : w(p.w), h(p.h), d(p.d), mip_count(p.mip_count), samples(p.samples), flags(p.flags), usage(p.usage),
-          format(p.format), sampling(p.sampling) {
-        assert(uint8_t(p.flags) < 16);
-        assert(uint8_t(p.usage) < 16);
-    }
-
-    operator ImgParams() const {
-        return ImgParams(w, h, d, mip_count, samples, Bitmask<eImgFlags>(flags), Bitmask<eImgUsage>(usage), format,
-                         SamplingParams{sampling});
-    }
-};
-static_assert(sizeof(ImgParamsPacked) == 10);
-
-inline bool operator==(const ImgParamsPacked &lhs, const ImgParamsPacked &rhs) {
-    return lhs.w == rhs.w && lhs.h == rhs.h && lhs.d == rhs.d && lhs.mip_count == rhs.mip_count &&
-           lhs.samples == rhs.samples && lhs.flags == rhs.flags && lhs.usage == rhs.usage && lhs.format == rhs.format &&
-           lhs.sampling == rhs.sampling;
-}
-inline bool operator!=(const ImgParamsPacked &lhs, const ImgParamsPacked &rhs) { return !operator==(lhs, rhs); }
-
-inline bool operator==(const ImgParamsPacked &lhs, const ImgParams &rhs) {
-    return lhs.w == rhs.w && lhs.h == rhs.h && lhs.d == rhs.d && lhs.mip_count == rhs.mip_count &&
-           lhs.samples == rhs.samples && lhs.flags == uint8_t(rhs.flags) && lhs.usage == uint8_t(rhs.usage) &&
-           lhs.format == rhs.format && lhs.sampling == rhs.sampling;
-}
-inline bool operator!=(const ImgParamsPacked &lhs, const ImgParams &rhs) { return !operator==(lhs, rhs); }
-
 int GetColorChannelCount(eFormat format);
 
 enum class eImgLoadStatus { Found, Reinitialized, CreatedDefault, CreatedFromData, Error };

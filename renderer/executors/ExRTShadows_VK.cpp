@@ -1,12 +1,12 @@
 #include "ExRTShadows.h"
 
 #include <Ren/Context.h>
-#include <Ren/Image.h>
-#include <Ren/RastState.h>
+#include <Ren/DrawCall.h>
 #include <Ren/VKCtx.h>
 
 #include "../../utils/ShaderLoader.h"
-#include "../PrimDraw.h"
+#include "../Renderer_Structs.h"
+#include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_shadows_interface.h"
 
 void Eng::ExRTShadows::Execute_HWRT(const FgContext &fg) {
@@ -15,14 +15,14 @@ void Eng::ExRTShadows::Execute_HWRT(const FgContext &fg) {
     const Ren::BufferROHandle vtx_buf1 = fg.AccessROBuffer(args_->vtx_buf1);
     const Ren::BufferROHandle ndx_buf = fg.AccessROBuffer(args_->ndx_buf);
     const Ren::BufferROHandle unif_sh_data_buf = fg.AccessROBuffer(args_->shared_data);
-    const Ren::Image &noise_tex = fg.AccessROImage(args_->noise_tex);
-    const Ren::Image &depth_tex = fg.AccessROImage(args_->depth_tex);
-    const Ren::Image &normal_tex = fg.AccessROImage(args_->normal_tex);
+    const Ren::ImageROHandle noise_tex = fg.AccessROImage(args_->noise_tex);
+    const Ren::ImageROHandle depth_tex = fg.AccessROImage(args_->depth_tex);
+    const Ren::ImageROHandle normal_tex = fg.AccessROImage(args_->normal_tex);
     [[maybe_unused]] const Ren::BufferROHandle tlas_buf = fg.AccessROBuffer(args_->tlas_buf);
     const Ren::BufferROHandle tile_list_buf = fg.AccessROBuffer(args_->tile_list_buf);
     const Ren::BufferROHandle indir_args_buf = fg.AccessROBuffer(args_->indir_args);
 
-    const Ren::Image &out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
+    const Ren::ImageRWHandle out_shadow_tex = fg.AccessRWImage(args_->out_shadow_tex);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
@@ -47,11 +47,10 @@ void Eng::ExRTShadows::Execute_HWRT(const FgContext &fg) {
     const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
 
     VkDescriptorSet descr_sets[2];
-    descr_sets[0] =
-        PrepareDescriptorSet(api, &storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
+    descr_sets[0] = PrepareDescriptorSet(api, storages, pr.descr_set_layouts[0], bindings, fg.descr_alloc(), fg.log());
     descr_sets[1] = bindless_tex_->rt_inline_textures.descr_set;
 
-    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.handle);
+    api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.pipeline);
     api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pi.layout, 0, 2, descr_sets, 0, nullptr);
 
     RTShadows::Params uniform_params;
