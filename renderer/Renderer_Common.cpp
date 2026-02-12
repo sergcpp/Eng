@@ -366,6 +366,10 @@ void Eng::Renderer::AddBuffersUpdatePass(CommonBuffers &common_buffers, const Pe
             shrd_data.sun_col[3] = shrd_data.sun_col_point[3] = cos_theta;
             shrd_data.env_col = Ren::Vec4f{p_list_->env.env_col[0], p_list_->env.env_col[1], p_list_->env.env_col[2],
                                            p_list_->env.env_map_rot};
+            if (p_list_->env.env_map_name == "physical_sky") {
+                // Ignore rotation
+                shrd_data.env_col[3] = 0.0f;
+            }
 
             // render resolution and full resolution
             shrd_data.ren_res = Ren::Vec4f{float(view_state_.ren_res[0]), float(view_state_.ren_res[1]),

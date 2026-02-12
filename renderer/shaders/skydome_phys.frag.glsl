@@ -92,7 +92,6 @@ void main() {
     view_dir_ws = normalize(TransformFromClipSpace(g_shrd_data.world_from_clip_no_translation, pos_cs));
 #endif
 
-    const vec3 rotated_dir = rotate_xz(view_dir_ws, g_shrd_data.env_col.w);
     //const uint rand_hash = superfast(uvec3(g_vtx_pos * 100.0));
     const uint rand_hash = superfast(uvec3(view_dir_ws * 5000.0 * 100.0));
 
