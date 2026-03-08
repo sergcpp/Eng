@@ -7,9 +7,9 @@
 #include "ResizableBuffer.h"
 
 #if defined(REN_VK_BACKEND)
-#include "VKCtx.h"
+#include "Vk/VKCtx.h"
 #elif defined(REN_GL_BACKEND)
-#include "GLCtx.h"
+#include "Gl/GLCtx.h"
 #endif
 
 const char *Ren::Version() { return "v0.1.0-unknown-commit"; }
@@ -67,38 +67,45 @@ Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, std::istream *data,
     return ref;
 }
 
-Ren::MaterialRef Ren::Context::LoadMaterial(std::string_view name, std::string_view mat_src, eMatLoadStatus *status,
-                                            const pipelines_load_callback &on_pipes_load,
-                                            const texture_load_callback &on_tex_load,
-                                            const sampler_load_callback &on_sampler_load) {
-    MaterialRef ref = materials_.FindByName(name);
-    if (!ref) {
-        ref = materials_.Insert(name, mat_src, status, on_pipes_load, on_tex_load, on_sampler_load, log_);
-    } else {
-        if (ref->ready()) {
-            (*status) = eMatLoadStatus::Found;
-        } else if (!ref->ready() && !mat_src.empty()) {
-            ref->Init(mat_src, status, on_pipes_load, on_tex_load, on_sampler_load, log_);
-        }
+Ren::MaterialHandle Ren::Context::CreateMaterial(Ren::String name, const Bitmask<eMatFlags> flags,
+                                                 Span<const PipelineHandle> pipelines, Span<const ImageHandle> textures,
+                                                 Span<const SamplerHandle> samplers, Span<const Vec4f> params) {
+    const MaterialHandle ret = materials_.Emplace();
+
+    const auto &[material_main, material_cold] = materials_.Get(ret);
+    if (!Material_Init(material_main, material_cold, name, flags, pipelines, textures, samplers, params, log_)) {
+        materials_.Free(ret);
+        return {};
     }
-
-    return ref;
+    return ret;
 }
 
-int Ren::Context::NumMaterialsNotReady() {
-    return int(std::count_if(materials_.begin(), materials_.end(), [](const Material &m) { return !m.ready(); }));
+Ren::MaterialHandle Ren::Context::CreateMaterial(Ren::String name, std::string_view mat_src,
+                                                 const pipelines_load_callback &on_pipes_load,
+                                                 const texture_load_callback &on_tex_load,
+                                                 const sampler_load_callback &on_sampler_load) {
+    const MaterialHandle ret = materials_.Emplace();
+
+    const auto &[material_main, material_cold] = materials_.Get(ret);
+    if (!Material_Init(material_main, material_cold, name, mat_src, on_pipes_load, on_tex_load, on_sampler_load,
+                       log_)) {
+        materials_.Free(ret);
+        return {};
+    }
+    return ret;
 }
+
+void Ren::Context::ReleaseMaterial(const MaterialHandle handle) { materials_.Free(handle); }
 
 void Ren::Context::ReleaseMaterials() {
-    if (materials_.empty()) {
+    if (materials_.Empty()) {
         return;
     }
     log_->Error("---------REMAINING MATERIALS--------");
-    for (const Material &m : materials_) {
+    /*for (const Material &m : materials_old_) {
         log_->Error("%s", m.name().c_str());
-    }
+    }*/
     log_->Error("-----------------------------------");
-    materials_.clear();
 }
 
 #if defined(REN_GL_BACKEND)
@@ -248,8 +255,7 @@ Ren::RenderPassHandle Ren::Context::CreateRenderPass(const RenderTargetInfo &dep
     return ret;
 }
 
-Ren::RenderPassHandle Ren::Context::CreateRenderPass(const RenderTarget &depth_rt,
-                                                     Span<const RenderTarget> color_rts) {
+Ren::RenderPassHandle Ren::Context::CreateRenderPass(const RenderTarget &depth_rt, Span<const RenderTarget> color_rts) {
     Ren::SmallVector<Ren::RenderTargetInfo, 4> color_infos;
     Ren::RenderTargetInfo depth_info;
     { //
@@ -348,66 +354,6 @@ void Ren::Context::ReleasePipeline(const PipelineHandle handle, const bool immed
     pipelines_.Free(handle);
 }
 
-Ren::ImgRef Ren::Context::LoadImage(std::string_view name, const ImgParams &p, MemAllocators *mem_allocs,
-                                    eImgLoadStatus *load_status) {
-    ImgRef ref = images_old_.FindByName(name);
-    if (!ref) {
-        ref = images_old_.Insert(name, api_.get(), p, mem_allocs, log_);
-        (*load_status) = eImgLoadStatus::CreatedDefault;
-    } else if (ref->params != p) {
-        ref->Init(p, mem_allocs, log_);
-        (*load_status) = eImgLoadStatus::Reinitialized;
-    } else {
-        (*load_status) = eImgLoadStatus::Found;
-    }
-    return ref;
-}
-
-Ren::ImgRef Ren::Context::LoadImage(std::string_view name, const ImgHandle &handle, const ImgParams &p,
-                                    MemAllocation &&alloc, eImgLoadStatus *load_status) {
-    ImgRef ref = images_old_.FindByName(name);
-    if (!ref) {
-        ref = images_old_.Insert(name, api_.get(), handle, p, std::move(alloc), log_);
-        (*load_status) = eImgLoadStatus::CreatedDefault;
-    } else if (ref->params != p) {
-        ref->Init(handle, p, std::move(alloc), log_);
-        (*load_status) = eImgLoadStatus::Reinitialized;
-    } else {
-        (*load_status) = eImgLoadStatus::Found;
-    }
-    return ref;
-}
-
-Ren::ImgRef Ren::Context::LoadImage(std::string_view name, Span<const uint8_t> data, const ImgParams &p,
-                                    MemAllocators *mem_allocs, eImgLoadStatus *load_status) {
-    ImgRef ref = images_old_.FindByName(name);
-    if (!ref) {
-        ref = images_old_.Insert(name, api_.get(), data, p, mem_allocs, load_status, log_);
-    } else {
-        (*load_status) = eImgLoadStatus::Found;
-        if ((Bitmask<eImgFlags>{ref->params.flags} & eImgFlags::Stub) && !(p.flags & eImgFlags::Stub) &&
-            !data.empty()) {
-            ref->Init(data, p, mem_allocs, load_status, log_);
-        }
-    }
-    return ref;
-}
-
-Ren::ImgRef Ren::Context::LoadImageCube(std::string_view name, Span<const uint8_t> data[6], const ImgParams &p,
-                                        MemAllocators *mem_allocs, eImgLoadStatus *load_status) {
-    ImgRef ref = images_old_.FindByName(name);
-    if (!ref) {
-        ref = images_old_.Insert(name, api_.get(), data, p, mem_allocs, load_status, log_);
-    } else {
-        (*load_status) = eImgLoadStatus::Found;
-        if ((Bitmask<eImgFlags>{ref->params.flags} & eImgFlags::Stub) && (p.flags & eImgFlags::Stub) && data) {
-            ref->Init(data, p, mem_allocs, load_status, log_);
-        }
-    }
-
-    return ref;
-}
-
 Ren::ImageHandle Ren::Context::CreateImage(const String &name, Span<const uint8_t> data, const ImgParams &p,
                                            MemAllocators *mem_allocs) {
     const ImageHandle ret = images_.Emplace();
@@ -445,6 +391,47 @@ Ren::ImageHandle Ren::Context::CreateImage(const String &name, const ImgParams &
     return ret;
 }
 
+Ren::ImageHandle Ren::Context::CreateImage(const ImageHandle src, const ImgParams &p, MemAllocators *mem_allocs,
+                                           CommandBuffer cmd_buf) {
+    const ImageHandle ret = images_.Emplace();
+
+    const auto &[src_main, src_cold] = images_.Get(src);
+    const auto &[img_main, img_cold] = images_.Get(ret);
+    if (!Image_Init(*api_, img_main, img_cold, src_cold.name, p, {}, mem_allocs, log_)) {
+        images_.Free(ret);
+        return {};
+    }
+
+    if (src_cold.params.format == img_cold.params.format) {
+        // copy data from src texture
+        int src_mip = 0, dst_mip = 0;
+        while (std::max(src_cold.params.w >> src_mip, 1) != std::max(img_cold.params.w >> dst_mip, 1) ||
+               std::max(src_cold.params.h >> src_mip, 1) != std::max(img_cold.params.h >> dst_mip, 1)) {
+            if (std::max(src_cold.params.w >> src_mip, 1) > std::max(img_cold.params.w >> dst_mip, 1) ||
+                std::max(src_cold.params.h >> src_mip, 1) > std::max(img_cold.params.h >> dst_mip, 1)) {
+                ++src_mip;
+            } else {
+                ++dst_mip;
+            }
+        }
+
+        const TransitionInfo transitions[] = {{src, eResState::CopySrc}, {ret, eResState::CopyDst}};
+        TransitionResourceStates(*api_, storages_, cmd_buf, AllStages, AllStages, transitions);
+
+        for (; src_mip < int(src_cold.params.mip_count) && dst_mip < img_cold.params.mip_count; ++src_mip, ++dst_mip) {
+            Image_CmdCopyToImage(
+                *api_, cmd_buf, src_main, src_cold, src_mip, Vec3i{0}, img_main, img_cold, dst_mip, Vec3i{0}, 0,
+                Vec3i{std::max(img_cold.params.w >> dst_mip, 1), std::max(img_cold.params.h >> dst_mip, 1), 1});
+
+#ifdef TEX_VERBOSE_LOGGING
+            log->Info("Copying data mip %i [old] -> mip %i [new]", src_mip, dst_mip);
+#endif
+        }
+    }
+
+    return ret;
+}
+
 void Ren::Context::ReleaseImage(const ImageHandle handle, const bool immediately) {
     if (!handle) {
         return;
@@ -477,37 +464,19 @@ void Ren::Context::CmdCopyImageToBuffer(const ImageROHandle img, const BufferRWH
 }
 
 void Ren::Context::CmdCopyImageToImage(const CommandBuffer cmd_buf, const ImageROHandle src, const uint32_t src_level,
-                                       const uint32_t src_x, const uint32_t src_y, const uint32_t src_z,
-                                       const ImageRWHandle dst, const uint32_t dst_level, const uint32_t dst_x,
-                                       const uint32_t dst_y, const uint32_t dst_z, const uint32_t dst_face,
-                                       const uint32_t w, const uint32_t h, const uint32_t d) {
+                                       const Vec3i &src_offset, const ImageRWHandle dst, const uint32_t dst_level,
+                                       const Vec3i &dst_offset, const uint32_t dst_face, const Vec3i &size) {
     const auto &[src_main, src_cold] = images_.Get(src);
     const auto &[dst_main, dst_cold] = images_.Get(dst);
-    Image_CmdCopyToImage(*api_, cmd_buf, src_main, src_cold, src_level, src_x, src_y, src_z, dst_main, dst_cold,
-                         dst_level, dst_x, dst_y, dst_z, dst_face, w, h, d);
-}
-
-void Ren::Context::VisitImages(eImgFlags mask, const std::function<void(Image &tex)> &callback) {
-    for (Image &tex : images_old_) {
-        if (Bitmask<eImgFlags>{tex.params.flags} & mask) {
-            callback(tex);
-        }
-    }
-}
-
-int Ren::Context::NumImagesNotReady() {
-    return int(std::count_if(images_old_.begin(), images_old_.end(),
-                             [](const Image &t) { return Bitmask<eImgFlags>{t.params.flags} & eImgFlags::Stub; }));
+    Image_CmdCopyToImage(*api_, cmd_buf, src_main, src_cold, src_level, src_offset, dst_main, dst_cold, dst_level,
+                         dst_offset, dst_face, size);
 }
 
 void Ren::Context::ReleaseImages() {
-    if (images_old_.empty() && images_.Empty()) {
+    if (images_.Empty()) {
         return;
     }
     log_->Error("----------REMAINING IMAGES---------");
-    for (const Image &t : images_old_) {
-        log_->Error("%s", t.name().c_str());
-    }
     /*auto &all_images = images_.items_by_name();
     for (auto it = all_images.begin(); it != all_images.end();) {
         const auto &[img_main, img_cold] = images_.GetUnsafe(it->val);
@@ -517,7 +486,6 @@ void Ren::Context::ReleaseImages() {
         it = images_.Free(it);
     }*/
     log_->Error("-----------------------------------");
-    images_old_.clear();
 }
 
 Ren::FramebufferHandle Ren::Context::CreateFramebuffer(const RenderPassROHandle render_pass,
@@ -545,6 +513,30 @@ void Ren::Context::ReleaseFramebuffer(const FramebufferHandle handle, const bool
         Framebuffer_Destroy(*api_, fb_main, fb_cold);
     }
     framebuffers_.Free(handle);
+}
+
+Ren::AccStructHandle Ren::Context::CreateAccStruct() { return acc_structs_.Emplace(); }
+
+void Ren::Context::ReleaseAccStruct(const AccStructHandle handle, const bool immediately) {
+    if (!handle) {
+        return;
+    }
+    const auto &[acc_main, acc_cold] = acc_structs_.Get(handle);
+    if (immediately) {
+        AccStruct_DestroyImmediately(*api_, acc_main, acc_cold);
+    } else {
+        AccStruct_Destroy(*api_, acc_main, acc_cold);
+    }
+    acc_structs_.Free(handle);
+}
+
+void Ren::Context::ReleaseAccStructs() {
+    if (acc_structs_.Empty()) {
+        return;
+    }
+    log_->Error("-------REMAINING ACC STRUCTS-------");
+    //
+    log_->Error("-----------------------------------");
 }
 
 Ren::ImageRegionRef Ren::Context::LoadImageRegion(std::string_view name, Span<const uint8_t> data, const ImgParams &p,
@@ -817,6 +809,7 @@ void Ren::Context::ReleaseAll() {
     ReleaseVertexInputs();
     ReleaseRenderPasses();
     ReleaseSamplers();
+    ReleaseAccStructs();
 
     image_atlas_ = {};
 }

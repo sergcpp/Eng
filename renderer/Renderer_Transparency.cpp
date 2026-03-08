@@ -472,12 +472,14 @@ void Eng::Renderer::AddOITPasses(const CommonBuffers &common_buffers, const Acce
                 const int w = img_cold.params.w, h = img_cold.params.h;
 
                 if (p_list_->alpha_blend_start_index != -1) {
-                    fg.ren_ctx().CmdCopyImageToImage(fg.cmd_buf(), in_back_color_tex, 0, 0, 0, 0, out_back_color_tex, 0,
-                                                     0, 0, 0, 0, w, h, 1);
+                    fg.ren_ctx().CmdCopyImageToImage(fg.cmd_buf(), in_back_color_tex, 0, Ren::Vec3i{0, 0, 0},
+                                                     out_back_color_tex, 0, Ren::Vec3i{0, 0, 0}, 0,
+                                                     Ren::Vec3i{w, h, 1});
                 }
                 if (i == 0 || p_list_->alpha_blend_start_index != -1) {
-                    fg.ren_ctx().CmdCopyImageToImage(fg.cmd_buf(), in_back_depth_tex, 0, 0, 0, 0, out_back_depth_tex, 0,
-                                                     0, 0, 0, 0, w, h, 1);
+                    fg.ren_ctx().CmdCopyImageToImage(fg.cmd_buf(), in_back_depth_tex, 0, Ren::Vec3i{0, 0, 0},
+                                                     out_back_depth_tex, 0, Ren::Vec3i{0, 0, 0}, 0,
+                                                     Ren::Vec3i{w, h, 1});
                 }
             });
         }

@@ -247,7 +247,7 @@ class Renderer {
             FgBufROHandle rt_blas_buf;
         } swrt;
 
-        Ren::IAccStructure *rt_tlases[int(eTLASIndex::_Count)] = {};
+        Ren::AccStructHandle rt_tlases[int(eTLASIndex::_Count)];
     };
 
     struct FrameTextures {

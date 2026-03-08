@@ -5,8 +5,8 @@
 #include <cassert>
 
 #include "../Ren/Context.h"
-#include "../Ren/GL.h"
-#include "../Ren/GLCtx.h"
+#include "../Ren/Gl/GL.h"
+#include "../Ren/Gl/GLCtx.h"
 #include "../Ren/ResizableBuffer.h"
 #include "../Sys/Json.h"
 
@@ -32,9 +32,9 @@ Gui::Renderer::~Renderer() {
     ctx_.ReleaseBuffer(vertex_buf_, true /* immediately */);
     ctx_.ReleaseBuffer(index_buf_, true /* immediately */);
 
-    ctx_.ReleaseRenderPass(render_pass_);
+    ctx_.ReleaseRenderPass(render_pass_, true /* immediately */);
 
-    ctx_.ReleasePipeline(pipeline_);
+    ctx_.ReleasePipeline(pipeline_, true /* immediately */);
     ctx_.ReleaseProgram(program_);
     ctx_.ReleaseShader(vs_);
     ctx_.ReleaseShader(fs_);

@@ -23,7 +23,7 @@ class ExRTGI final : public FgExecutor {
         FgBufROHandle indir_args;
         FgBufROHandle tlas_buf; // fake read for now
 
-        Ren::IAccStructure *tlas = nullptr;
+        Ren::AccStructROHandle tlas;
 
         struct {
             uint32_t root_node = 0xffffff;

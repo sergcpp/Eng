@@ -1,7 +1,7 @@
 #include "ExDepthHierarchy.h"
 
 #include <Ren/Context.h>
-#include <Ren/GL.h>
+#include <Ren/Gl/GL.h>
 #include <Ren/Program.h>
 #include <Sys/ScopeExit.h>
 

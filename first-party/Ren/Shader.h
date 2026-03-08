@@ -3,7 +3,7 @@
 #include "Bitmask.h"
 #include "String.h"
 #if defined(REN_VK_BACKEND)
-#include "VK.h"
+#include "Vk/VK.h"
 #endif
 
 namespace Ren {
@@ -48,7 +48,7 @@ enum class eShaderSource : uint8_t { GLSL, SPIRV, _Count };
 } // namespace Ren
 
 #if defined(REN_GL_BACKEND)
-#include "ShaderGL.h"
+#include "Gl/ShaderGL.h"
 #elif defined(REN_VK_BACKEND)
-#include "ShaderVK.h"
+#include "Vk/ShaderVK.h"
 #endif

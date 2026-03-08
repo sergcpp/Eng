@@ -4,7 +4,7 @@
 #include <Ren/ResizableBuffer.h>
 #if defined(REN_VK_BACKEND)
 #include <Ren/DescriptorPool.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 #endif
 
 Eng::PersistentGpuData::PersistentGpuData(Ren::Context &_ctx) : ctx(_ctx) {}
@@ -49,13 +49,9 @@ void Eng::PersistentGpuData::Release() {
     }
     textures_buf = {};
 #endif
-    if (instance_buf) {
-        ctx.ReleaseBuffer(instance_buf);
-    }
+    ctx.ReleaseBuffer(instance_buf);
     instance_buf = {};
-    if (materials_buf) {
-        ctx.ReleaseBuffer(materials_buf);
-    }
+    ctx.ReleaseBuffer(materials_buf);
     materials_buf = {};
     if (vertex_buf1) {
         vertex_buf1->Release(true /* immediately */);
@@ -105,17 +101,19 @@ void Eng::PersistentGpuData::Release() {
     }
     swrt = {};
 
-    std::fill(std::begin(rt_tlas), std::end(rt_tlas), nullptr);
+    for (const Ren::AccStructHandle blas : rt_blases) {
+        ctx.ReleaseAccStruct(blas);
+    }
+    rt_blases.clear();
+    for (Ren::AccStructHandle &tlas : rt_tlases) {
+        ctx.ReleaseAccStruct(tlas);
+        tlas = {};
+    }
 
-    if (probe_irradiance) {
-        ctx.ReleaseImage(probe_irradiance, true /* immediately */);
-    }
-    if (probe_distance) {
-        ctx.ReleaseImage(probe_distance, true /* immediately */);
-    }
-    if (probe_offset) {
-        ctx.ReleaseImage(probe_offset, true /* immediately */);
-    }
+    ctx.ReleaseImage(probe_irradiance, true /* immediately */);
+    ctx.ReleaseImage(probe_distance, true /* immediately */);
+    ctx.ReleaseImage(probe_offset, true /* immediately */);
+
     probe_irradiance = probe_distance = probe_offset = {};
     probe_volumes.clear();
 }

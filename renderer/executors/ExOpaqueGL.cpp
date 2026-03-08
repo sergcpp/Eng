@@ -4,22 +4,22 @@
 
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
-#include <Ren/GL.h>
+#include <Ren/Gl/GL.h>
 #include <Ren/RastState.h>
 
 #include "../Renderer_DrawList.h"
 #include "../framegraph/FgBuilder.h"
 
 namespace ExSharedInternal {
-void _bind_textures_and_samplers(Ren::Context &ctx, const Ren::Material &mat) {
+void _bind_textures_and_samplers(const Ren::StoragesRef &storages, const Ren::MaterialMain &mat) {
     assert(mat.textures.size() == mat.samplers.size());
     for (int j = 0; j < int(mat.textures.size()); ++j) {
-        ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j, mat.textures[j]->id());
-        glBindSampler(Eng::BIND_MAT_TEX0 + j, ctx.storages().samplers.Get(mat.samplers[j]).first.id);
+        ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j,
+                                   storages.images.Get(mat.textures[j]).first.img);
+        glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers.Get(mat.samplers[j]).first.id);
     }
 }
-uint32_t _draw_list_range_full(const Eng::FgContext &fg, const Ren::MaterialStorage &materials,
-                               Ren::Span<const Eng::custom_draw_batch_t> main_batches,
+uint32_t _draw_list_range_full(const Eng::FgContext &fg, Ren::Span<const Eng::custom_draw_batch_t> main_batches,
                                Ren::Span<const uint32_t> main_batch_indices, uint32_t i, uint64_t mask,
                                uint64_t &cur_mat_id, uint64_t &cur_pipe_id, uint64_t &cur_prog_id,
                                Eng::backend_info_t &backend_info) {
@@ -65,8 +65,8 @@ uint32_t _draw_list_range_full(const Eng::FgContext &fg, const Ren::MaterialStor
         }
 
         if (!ren_ctx.capabilities.bindless_texture && cur_mat_id != batch.mat_id) {
-            const Ren::Material &mat = materials.at(batch.mat_id);
-            _bind_textures_and_samplers(ren_ctx, mat);
+            const Ren::MaterialMain &mat = storages.materials.GetUnsafe(batch.mat_id).first;
+            _bind_textures_and_samplers(storages, mat);
         }
 
         cur_pipe_id = batch.pipe_id;
@@ -84,8 +84,7 @@ uint32_t _draw_list_range_full(const Eng::FgContext &fg, const Ren::MaterialStor
     return i;
 }
 
-uint32_t _draw_list_range_full_rev(const Eng::FgContext &fg, const Ren::MaterialStorage &materials,
-                                   Ren::Span<const Eng::custom_draw_batch_t> main_batches,
+uint32_t _draw_list_range_full_rev(const Eng::FgContext &fg, Ren::Span<const Eng::custom_draw_batch_t> main_batches,
                                    Ren::Span<const uint32_t> main_batch_indices, uint32_t ndx, uint64_t mask,
                                    uint64_t &cur_mat_id, uint64_t &cur_pipe_id, uint64_t &cur_prog_id,
                                    Eng::backend_info_t &backend_info) {
@@ -117,8 +116,8 @@ uint32_t _draw_list_range_full_rev(const Eng::FgContext &fg, const Ren::Material
         }
 
         if (!ren_ctx.capabilities.bindless_texture && cur_mat_id != batch.mat_id) {
-            const Ren::Material &mat = materials.at(batch.mat_id);
-            _bind_textures_and_samplers(ren_ctx, mat);
+            const Ren::MaterialMain &mat = storages.materials.GetUnsafe(batch.mat_id).first;
+            _bind_textures_and_samplers(storages, mat);
         }
 
         cur_pipe_id = batch.pipe_id;
@@ -259,7 +258,6 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
 
     const Ren::Span<const custom_draw_batch_t> batches = {(*p_list_)->custom_batches};
     const Ren::Span<const uint32_t> batch_indices = {(*p_list_)->custom_batch_indices};
-    const auto &materials = *(*p_list_)->materials;
 
     static backend_info_t _dummy = {};
 
@@ -279,8 +277,8 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_list_range_full(fg, materials, batches, batch_indices, i, 0ull, cur_mat_id, cur_pipe_id,
-                                      cur_prog_id, _dummy);
+            i = _draw_list_range_full(fg, batches, batch_indices, i, 0ull, cur_mat_id, cur_pipe_id, cur_prog_id,
+                                      _dummy);
         }
 
         { // two-sided1
@@ -290,8 +288,8 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_list_range_full(fg, materials, batches, batch_indices, i, CDB::BitTwoSided, cur_mat_id,
-                                      cur_pipe_id, cur_prog_id, _dummy);
+            i = _draw_list_range_full(fg, batches, batch_indices, i, CDB::BitTwoSided, cur_mat_id, cur_pipe_id,
+                                      cur_prog_id, _dummy);
         }
 
         { // one-sided2
@@ -301,8 +299,8 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_list_range_full(fg, materials, batches, batch_indices, i, CDB::BitAlphaTest, cur_mat_id,
-                                      cur_pipe_id, cur_prog_id, _dummy);
+            i = _draw_list_range_full(fg, batches, batch_indices, i, CDB::BitAlphaTest, cur_mat_id, cur_pipe_id,
+                                      cur_prog_id, _dummy);
         }
 
         { // two-sided2
@@ -312,8 +310,8 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_list_range_full(fg, materials, batches, batch_indices, i, CDB::BitAlphaTest | CDB::BitTwoSided,
-                                      cur_mat_id, cur_pipe_id, cur_prog_id, _dummy);
+            i = _draw_list_range_full(fg, batches, batch_indices, i, CDB::BitAlphaTest | CDB::BitTwoSided, cur_mat_id,
+                                      cur_pipe_id, cur_prog_id, _dummy);
         }
 
         { // two-sided-tested-blended
@@ -323,7 +321,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_list_range_full_rev(fg, materials, batches, batch_indices, uint32_t(batch_indices.size() - 1),
+            i = _draw_list_range_full_rev(fg, batches, batch_indices, uint32_t(batch_indices.size() - 1),
                                           CDB::BitAlphaBlend | CDB::BitAlphaTest | CDB::BitTwoSided, cur_mat_id,
                                           cur_pipe_id, cur_prog_id, _dummy);
         }
@@ -335,8 +333,8 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            _draw_list_range_full_rev(fg, materials, batches, batch_indices, i, CDB::BitAlphaBlend | CDB::BitAlphaTest,
-                                      cur_mat_id, cur_pipe_id, cur_prog_id, _dummy);
+            _draw_list_range_full_rev(fg, batches, batch_indices, i, CDB::BitAlphaBlend | CDB::BitAlphaTest, cur_mat_id,
+                                      cur_pipe_id, cur_prog_id, _dummy);
         }
     }
 

@@ -2,9 +2,8 @@
 
 #include <Ren/Context.h>
 #include <Ren/Framebuffer.h>
-#include <Ren/ProbeStorage.h>
 #include <Ren/ResizableBuffer.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../utils/ShaderLoader.h"
 
@@ -47,16 +46,10 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
 #ifndef NDEBUG
         for (const auto &b : bindings) {
             if (b.trg == Ren::eBindTarget::Tex || b.trg == Ren::eBindTarget::TexSampled) {
-                if (b.handle.img_new) {
-                    const Ren::ImageMain &img_main = storages.images.Get(b.handle.img_new).first;
-                    assert(img_main.resource_state == Ren::eResState::ShaderResource ||
-                           img_main.resource_state == Ren::eResState::DepthRead ||
-                           img_main.resource_state == Ren::eResState::StencilTestDepthFetch);
-                } else {
-                    assert(b.handle.img->resource_state == Ren::eResState::ShaderResource ||
-                           b.handle.img->resource_state == Ren::eResState::DepthRead ||
-                           b.handle.img->resource_state == Ren::eResState::StencilTestDepthFetch);
-                }
+                const Ren::ImageMain &img_main = storages.images.Get(b.handle.img).first;
+                assert(img_main.resource_state == Ren::eResState::ShaderResource ||
+                       img_main.resource_state == Ren::eResState::DepthRead ||
+                       img_main.resource_state == Ren::eResState::StencilTestDepthFetch);
             }
         }
 #endif

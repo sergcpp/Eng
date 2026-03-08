@@ -50,14 +50,14 @@ void Eng::ExUpdateAccBuffers::Execute_HWRT(const FgContext &fg) {
         if (stage_mem) {
             auto *out_instances = reinterpret_cast<VkAccelerationStructureInstanceKHR *>(stage_mem);
             for (uint32_t i = 0; i < rt_obj_instances.count; ++i) {
+                const auto &[acc_main, acc_cold] = storages.acc_structs.Get(rt_obj_instances.data[i].blas);
+
                 auto &new_instance = out_instances[i];
                 memcpy(new_instance.transform.matrix, rt_obj_instances.data[i].xform, 12 * sizeof(float));
                 new_instance.instanceCustomIndex = rt_obj_instances.data[i].geo_index;
                 new_instance.mask = rt_obj_instances.data[i].mask;
                 new_instance.flags = 0;
-                new_instance.accelerationStructureReference =
-                    reinterpret_cast<const Ren::AccStructureVK *>(rt_obj_instances.data[i].blas_ref)
-                        ->vk_device_address();
+                new_instance.accelerationStructureReference = AccStruct_GetDeviceAddress(api, acc_main);
             }
 
             Buffer_Unmap(api, rt_obj_instances_stage_buf_main, rt_obj_instances_stage_buf_cold);

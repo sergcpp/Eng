@@ -9,7 +9,6 @@
 #include <Ren/MMat.h>
 #include <Ren/Mesh.h>
 #include <Ren/Pipeline.h>
-#include <Ren/ProbeStorage.h>
 #include <Ren/Storage.h>
 
 #include "Atmosphere.h"
@@ -252,7 +251,8 @@ struct PersistentGpuData {
         Ren::SparseArray<mesh_t> rt_meshes;
     } swrt;
 
-    std::unique_ptr<Ren::IAccStructure> rt_tlas[3];
+    std::vector<Ren::AccStructHandle> rt_blases;
+    Ren::AccStructHandle rt_tlases[3];
 
     Ren::ImageHandle probe_irradiance;
     Ren::ImageHandle probe_distance;
@@ -275,8 +275,8 @@ struct SceneData {
     Ren::String name;
     Ren::Bitmask<eSceneLoadFlags> load_flags;
 
-    Ren::ImageStorage textures;
-    Ren::MaterialStorage materials;
+    Ren::HashMap32<Ren::String, Ren::ImageHandle> name_to_texture;
+    Ren::HashMap32<Ren::String, Ren::MaterialHandle> name_to_material;
     std::vector<uint32_t> material_changes;
     std::vector<Ren::SamplerHandle> samplers;
     std::unique_ptr<PersistentGpuData> persistent_data;

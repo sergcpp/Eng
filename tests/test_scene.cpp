@@ -5,9 +5,9 @@
 #include <stb/stb_image.h>
 #include <stb/stb_image_write.h>
 #if defined(REN_VK_BACKEND)
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 #elif defined(REN_GL_BACKEND)
-#include <Ren/GLCtx.h>
+#include <Ren/Gl/GLCtx.h>
 #endif
 #include <Snd/Context.h>
 #include <Sys/AssetFile.h>

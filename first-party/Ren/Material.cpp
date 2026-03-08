@@ -16,68 +16,39 @@ uint8_t from_hex_char(const char c) { return (c >= 'A') ? (c >= 'a') ? (c - 'a' 
 const SamplingParams g_default_mat_sampler = {eFilter::Trilinear, eWrap::Repeat, eCompareOp::None, Fixed8{}};
 } // namespace Ren
 
-Ren::Material::Material(std::string_view name, std::string_view mat_src, eMatLoadStatus *status,
+bool Ren::Material_Init(MaterialMain &mat_main, MaterialCold &mat_cold, Ren::String name,
+                        const Bitmask<eMatFlags> flags, Span<const PipelineHandle> pipelines,
+                        Span<const ImageHandle> textures, Span<const SamplerHandle> samplers, Span<const Vec4f> params,
+                        ILog *log) {
+    mat_main.flags = flags;
+    mat_cold.name = name;
+    for (int i = 0; i < int(pipelines.size()); i++) {
+        mat_main.pipelines.emplace_back(pipelines[i]);
+    }
+    assert(textures.size() == samplers.size());
+    for (int i = 0; i < int(textures.size()); i++) {
+        mat_main.textures.emplace_back(textures[i]);
+        mat_main.samplers.emplace_back(samplers[i]);
+    }
+    for (int i = 0; i < int(params.size()); i++) {
+        mat_cold.params.emplace_back(params[i]);
+    }
+    return true;
+}
+
+bool Ren::Material_Init(MaterialMain &mat_main, MaterialCold &mat_cold, Ren::String name, std::string_view mat_src,
                         const pipelines_load_callback &on_pipes_load, const texture_load_callback &on_tex_load,
                         const sampler_load_callback &on_sampler_load, ILog *log) {
-    name_ = String{name};
-    Init(mat_src, status, on_pipes_load, on_tex_load, on_sampler_load, log);
-}
+    mat_cold.name = name;
 
-Ren::Material::Material(std::string_view name, Bitmask<eMatFlags> flags, Span<const PipelineHandle> _pipelines,
-                        Span<const ImgRef> _textures, Span<const SamplerHandle> _samplers, Span<const Vec4f> _params,
-                        ILog *log) {
-    name_ = String{name};
-    Init(flags, _pipelines, _textures, _samplers, _params, log);
-}
-
-void Ren::Material::Init(const Bitmask<eMatFlags> _flags, Span<const PipelineHandle> _pipelines,
-                         Span<const ImgRef> _textures, Span<const SamplerHandle> _samplers, Span<const Vec4f> _params,
-                         ILog *log) {
-    flags = _flags;
-    ready_ = true;
-
-    pipelines.clear();
-    textures.clear();
-    samplers.clear();
-    params.clear();
-
-    for (int i = 0; i < int(pipelines.size()); i++) {
-        pipelines.emplace_back(_pipelines[i]);
-    }
-    assert(_textures.size() == _samplers.size());
-    for (int i = 0; i < int(_textures.size()); i++) {
-        textures.emplace_back(_textures[i]);
-        samplers.emplace_back(_samplers[i]);
-    }
-    for (int i = 0; i < int(_params.size()); i++) {
-        params.emplace_back(_params[i]);
-    }
-}
-
-void Ren::Material::Init(std::string_view mat_src, eMatLoadStatus *status, const pipelines_load_callback &on_pipes_load,
-                         const texture_load_callback &on_tex_load, const sampler_load_callback &on_sampler_load,
-                         ILog *log) {
-    InitFromMAT(mat_src, status, on_pipes_load, on_tex_load, on_sampler_load, log);
-}
-
-void Ren::Material::InitFromMAT(std::string_view mat_src, eMatLoadStatus *status,
-                                const pipelines_load_callback &on_pipes_load, const texture_load_callback &on_tex_load,
-                                const sampler_load_callback &on_sampler_load, ILog *log) {
     if (mat_src.empty()) {
-        (*status) = eMatLoadStatus::SetToDefault;
-        return;
+        return true;
     }
 
     // Parse material
     const char *delims = " \r\n";
     const char *p = mat_src.data();
     const char *q = strpbrk(p + 1, delims);
-
-    flags = {};
-    pipelines.clear();
-    textures.clear();
-    samplers.clear();
-    params.clear();
 
     bool multi_doc = false;
     SmallVector<std::string, 4> v_shader_names, f_shader_names, tc_shader_names, te_shader_names;
@@ -148,17 +119,17 @@ void Ren::Material::InitFromMAT(std::string_view mat_src, eMatLoadStatus *status
                 const std::string flag = std::string(p, q);
 
                 if (flag == "alpha_test") {
-                    flags |= eMatFlags::AlphaTest;
+                    mat_main.flags |= eMatFlags::AlphaTest;
                 } else if (flag == "alpha_blend") {
-                    flags |= eMatFlags::AlphaBlend;
+                    mat_main.flags |= eMatFlags::AlphaBlend;
                 } else if (flag == "depth_write") {
-                    flags |= eMatFlags::DepthWrite;
+                    mat_main.flags |= eMatFlags::DepthWrite;
                 } else if (flag == "two_sided") {
-                    flags |= eMatFlags::TwoSided;
+                    mat_main.flags |= eMatFlags::TwoSided;
                 } else if (flag == "emissive") {
-                    flags |= eMatFlags::Emissive;
+                    mat_main.flags |= eMatFlags::Emissive;
                 } else if (flag == "custom_shaded") {
-                    flags |= eMatFlags::CustomShaded;
+                    mat_main.flags |= eMatFlags::CustomShaded;
                 } else {
                     log->Error("Unknown flag %s", flag.c_str());
                 }
@@ -228,11 +199,11 @@ void Ren::Material::InitFromMAT(std::string_view mat_src, eMatLoadStatus *status
                         _p = _q + 1;
                     }
 
-                    textures.emplace_back(on_tex_load(texture_name, texture_color, texture_flags));
-                    samplers.emplace_back(on_sampler_load(sampler_params));
+                    mat_main.textures.emplace_back(on_tex_load(texture_name, texture_color, texture_flags));
+                    mat_main.samplers.emplace_back(on_sampler_load(sampler_params));
                 } else {
-                    textures.emplace_back();
-                    samplers.emplace_back();
+                    mat_main.textures.emplace_back();
+                    mat_main.samplers.emplace_back();
                 }
                 if (!q) {
                     break;
@@ -258,7 +229,7 @@ void Ren::Material::InitFromMAT(std::string_view mat_src, eMatLoadStatus *status
                 if (p[0] != '-' || p[1] != ' ') {
                     break;
                 }
-                Vec4f &par = params.emplace_back();
+                Vec4f &par = mat_cold.params.emplace_back();
                 p = q + 1;
                 q = strpbrk(p, delims);
                 par[0] = strtof(p, nullptr);
@@ -295,14 +266,14 @@ void Ren::Material::InitFromMAT(std::string_view mat_src, eMatLoadStatus *status
         p = q + 1;
     }
 
-    assert(textures.size() == samplers.size());
+    assert(mat_main.textures.size() == mat_main.samplers.size());
 
     for (size_t i = 0; i < v_shader_names.size(); ++i) {
-        on_pipes_load(flags, v_shader_names[i], f_shader_names[i], tc_shader_names[i], te_shader_names[i], pipelines);
+        on_pipes_load(mat_main.flags, v_shader_names[i], f_shader_names[i], tc_shader_names[i], te_shader_names[i],
+                      mat_main.pipelines);
     }
 
-    ready_ = true;
-    (*status) = multi_doc ? eMatLoadStatus::CreatedFromData_NeedsMore : eMatLoadStatus::CreatedFromData;
+    return true;
 }
 
 #ifdef _MSC_VER

@@ -43,7 +43,7 @@ class ExRTReflections final : public FgExecutor {
 
         FgBufROHandle oit_depth_buf;
 
-        const Ren::IAccStructure *tlas = nullptr;
+        Ren::AccStructROHandle tlas;
 
         struct {
             uint32_t root_node = 0xffffffff;

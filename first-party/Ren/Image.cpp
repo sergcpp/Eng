@@ -4,7 +4,7 @@
 #include "Utils.h"
 
 #if defined(REN_GL_BACKEND)
-#include "GL.h"
+#include "Gl/GL.h"
 #endif
 
 namespace Ren {

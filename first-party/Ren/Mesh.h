@@ -15,11 +15,11 @@
 namespace Ren {
 class ILog;
 
-enum class eMeshFlags { HasAlpha = 0 };
+enum class eMeshFlags : uint8_t { HasAlpha = 0 };
 
 struct tri_group_t {
     int byte_offset = -1, num_indices = 0;
-    MaterialRef front_mat, back_mat, vol_mat;
+    MaterialHandle front_mat, back_mat, vol_mat;
     Bitmask<eMeshFlags> flags;
 };
 
@@ -30,14 +30,13 @@ struct vtx_delta_t {
 struct BufferRange {
     BufferHandle buf;
     SubAllocation sub;
-    uint32_t size = 0;
 };
 
 enum class eMeshLoadStatus { Error, Found, CreatedFromData };
 
-enum class eMeshType { Undefined, Simple, Colored, Skeletal };
+enum class eMeshType : uint8_t { Undefined, Simple, Colored, Skeletal };
 
-using material_load_callback = std::function<std::array<MaterialRef, 3>(std::string_view name)>;
+using material_load_callback = std::function<std::array<MaterialHandle, 3>(std::string_view name)>;
 
 enum class eMeshFileChunk { Info = 0, VtxAttributes, TriIndices, Materials, TriGroups, Bones, ShapeKeys };
 
@@ -53,6 +52,25 @@ struct MeshFileInfo {
 static_assert(sizeof(MeshFileInfo) == 56);
 static_assert(offsetof(MeshFileInfo, bbox_min) == 32);
 static_assert(offsetof(MeshFileInfo, bbox_max) == 44);
+
+struct MeshMain {
+    eMeshType type = eMeshType::Undefined;
+    Bitmask<eMeshFlags> flags;
+
+    BufferRange attribs_buf1, attribs_buf2, indices_buf;
+    BufferRange sk_attribs_buf, sk_deltas_buf;
+};
+
+struct MeshCold {
+    String name;
+    std::vector<float> attribs;
+    std::vector<uint32_t> indices;
+    std::vector<vtx_delta_t> deltas;
+    SmallVector<tri_group_t, 8> groups;
+    Vec3f bbox_min, bbox_max;
+    Skeleton skel;
+    AccStructHandle blas;
+};
 
 class Mesh : public RefCounter {
     eMeshType type_ = eMeshType::Undefined;
@@ -133,7 +151,7 @@ class Mesh : public RefCounter {
                         ILog *log);
     void ReleaseBufferData();
 
-    std::unique_ptr<IAccStructure> blas;
+    AccStructHandle blas;
 };
 
 using MeshRef = StrongRef<Mesh, NamedStorage<Mesh>>;

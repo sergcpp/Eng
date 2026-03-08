@@ -1,7 +1,7 @@
 #include "SceneManager.h"
 
 #include <Ren/Context.h>
-#include <Ren/GL.h>
+#include <Ren/Gl/GL.h>
 #include <Ren/Utils.h>
 #include <Sys/ScopeExit.h>
 
@@ -15,7 +15,7 @@ namespace SceneManagerConstants {} // namespace SceneManagerConstants
 namespace SceneManagerInternal {} // namespace SceneManagerInternal
 
 bool Eng::SceneManager::UpdateMaterialsBuffer() {
-    const uint32_t max_mat_count = scene_data_.materials.capacity();
+    const uint32_t max_mat_count = ren_ctx_.materials().Capacity();
     const uint32_t req_mat_buf_size = std::max(1u, max_mat_count) * sizeof(material_data_t);
 
     const uint32_t max_tex_count = std::max(1u, MAX_TEX_PER_MATERIAL * max_mat_count);
@@ -27,8 +27,9 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
     }
 
     const Ren::ApiContext &api = ren_ctx_.api();
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
 
-    const auto &[mat_buf_main, mat_buf_cold] = ren_ctx_.buffers().Get(scene_data_.persistent_data->materials_buf);
+    const auto &[mat_buf_main, mat_buf_cold] = storages.buffers.Get(scene_data_.persistent_data->materials_buf);
     if (mat_buf_cold.size < req_mat_buf_size) {
         if (!Buffer_Resize(api, mat_buf_main, mat_buf_cold, req_mat_buf_size, ren_ctx_.log())) {
             return false;
@@ -36,7 +37,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
     }
 
     const auto &[textures_buf_main, textures_buf_cold] =
-        ren_ctx_.buffers().Get(scene_data_.persistent_data->textures_buf);
+        storages.buffers.Get(scene_data_.persistent_data->textures_buf);
     if (textures_buf_cold.size < req_tex_buf_size) {
         Buffer_Resize(api, textures_buf_main, textures_buf_cold, req_tex_buf_size, ren_ctx_.log());
     }
@@ -87,27 +88,30 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
         texture_data =
             reinterpret_cast<GLuint64 *>(Buffer_Map(api, textures_upload_buf_main, textures_upload_buf_cold));
 
-        white_tex_handle = glGetTextureHandleARB(white_tex_->id());
+        white_tex_handle = glGetTextureHandleARB(storages.images.Get(white_tex_).first.img);
         if (!glIsTextureHandleResidentARB(white_tex_handle)) {
             glMakeTextureHandleResidentARB(white_tex_handle);
         }
-        error_tex_handle = glGetTextureHandleARB(error_tex_->id());
+        error_tex_handle = glGetTextureHandleARB(storages.images.Get(error_tex_).first.img);
         if (!glIsTextureHandleResidentARB(error_tex_handle)) {
             glMakeTextureHandleResidentARB(error_tex_handle);
         }
     }
 
-    const auto &[sampler_main, sampler_cold] = ren_ctx_.samplers().Get(scene_data_.persistent_data->trilinear_sampler);
+    const auto &[sampler_main, sampler_cold] = storages.samplers.Get(scene_data_.persistent_data->trilinear_sampler);
 
+    const auto &is_occupied = storages.materials.is_occupied();
     for (uint32_t i = update_range.first; i < update_range.second; ++i) {
         const uint32_t rel_i = i - update_range.first;
-        const Ren::Material *mat = scene_data_.materials.GetOrNull(i);
-        if (mat) {
+        if (is_occupied[i]) {
+            const auto &[mat_main, mat_cold] = storages.materials.GetUnsafe(i);
+
             int j = 0;
-            for (; j < int(mat->textures.size()); ++j) {
+            for (; j < int(mat_main.textures.size()); ++j) {
                 material_data[rel_i].texture_indices[j] = i * MAX_TEX_PER_MATERIAL + j;
                 if (texture_data) {
-                    const GLuint64 handle = glGetTextureSamplerHandleARB(mat->textures[j]->id(), sampler_main.id);
+                    const GLuint64 handle = glGetTextureSamplerHandleARB(
+                        storages.images.Get(mat_main.textures[j]).first.img, sampler_main.id);
                     if (!glIsTextureHandleResidentARB(handle)) {
                         glMakeTextureHandleResidentARB(handle);
                     }
@@ -122,8 +126,8 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
             }
 
             int k = 0;
-            for (; k < int(mat->params.size()); ++k) {
-                material_data[rel_i].params[k] = mat->params[k];
+            for (; k < int(mat_cold.params.size()); ++k) {
+                material_data[rel_i].params[k] = mat_cold.params[k];
             }
             for (; k < MAX_MATERIAL_PARAMS; ++k) {
                 material_data[rel_i].params[k] = Ren::Vec4f{0.0f};
@@ -158,4 +162,4 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
 
 // stubs
 void Eng::SceneManager::Alloc_HWRT_TLAS() {}
-std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc) { return nullptr; }
+Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc) { return {}; }

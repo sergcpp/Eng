@@ -4,7 +4,7 @@
 #include <Ren/DrawCall.h>
 #include <Ren/Image.h>
 #include <Ren/RastState.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
@@ -41,13 +41,11 @@ void Eng::ExSampleLights::Execute_HWRT(const FgContext &fg) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    auto *acc_struct = static_cast<Ren::AccStructureVK *>(args_->tlas);
-
     const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
                                      {Ren::eBindTarget::UTBuf, RANDOM_SEQ_BUF_SLOT, random_seq_buf},
                                      {Ren::eBindTarget::UTBuf, LIGHTS_BUF_SLOT, lights_buf},
                                      {Ren::eBindTarget::UTBuf, LIGHT_NODES_BUF_SLOT, nodes_buf},
-                                     {Ren::eBindTarget::AccStruct, TLAS_SLOT, *acc_struct},
+                                     {Ren::eBindTarget::AccStruct, TLAS_SLOT, args_->tlas},
                                      {Ren::eBindTarget::SBufRO, GEO_DATA_BUF_SLOT, geo_data_buf},
                                      {Ren::eBindTarget::SBufRO, MATERIAL_BUF_SLOT, materials_buf},
                                      {Ren::eBindTarget::UTBuf, VTX_BUF1_SLOT, vtx_buf1},

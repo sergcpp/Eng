@@ -2,8 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/Framebuffer.h>
-#include <Ren/GL.h>
-#include <Ren/ProbeStorage.h>
+#include <Ren/Gl/GL.h>
 #include <Ren/ResizableBuffer.h>
 
 #include "../utils/ShaderLoader.h"
@@ -37,22 +36,14 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
 
     for (const auto &b : bindings) {
         if (b.trg == Ren::eBindTarget::Tex || b.trg == Ren::eBindTarget::TexSampled) {
-            if (b.handle.img_new) {
-                const auto &[img_main, img_cold] = storages.images.Get(b.handle.img_new);
-                auto texture_id = GLuint(img_main.img);
-                if (b.handle.view_index) {
-                    texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
-                }
-                ren_glBindTextureUnit_Comp(GLBindTarget(img_cold, b.handle.view_index), GLuint(b.loc + b.offset),
-                                           texture_id);
-            } else {
-                auto texture_id = GLuint(b.handle.img->id());
-                if (b.handle.view_index) {
-                    texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
-                }
-                ren_glBindTextureUnit_Comp(GLBindTarget(*b.handle.img, b.handle.view_index), GLuint(b.loc + b.offset),
-                                           texture_id);
+            const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
+            auto texture_id = GLuint(img_main.img);
+            if (b.handle.view_index) {
+                texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
             }
+            ren_glBindTextureUnit_Comp(GLBindTarget(img_cold, b.handle.view_index), GLuint(b.loc + b.offset),
+                                       texture_id);
+
             if (b.handle.sampler) {
                 ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
             } else {
@@ -87,13 +78,14 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
         } else if (b.trg == Ren::eBindTarget::Sampler) {
             ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
         } else if (b.trg == Ren::eBindTarget::ImageRO || b.trg == Ren::eBindTarget::ImageRW) {
-            auto texture_id = GLuint(b.handle.img->id());
+            const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
+            auto texture_id = GLuint(img_main.img);
             if (b.handle.view_index) {
-                texture_id = GLuint(b.handle.img->handle().views[b.handle.view_index - 1]);
+                texture_id = GLuint(img_main.views[b.handle.view_index - 1]);
             }
             glBindImageTexture(GLuint(b.loc + b.offset), texture_id, 0, GL_FALSE, 0,
                                b.trg == Ren::eBindTarget::ImageRO ? GL_READ_ONLY : GL_READ_WRITE,
-                               GLInternalFormatFromFormat(b.handle.img->params.format));
+                               GLInternalFormatFromFormat(img_cold.params.format));
         }
     }
 

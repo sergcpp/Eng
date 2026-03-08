@@ -2,7 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/DrawCall.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_DrawList.h"
@@ -36,8 +36,6 @@ void Eng::ExRTGICache::Execute_HWRT(const FgContext &fg) {
 
     const Ren::ImageRWHandle out_ray_data_tex = fg.AccessRWImage(args_->out_ray_data_tex);
 
-    auto *acc_struct = static_cast<Ren::AccStructureVK *>(args_->tlas);
-
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
@@ -46,7 +44,7 @@ void Eng::ExRTGICache::Execute_HWRT(const FgContext &fg) {
     Ren::SmallVector<Ren::Binding, 16> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
         {Ren::eBindTarget::TexSampled, RTGICache::ENV_TEX_SLOT, env_tex},
-        {Ren::eBindTarget::AccStruct, RTGICache::TLAS_SLOT, *acc_struct},
+        {Ren::eBindTarget::AccStruct, RTGICache::TLAS_SLOT, args_->tlas},
         {Ren::eBindTarget::SBufRO, RTGICache::GEO_DATA_BUF_SLOT, geo_data_buf},
         {Ren::eBindTarget::SBufRO, RTGICache::MATERIAL_BUF_SLOT, materials_buf},
         {Ren::eBindTarget::SBufRO, RTGICache::VTX_BUF1_SLOT, vtx_buf1},

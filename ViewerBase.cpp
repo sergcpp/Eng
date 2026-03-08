@@ -131,7 +131,7 @@ void Eng::ViewerBase::Quit() { terminated = true; }
 
 #if defined(REN_VK_BACKEND)
 
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 void Eng::ViewerBase::InitOptickGPUProfiler() {
     Ren::ApiContext &api = ren_ctx_->api();

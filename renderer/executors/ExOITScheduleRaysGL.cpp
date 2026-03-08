@@ -2,7 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
-#include <Ren/GL.h>
+#include <Ren/Gl/GL.h>
 #include <Ren/RastState.h>
 
 #include "../Renderer_DrawList.h"
@@ -11,10 +11,9 @@
 #include "../shaders/oit_schedule_rays_interface.h"
 
 namespace ExSharedInternal {
-uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage &materials,
-                          const Ren::ImageMain &white_tex, Ren::Span<const uint32_t> batch_indices,
-                          Ren::Span<const Eng::basic_draw_batch_t> batches, uint32_t i, uint64_t mask,
-                          uint32_t &cur_mat_id, int *draws_count);
+uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::ImageMain &white_tex,
+                          Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
+                          uint32_t i, uint64_t mask, uint32_t &cur_mat_id, int *draws_count);
 } // namespace ExSharedInternal
 
 void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::ImageRWHandle depth_tex) {
@@ -91,7 +90,6 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
 
     const Ren::Span<const basic_draw_batch_t> batches = {(*p_list_)->basic_batches};
     const Ren::Span<const uint32_t> batch_indices = {(*p_list_)->basic_batch_indices};
-    const auto &materials = *(*p_list_)->materials;
 
     int draws_count = 0;
     uint32_t i = (*p_list_)->alpha_blend_start_index;
@@ -121,8 +119,8 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, BDB::BitAlphaBlend,
-                                 cur_mat_id, &draws_count);
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i, BDB::BitAlphaBlend, cur_mat_id,
+                                 &draws_count);
 
             rast_state = pi_simple1_main.rast_state;
             rast_state.viewport[2] = view_state_->ren_res[0];
@@ -130,7 +128,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i,
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i,
                                  BDB::BitAlphaBlend | BDB::BitBackSided, cur_mat_id, &draws_count);
         }
         { // solid two-sided
@@ -142,8 +140,8 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i,
-                                 BDB::BitAlphaBlend | BDB::BitTwoSided, cur_mat_id, &draws_count);
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i, BDB::BitAlphaBlend | BDB::BitTwoSided,
+                                 cur_mat_id, &draws_count);
         }
         { // moving solid one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-SOLID-ONE-SIDED");
@@ -154,8 +152,8 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i,
-                                 BDB::BitAlphaBlend | BDB::BitMoving, cur_mat_id, &draws_count);
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i, BDB::BitAlphaBlend | BDB::BitMoving,
+                                 cur_mat_id, &draws_count);
         }
         { // moving solid two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-SOLID-TWO-SIDED");
@@ -167,8 +165,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaBlend | BDB::BitMoving | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id, &draws_count);
         }
         { // alpha-tested one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "ALPHA-ONE-SIDED");
@@ -179,7 +176,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             rast_state.ApplyChanged(fg.rast_state());
             fg.rast_state() = rast_state;
 
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i,
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i,
                                  BDB::BitAlphaBlend | BDB::BitAlphaTest, cur_mat_id, &draws_count);
         }
         { // alpha-tested two-sided
@@ -192,8 +189,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaBlend | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id, &draws_count);
         }
         { // moving alpha-tested one-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-ALPHA-ONE-SIDED");
@@ -205,8 +201,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaBlend | BDB::BitMoving | BDB::BitAlphaTest;
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id, &draws_count);
         }
         { // moving alpha-tested two-sided
             Ren::DebugMarker _mm(api, fg.cmd_buf(), "MOVING-ALPHA-TWO-SIDED");
@@ -218,8 +213,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             fg.rast_state() = rast_state;
 
             const uint64_t DrawMask = BDB::BitAlphaBlend | BDB::BitMoving | BDB::BitAlphaTest | BDB::BitTwoSided;
-            i = _draw_range_ext2(fg, materials, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id,
-                                 &draws_count);
+            i = _draw_range_ext2(fg, dummy_white_main, batch_indices, batches, i, DrawMask, cur_mat_id, &draws_count);
         }
     }
 }

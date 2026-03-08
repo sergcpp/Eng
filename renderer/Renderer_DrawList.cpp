@@ -76,7 +76,6 @@ void Eng::DrawList::Clear() {
     visible_textures.clear();
     desired_textures.clear();
 
-    materials = nullptr;
     decals_atlas = nullptr;
     // probe_storage = nullptr;
 

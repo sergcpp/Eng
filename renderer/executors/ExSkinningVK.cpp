@@ -3,7 +3,7 @@
 #include <Ren/Buffer.h>
 #include <Ren/Context.h>
 #include <Ren/DescriptorPool.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../Renderer_Structs.h"
 #include "../framegraph/FgBuilder.h"

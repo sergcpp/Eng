@@ -80,10 +80,8 @@ inline eImageLayout ImageLayoutForState(const eResState state) { return eImageLa
 bool IsRWState(eResState state);
 Bitmask<eStage> StagesForState(eResState state);
 
-class Image;
-
 struct TransitionInfo {
-    std::variant<const Image *, BufferHandle, ImageHandle> p_res;
+    std::variant<BufferHandle, ImageHandle> p_res;
 
     eResState old_state = eResState::Undefined;
     eResState new_state = eResState::Undefined;
@@ -95,8 +93,6 @@ struct TransitionInfo {
         : p_res(_buf), new_state(_new_state), update_internal_state(true) {}
     TransitionInfo(const ImageHandle _img, const eResState _new_state)
         : p_res(_img), new_state(_new_state), update_internal_state(true) {}
-    TransitionInfo(const Image *_p_tex, const eResState _new_state)
-        : p_res(_p_tex), new_state(_new_state), update_internal_state(true) {}
 };
 
 void TransitionResourceStates(const ApiContext &api, const StoragesRef &storages, CommandBuffer cmd_buf,

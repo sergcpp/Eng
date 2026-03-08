@@ -77,23 +77,6 @@ void Eng::AccStructure::Write(const AccStructure &acc, Sys::JsObjectP &js_out) {
         js_out.Insert("mesh_file", Sys::JsStringP{acc.mesh->name(), alloc});
     }
 
-    if (!acc.material_override.empty()) {
-        Sys::JsArrayP js_material_override(alloc);
-
-        for (const auto &mat : acc.material_override) {
-            std::string mat_name;
-            if (mat[0]) {
-                mat_name = mat[0]->name();
-            } else if (mat[2]) {
-                mat_name = mat[2]->name();
-                mat_name = mat_name.substr(0, mat_name.length() - 4);
-            }
-            js_material_override.Push(Sys::JsStringP{mat_name, alloc});
-        }
-
-        js_out.Insert("material_override", std::move(js_material_override));
-    }
-
     // write visibility
     if ((acc.vis_mask & eRayType::Camera) != (DefaultVisMask & eRayType::Camera)) {
         js_out.Insert(

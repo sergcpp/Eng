@@ -1,7 +1,7 @@
 #pragma once
 
 #if defined(REN_GL_BACKEND)
-#include "SamplerGL.h"
+#include "Gl/SamplerGL.h"
 #elif defined(REN_VK_BACKEND)
-#include "SamplerVK.h"
+#include "Vk/SamplerVK.h"
 #endif

@@ -2,7 +2,7 @@
 
 #include <Ren/Buffer.h>
 #include <Ren/Context.h>
-#include <Ren/GL.h>
+#include <Ren/Gl/GL.h>
 #include <Sys/ScopeExit.h>
 
 #include "../Renderer_Structs.h"

@@ -10,7 +10,7 @@
 #include <Ren/Bindless.h>
 #include <Ren/Buffer.h>
 #if defined(REN_VK_BACKEND)
-#include <Ren/VK.h>
+#include <Ren/Vk/VK.h>
 #endif
 
 namespace Ren {
@@ -471,7 +471,7 @@ struct rt_obj_instance_t {
     uint32_t mask : 8;
     float bbox_max_ws[3];
     uint32_t geo_count;
-    const Ren::IAccStructure *blas_ref;
+    Ren::AccStructROHandle blas;
 };
 static_assert(sizeof(rt_obj_instance_t) == 64 + 24);
 

@@ -23,16 +23,12 @@ void ParseDDSHeader(const DDSHeader &hdr, ImgParams *params);
 } // namespace Ren
 
 #if defined(REN_GL_BACKEND)
-#include "ImageGL.h"
+#include "Gl/ImageGL.h"
 #elif defined(REN_VK_BACKEND)
-#include "ImageVK.h"
+#include "Vk/ImageVK.h"
 #endif
 
 namespace Ren {
-using ImgRef = StrongRef<Image, NamedStorage<Image>>;
-using WeakImgRef = WeakRef<Image, NamedStorage<Image>>;
-using ImageStorage = NamedStorage<Image>;
-
 bool Image_Init(const ApiContext &api, ImageMain &img_main, ImageCold &img_cold, String name, const ImgParams &p,
                 Span<const uint8_t> data, MemAllocators *mem_allocs, ILog *log);
 bool Image_Init(const ApiContext &api, ImageMain &img_main, ImageCold &img_cold, String name, const ImgParams &p,

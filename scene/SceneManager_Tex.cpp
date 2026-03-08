@@ -16,27 +16,36 @@ __itt_string_handle *itt_sort_tex_str = __itt_string_handle_create("SortTextures
 } // namespace SceneManagerConstants
 
 namespace SceneManagerInternal {
-void CaptureMaterialTextureChange(Ren::Context &ctx, Eng::SceneData &scene_data, const Ren::ImgRef &ref) {
-    uint32_t tex_user = ref->first_user;
+void CaptureMaterialTextureChange(Ren::Context &ctx, Eng::SceneData &scene_data, const Ren::ImageHandle old_handle,
+                                  const Ren::ImageHandle new_handle) {
+    const Ren::StoragesRef &storages = ctx.storages();
+    const auto &[img_main, img_cold] = storages.images.Get(new_handle);
+
+    uint32_t tex_user = storages.images.Get(old_handle).second.first_user;
+    img_cold.first_user = tex_user;
     while (tex_user != 0xffffffff) {
-        Ren::Material &mat = scene_data.materials[tex_user];
+        const auto &[mat_main, mat_cold] = storages.materials.GetUnsafe(tex_user);
         scene_data.material_changes.push_back(tex_user);
-        const size_t ndx =
-            std::distance(mat.textures.begin(), std::find(mat.textures.begin(), mat.textures.end(), ref));
+        for (int i = 0; i < int(mat_main.textures.size()); ++i) {
+            if (mat_main.textures[i] == old_handle) {
+                mat_main.textures[i] = new_handle;
 
-        const auto it =
-            lower_bound(std::begin(scene_data.samplers), std::end(scene_data.samplers), ref->params.sampling,
-                        [&ctx](const Ren::SamplerHandle lhs_handle, const Ren::SamplingParams s) {
-                            return ctx.samplers().Get(lhs_handle).first.params < s;
-                        });
-        if (it == std::end(scene_data.samplers) || ctx.samplers().Get(*it).first.params != ref->params.sampling) {
-            mat.samplers[ndx] = ctx.CreateSampler(ref->params.sampling);
-            scene_data.samplers.insert(it, mat.samplers[ndx]);
-        } else {
-            mat.samplers[ndx] = *it;
+                const auto it = lower_bound(std::begin(scene_data.samplers), std::end(scene_data.samplers),
+                                            img_cold.params.sampling,
+                                            [&ctx](const Ren::SamplerHandle lhs_handle, const Ren::SamplingParams s) {
+                                                return ctx.samplers().Get(lhs_handle).first.params < s;
+                                            });
+                if (it == std::end(scene_data.samplers) ||
+                    ctx.samplers().Get(*it).first.params != img_cold.params.sampling) {
+                    mat_main.samplers[i] = ctx.CreateSampler(img_cold.params.sampling);
+                    scene_data.samplers.insert(it, mat_main.samplers[i]);
+                } else {
+                    mat_main.samplers[i] = *it;
+                }
+
+                tex_user = mat_cold.next_texture_user[i];
+            }
         }
-
-        tex_user = mat.next_texture_user[ndx];
     }
 }
 } // namespace SceneManagerInternal
@@ -113,7 +122,7 @@ void Eng::SceneManager::TextureLoaderProc() {
                 __itt_task_end(__g_itt_domain);
             }
 
-            assert(!req->ref);
+            assert(!req->img);
             req->state = eRequestState::InProgress;
             static_cast<TextureRequest &>(*req) = std::move(requested_textures_.front());
             requested_textures_.pop_front();
@@ -125,14 +134,16 @@ void Eng::SceneManager::TextureLoaderProc() {
         req->buf->set_data_len(0);
         req->mip_offset_to_init = 0xff;
 
+        const auto &[img_main, img_cold] = ren_ctx_.images().Get(req->img);
+
         size_t read_offset = 0, read_size = 0;
 
         std::string path_buf = paths_.textures_path;
-        path_buf += req->ref->name().c_str();
+        path_buf += img_cold.name.c_str();
 
         bool read_success = true;
 
-        if (req->ref->name().EndsWith(".dds") || req->ref->name().EndsWith(".DDS")) {
+        if (img_cold.name.EndsWith(".dds") || img_cold.name.EndsWith(".DDS")) {
             if (req->orig_format == Ren::eFormat::Undefined) {
                 Ren::DDSHeader header = {};
 
@@ -179,7 +190,7 @@ void Eng::SceneManager::TextureLoaderProc() {
                 }
             }
             read_offset += req->read_offset;
-        } else if (req->ref->name().EndsWith(".ktx") || req->ref->name().EndsWith(".KTX")) {
+        } else if (img_cold.name.EndsWith(".ktx") || img_cold.name.EndsWith(".KTX")) {
             assert(false && "Not implemented!");
             read_offset += sizeof(Ren::KTXHeader);
         } else {
@@ -187,7 +198,7 @@ void Eng::SceneManager::TextureLoaderProc() {
         }
 
         if (read_success) {
-            const Ren::ImgParams &cur_p = req->ref->params;
+            const Ren::ImgParams &cur_p = img_cold.params;
 
             const int max_load_w = std::max(cur_p.w * (1 << mip_levels_per_request_), 256);
             const int max_load_h = std::max(cur_p.h * (1 << mip_levels_per_request_), 256);
@@ -214,7 +225,7 @@ void Eng::SceneManager::TextureLoaderProc() {
             }
 
             // load next mip levels
-            assert(req->ref->params.w == req->orig_w || req->ref->params.h != req->orig_h);
+            assert(img_cold.params.w == req->orig_w || img_cold.params.h != req->orig_h);
 
             if (read_size) {
                 read_success =
@@ -234,14 +245,16 @@ void Eng::SceneManager::TextureLoaderProc() {
 
 void Eng::SceneManager::EstimateTextureMemory(const int portion_size) {
     OPTICK_EVENT();
-    if (scene_data_.textures.capacity() == 0) {
+    if (scene_data_.name_to_texture.empty()) {
         return;
     }
 
     const int BucketSize = 16;
-    scene_data_.texture_mem_buckets.resize((scene_data_.textures.capacity() + BucketSize - 1) / BucketSize);
+    scene_data_.texture_mem_buckets.resize((scene_data_.name_to_texture.capacity() + BucketSize - 1) / BucketSize);
 
     uint64_t mem_after_estimation = scene_data_.estimated_texture_mem.load();
+
+    const auto &images = ren_ctx_.images();
 
     for (int i = 0; i < portion_size; i++) {
         scene_data_.tex_mem_bucket_index =
@@ -251,15 +264,15 @@ void Eng::SceneManager::EstimateTextureMemory(const int portion_size) {
         bucket = 0;
 
         const uint32_t start = scene_data_.tex_mem_bucket_index * BucketSize;
-        const uint32_t end = std::min(start + BucketSize, uint32_t(scene_data_.textures.capacity()));
+        const uint32_t end = std::min(start + BucketSize, uint32_t(scene_data_.name_to_texture.capacity()));
 
-        uint32_t index = scene_data_.textures.FindOccupiedInRange(start, end);
+        uint32_t index = scene_data_.name_to_texture.FindOccupiedInRange(start, end);
         while (index != end) {
-            const auto &tex = scene_data_.textures.at(index);
+            const Ren::ImageHandle tex = scene_data_.name_to_texture.at(index).val;
 
-            bucket += GetDataLenBytes(tex.params);
+            bucket += GetDataLenBytes(images.Get(tex).second.params);
 
-            index = scene_data_.textures.FindOccupiedInRange(index + 1, end);
+            index = scene_data_.name_to_texture.FindOccupiedInRange(index + 1, end);
         }
 
         mem_after_estimation += bucket;
@@ -279,6 +292,8 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
     OPTICK_GPU_EVENT("ProcessPendingTextures");
 
     bool finished = true;
+
+    auto &images = ren_ctx_.images();
 
     //
     // Process io pending textures
@@ -311,9 +326,10 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
                         _req->state = eRequestState::Idle;
                         tex_loader_cnd_.notify_one();
                     } else if (_res != Ren::eWaitResult::Timeout) {
-                        SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, _req->ref);
+                        SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, _req->img, _req->img);
 
-                        if (_req->ref->params.w != _req->orig_w || _req->ref->params.h != _req->orig_h) {
+                        const Ren::ImageCold &img_cold = images.Get(_req->img).second;
+                        if (img_cold.params.w != _req->orig_w || img_cold.params.h != _req->orig_h) {
                             // process texture further (for next mip levels)
                             _req->sort_key = 0xffffffff;
                             requested_textures_.push_back(std::move(*_req));
@@ -336,8 +352,6 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
         }
 
         if (req) {
-            const Ren::String &tex_name = req->ref->name();
-
             OPTICK_GPU_EVENT("Process pending texture");
 
             if (res == Sys::eFileReadResult::Successful) {
@@ -352,27 +366,35 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
                 // stage_buf->fence.ClientWaitSync();
                 ren_ctx_.BegSingleTimeCommands(stage_buf->cmd_buf);
 
-                Ren::ImgParams p = req->ref->params;
+                Ren::ImgParams p = images.Get(req->img).second.params;
                 const int new_mip_count =
                     (p.flags & Ren::eImgFlags::Stub) ? req->mip_count_to_init : (p.mip_count + req->mip_count_to_init);
                 p.flags &= ~Ren::Bitmask(Ren::eImgFlags::Stub);
-                req->ref->params = p;
+                images.Get(req->img).second.params = p;
 
-                req->ref->Realloc(w, h, new_mip_count, 1 /* samples */, req->orig_format, stage_buf->cmd_buf,
-                                  scene_data_.persistent_data->mem_allocs.get(), ren_ctx_.log());
+                Ren::ImgParams new_params = images.Get(req->img).second.params;
+                new_params.format = req->orig_format;
+                new_params.w = w;
+                new_params.h = h;
+                new_params.mip_count = new_mip_count;
+
+                const Ren::ImageHandle new_img = ren_ctx_.CreateImage(
+                    req->img, new_params, scene_data_.persistent_data->mem_allocs.get(), stage_buf->cmd_buf);
+                const auto &[img_main, img_cold] = images.Get(new_img);
 
                 int data_off = int(req->buf->data_off());
                 for (int j = int(req->mip_offset_to_init); j < int(req->mip_offset_to_init) + req->mip_count_to_init;
                      j++) {
                     if (data_off >= int(bytes_read)) {
-                        ren_ctx_.log()->Error("File %s has not enough data!", tex_name.c_str());
+                        ren_ctx_.log()->Error("File %s has not enough data!", img_cold.name.c_str());
                         break;
                     }
-                    const int data_len = Ren::GetDataLenBytes(w, h, req->orig_format);
+                    const int data_len = GetDataLenBytes(w, h, req->orig_format);
                     const int mip_index = j - req->mip_offset_to_init;
 
-                    req->ref->SetSubImage(mip_index, 0, 0, 0, w, h, 1, req->orig_format, stage_buf->stage_buf(),
-                                          stage_buf->cmd_buf, data_off, data_len);
+                    Image_SetSubImage(ren_ctx_.api(), img_main, img_cold, 0, mip_index, Ren::Vec3i{0},
+                                      Ren::Vec3i{w, h, 1}, req->orig_format, stage_buf->stage_buf(), stage_buf->cmd_buf,
+                                      data_off, data_len);
 
                     data_off += data_len;
                     w = std::max(w / 2, 1);
@@ -381,13 +403,18 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
 
                 stage_buf->fence = ren_ctx_.EndSingleTimeCommands(stage_buf->cmd_buf);
 
-                SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, req->ref);
+                SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, req->img, new_img);
+                ren_ctx_.ReleaseImage(req->img);
+                req->img = new_img;
+
+                scene_data_.name_to_texture.Set(img_cold.name, new_img);
 
                 const uint64_t t2_us = Sys::GetTimeUs();
 
-                ren_ctx_.log()->Info("Texture %s loaded (%.3f ms)", tex_name.c_str(), double(t2_us - t1_us) * 0.001);
+                ren_ctx_.log()->Info("Texture %s loaded (%.3f ms)", img_cold.name.c_str(),
+                                     double(t2_us - t1_us) * 0.001);
             } else if (res == Sys::eFileReadResult::Failed) {
-                ren_ctx_.log()->Error("Error loading %s", tex_name.c_str());
+                ren_ctx_.log()->Error("Error loading %s", images.Get(req->img).second.name.c_str());
             }
 
             if (res != Sys::eFileReadResult::Pending) {
@@ -412,18 +439,22 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
         for (int i = 0; i < portion_size && !gc_textures_.empty(); i++) {
             auto &req = gc_textures_.front();
 
-            ren_ctx_.log()->Warning("Texture %s is being garbage collected", req.ref->name().c_str());
+            const auto &[img_main, img_cold] = images.Get(req.img);
+            ren_ctx_.log()->Warning("Texture %s is being garbage collected", img_cold.name.c_str());
 
-            Ren::ImgParams p = req.ref->params;
+            Ren::ImgParams new_params = img_cold.params;
 
             // drop to lowest lod
-            const int w = std::max(p.w >> p.mip_count, 1);
-            const int h = std::max(p.h >> p.mip_count, 1);
+            new_params.w = std::max(new_params.w >> new_params.mip_count, 1);
+            new_params.h = std::max(new_params.h >> new_params.mip_count, 1);
+            new_params.mip_count = 1;
 
-            req.ref->Realloc(w, h, 1 /* mip_count */, 1 /* samples */, p.format, ren_ctx_.current_cmd_buf(),
-                             scene_data_.persistent_data->mem_allocs.get(), ren_ctx_.log());
+            const Ren::ImageHandle new_img = ren_ctx_.CreateImage(
+                req.img, new_params, scene_data_.persistent_data->mem_allocs.get(), ren_ctx_.current_cmd_buf());
 
-            SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, req.ref);
+            SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, req.img, new_img);
+            ren_ctx_.ReleaseImage(req.img);
+            req.img = new_img;
 
             { // send texture for processing
                 std::lock_guard<std::mutex> _lock(tex_requests_lock_);
@@ -442,35 +473,34 @@ bool Eng::SceneManager::ProcessPendingTextures(const int portion_size) {
 void Eng::SceneManager::RebuildMaterialTextureGraph() {
     OPTICK_EVENT();
 
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
+
     // reset texture user
-    for (auto &texture : scene_data_.textures) {
-        texture.first_user = 0xffffffff;
+    for (const auto &texture : scene_data_.name_to_texture) {
+        Ren::ImageCold &img_cold = storages.images.Get(texture.val).second;
+        img_cold.first_user = 0xffffffff;
     }
     // assign material index as the first user
-    for (auto it = scene_data_.materials.begin(); it != scene_data_.materials.end(); ++it) {
-        it->next_texture_user = {};
-        it->next_texture_user.resize(it->textures.size(), 0xffffffff);
-        for (auto &texture : it->textures) {
-            if (texture->first_user == 0xffffffff) {
-                texture->first_user = it.index();
-            } else {
-                uint32_t last_user;
-                uint32_t next_user = texture->first_user;
-                do {
-                    const auto &mat = scene_data_.materials.at(next_user);
-                    const size_t ndx = std::distance(mat.textures.begin(),
-                                                     std::find(mat.textures.begin(), mat.textures.end(), texture));
-                    last_user = next_user;
-                    next_user = mat.next_texture_user[ndx];
-                } while (next_user != 0xffffffff);
+    for (auto it = scene_data_.name_to_material.begin(); it != scene_data_.name_to_material.end(); ++it) {
+        const auto &[mat_main, mat_cold] = storages.materials.Get(it->val);
 
-                if (last_user != it.index()) { // set next user
-                    auto &mat = scene_data_.materials.at(last_user);
-                    const size_t ndx = std::distance(mat.textures.begin(),
-                                                     std::find(mat.textures.begin(), mat.textures.end(), texture));
-                    assert(mat.next_texture_user[ndx] == 0xffffffff);
-                    mat.next_texture_user[ndx] = it.index();
+        mat_cold.next_texture_user = {};
+        mat_cold.next_texture_user.resize(mat_main.textures.size(), 0xffffffff);
+
+        for (int i = 0; i < int(mat_main.textures.size()); ++i) {
+            const Ren::ImageHandle tex = mat_main.textures[i];
+
+            const auto &[img_main, img_cold] = storages.images.Get(tex);
+            if (img_cold.first_user == 0xffffffff) {
+                img_cold.first_user = it->val.index;
+            } else if (img_cold.first_user != it->val.index) {
+                mat_cold.next_texture_user[i] = img_cold.first_user;
+                for (int j = i + 1; j < int(mat_main.textures.size()); ++j) {
+                    if (mat_main.textures[j] == tex) {
+                        mat_cold.next_texture_user[j] = img_cold.first_user;
+                    }
                 }
+                img_cold.first_user = it->val.index;
             }
         }
     }
@@ -494,9 +524,8 @@ void Eng::SceneManager::UpdateTexturePriorities(const Ren::Span<const TexEntry> 
                 const TexEntry *end = visible_textures.end();
 
                 const TexEntry *entry = std::lower_bound(
-                    beg, end, it->ref.index(), [](const TexEntry &t1, const uint32_t t2) { return t1.index < t2; });
-
-                if (entry != end && entry->index == it->ref.index()) {
+                    beg, end, it->img.index, [](const TexEntry &t1, const uint32_t t2) { return t1.index < t2; });
+                if (entry != end && entry->index == it->img.index) {
                     found_entry = entry;
                 }
             }
@@ -506,9 +535,8 @@ void Eng::SceneManager::UpdateTexturePriorities(const Ren::Span<const TexEntry> 
                 const TexEntry *end = desired_textures.end();
 
                 const TexEntry *entry = std::lower_bound(
-                    beg, end, it->ref.index(), [](const TexEntry &t1, const uint32_t t2) { return t1.index < t2; });
-
-                if (entry != end && entry->index == it->ref.index()) {
+                    beg, end, it->img.index, [](const TexEntry &t1, const uint32_t t2) { return t1.index < t2; });
+                if (entry != end && entry->index == it->img.index) {
                     found_entry = entry;
                 }
             }
@@ -553,9 +581,8 @@ void Eng::SceneManager::TexturesGCIteration(const Ren::Span<const TexEntry> visi
             const TexEntry *end = visible_textures.end();
 
             const TexEntry *entry = std::lower_bound(
-                beg, end, it->ref.index(), [](const TexEntry &t1, const uint32_t t2) { return t1.index < t2; });
-
-            if (entry != end && entry->index == it->ref.index()) {
+                beg, end, it->img.index, [](const TexEntry &t1, const uint32_t t2) { return t1.index < t2; });
+            if (entry != end && entry->index == it->img.index) {
                 found_entry = entry;
             }
         }
@@ -565,22 +592,22 @@ void Eng::SceneManager::TexturesGCIteration(const Ren::Span<const TexEntry> visi
             const TexEntry *end = desired_textures.end();
 
             const TexEntry *entry = std::lower_bound(
-                beg, end, it->ref.index(), [](const TexEntry &t1, const uint32_t t2) { return t1.index < t2; });
-
-            if (entry != end && entry->index == it->ref.index()) {
+                beg, end, it->img.index, [](const TexEntry &t1, const uint32_t t2) { return t1.index < t2; });
+            if (entry != end && entry->index == it->img.index) {
                 found_entry = entry;
             }
         }
 
         it->frame_dist += std::max(int(finished_textures_.size()) / FinishedPortion, 1);
 
+        const Ren::ImageCold &img_cold = ren_ctx_.images().Get(it->img).second;
         if (found_entry) {
             it->sort_key = found_entry->sort_key;
             it->frame_dist = 0;
 
             ++it;
-        } else if (it->frame_dist > 1000 && enable_gc && it->ref->params.w > 16 && it->ref->params.w == it->orig_w &&
-                   it->ref->params.h > 16 && it->ref->params.h == it->orig_h) {
+        } else if (it->frame_dist > 1000 && enable_gc && img_cold.params.w > 16 && img_cold.params.w == it->orig_w &&
+                   img_cold.params.h > 16 && img_cold.params.h == it->orig_h) {
             // Reduce texture's mips
             it->frame_dist = 0;
             it->sort_key = 0xffffffff;
@@ -598,8 +625,8 @@ void Eng::SceneManager::TexturesGCIteration(const Ren::Span<const TexEntry> visi
     }
 }
 
-void Eng::SceneManager::InvalidateTexture(const Ren::ImgRef &ref) {
-    SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, ref);
+void Eng::SceneManager::InvalidateTexture(const Ren::ImageHandle handle) {
+    SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, handle, handle);
 }
 
 void Eng::SceneManager::StartTextureLoaderThread(const int requests_count, const int mip_levels_per_request) {
@@ -626,7 +653,7 @@ void Eng::SceneManager::StopTextureLoaderThread() {
         size_t bytes_read = 0;
         io_pending_tex_[i].ev.GetResult(true /* block */, &bytes_read);
         io_pending_tex_[i].state = eRequestState::Idle;
-        io_pending_tex_[i].ref = {};
+        io_pending_tex_[i].img = {};
     }
     io_pending_tex_.clear();
     requested_textures_.clear();
@@ -640,33 +667,42 @@ void Eng::SceneManager::StopTextureLoaderThread() {
 void Eng::SceneManager::ForceTextureReload() {
     StopTextureLoaderThread();
 
+    const auto &images = ren_ctx_.images();
+
     std::vector<Ren::TransitionInfo> img_transitions;
-    img_transitions.reserve(scene_data_.textures.size());
+    img_transitions.reserve(scene_data_.name_to_texture.size());
 
     // Reset textures to 1x1 mip and send to processing
-    for (auto it = std::begin(scene_data_.textures); it != std::end(scene_data_.textures); ++it) {
-        Ren::ImgParams p = it->params;
-        p.flags |= Ren::eImgFlags::Stub;
+    for (auto it = std::begin(scene_data_.name_to_texture); it != std::end(scene_data_.name_to_texture); ++it) {
+        Ren::ImgParams new_params;
+        { // Get params
+            const auto &[img_main, img_cold] = images.Get(it->val);
 
-        // drop to lowest lod
-        const int w = std::max(p.w >> (p.mip_count - 1), 1);
-        const int h = std::max(p.h >> (p.mip_count - 1), 1);
+            new_params = img_cold.params;
+            new_params.flags |= Ren::eImgFlags::Stub;
 
-        if (w == p.w && h == p.h) {
-            // Already has the lowest mip loaded
-            continue;
+            // drop to lowest lod
+            new_params.w = std::max(new_params.w >> (new_params.mip_count - 1), 1);
+            new_params.h = std::max(new_params.h >> (new_params.mip_count - 1), 1);
+            new_params.mip_count = 1;
+
+            if (new_params.w == img_cold.params.w && new_params.h == img_cold.params.h) {
+                // Already has the lowest mip loaded
+                continue;
+            }
         }
 
-        it->Realloc(w, h, 1 /* mip_count */, 1 /* samples */, p.format, ren_ctx_.current_cmd_buf(),
-                    scene_data_.persistent_data->mem_allocs.get(), ren_ctx_.log());
+        const Ren::ImageHandle new_img = ren_ctx_.CreateImage(
+            it->val, new_params, scene_data_.persistent_data->mem_allocs.get(), ren_ctx_.current_cmd_buf());
 
-        img_transitions.emplace_back(&(*it), Ren::eResState::ShaderResource);
+        img_transitions.emplace_back(new_img, Ren::eResState::ShaderResource);
+
+        SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, it->val, new_img);
+        ren_ctx_.ReleaseImage(it->val);
+        it->val = new_img;
 
         TextureRequest req;
-        req.ref = Ren::ImgRef{&scene_data_.textures, it.index()};
-
-        SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, req.ref);
-
+        req.img = new_img;
         requested_textures_.push_back(std::move(req));
     }
 
@@ -690,32 +726,39 @@ void Eng::SceneManager::ReleaseImages(const bool immediate) {
         "Scene Mem Allocs", &ren_ctx_.api(), 16 * 1024 * 1024 /* initial_block_size */, 1.5f /* growth_factor */,
         128 * 1024 * 1024 /* max_pool_size */);
 
+    const auto &images = ren_ctx_.images();
+
     std::vector<Ren::TransitionInfo> img_transitions;
-    img_transitions.reserve(scene_data_.textures.size());
+    img_transitions.reserve(scene_data_.name_to_texture.size());
 
     // Reset textures to 1x1
-    for (auto it = std::begin(scene_data_.textures); it != std::end(scene_data_.textures); ++it) {
-        Ren::ImgParams p = it->params;
-        p.format = Ren::eFormat::RGBA8;
-        p.flags = Ren::eImgFlags::Stub;
-        p.w = p.h = 1;
-        p.mip_count = 1;
+    for (auto it = std::begin(scene_data_.name_to_texture); it != std::end(scene_data_.name_to_texture); ++it) {
+        Ren::ImgParams p;
+        Ren::String name_str;
+        { // Get params
+            const auto &[img_main, img_cold] = images.Get(it->val);
 
-        it->FreeImmediate();
+            p = img_cold.params;
+            p.format = Ren::eFormat::RGBA8;
+            p.flags = Ren::eImgFlags::Stub;
+            p.w = p.h = 1;
+            p.mip_count = 1;
+
+            name_str = img_cold.name;
+        }
 
         // Initialize with fallback color
-        Ren::eImgLoadStatus status;
         // TODO: Use actual fallback color
-        uint8_t fallback_color[4] = {};
-        it->Init(fallback_color, p, new_alloc.get(), &status, ren_ctx_.log());
+        const uint8_t fallback_color[4] = {};
+        const Ren::ImageHandle new_img = ren_ctx_.CreateImage(name_str, fallback_color, p, new_alloc.get());
+        img_transitions.emplace_back(new_img, Ren::eResState::ShaderResource);
 
-        img_transitions.emplace_back(&(*it), Ren::eResState::ShaderResource);
+        SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, it->val, new_img);
+        ren_ctx_.ReleaseImage(it->val, true /* immediately */);
+        it->val = new_img;
 
         TextureRequest req;
-        req.ref = Ren::ImgRef{&scene_data_.textures, it.index()};
-
-        SceneManagerInternal::CaptureMaterialTextureChange(ren_ctx_, scene_data_, req.ref);
-
+        req.img = new_img;
         requested_textures_.push_back(std::move(req));
     }
 

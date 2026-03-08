@@ -8,7 +8,6 @@ void test_buffer();
 void test_freelist_alloc();
 void test_hashmap();
 void test_hashset();
-void test_material();
 void test_math();
 void test_mesh();
 void test_storage();
@@ -28,7 +27,6 @@ int main() {
     test_freelist_alloc();
     test_hashset();
     test_hashmap();
-    test_material();
     test_math();
     test_mesh();
     test_storage();

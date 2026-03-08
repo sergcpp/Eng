@@ -145,7 +145,6 @@ struct DrawList {
     std::vector<TexEntry> visible_textures;
     std::vector<TexEntry> desired_textures;
 
-    const Ren::MaterialStorage *materials = nullptr;
     const Ren::ImageAtlas *decals_atlas = nullptr;
 
     DynArray<ShadReg> cached_shadow_regions;

@@ -1,7 +1,7 @@
 #include "ExBuildAccStructures.h"
 
 #include <Ren/Context.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../Renderer_DrawList.h"
 #include "../framegraph/FgBuilder.h"
@@ -12,8 +12,7 @@ void Eng::ExBuildAccStructures::Execute_HWRT(const FgContext &fg) {
     const Ren::BufferHandle rt_tlas_build_scratch_buf = fg.AccessRWBuffer(rt_tlas_build_scratch_buf_);
 
     const Ren::ApiContext &api = fg.ren_ctx().api();
-
-    auto *vk_tlas = reinterpret_cast<Ren::AccStructureVK *>(rt_tlas_);
+    const Ren::StoragesRef &storages = fg.ren_ctx().storages();
 
     const Ren::BufferMain &rt_obj_instances_buf_main = fg.storages().buffers.Get(rt_obj_instances_buf).first;
     VkAccelerationStructureGeometryInstancesDataKHR instances_data = {
@@ -33,7 +32,7 @@ void Eng::ExBuildAccStructures::Execute_HWRT(const FgContext &fg) {
     tlas_build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
     tlas_build_info.srcAccelerationStructure = VK_NULL_HANDLE;
-    tlas_build_info.dstAccelerationStructure = vk_tlas->vk_handle();
+    tlas_build_info.dstAccelerationStructure = storages.acc_structs.Get(rt_tlas_).first.hw.handle;
 
     const Ren::BufferMain &rt_tlas_build_scratch_buf_main = fg.storages().buffers.Get(rt_tlas_build_scratch_buf).first;
     tlas_build_info.scratchData.deviceAddress = Buffer_GetDeviceAddress(api, rt_tlas_build_scratch_buf_main);

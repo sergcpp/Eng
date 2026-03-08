@@ -4,7 +4,7 @@
 #include <Sys/AsyncFileReader.h>
 
 #if defined(REN_VK_BACKEND)
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 #endif
 
 namespace Eng {

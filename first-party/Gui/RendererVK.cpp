@@ -7,7 +7,7 @@
 
 #include "../Ren/Context.h"
 #include "../Ren/DescriptorPool.h"
-#include "../Ren/VKCtx.h"
+#include "../Ren/Vk/VKCtx.h"
 
 namespace Gui {
 extern const int TexAtlasSlot;

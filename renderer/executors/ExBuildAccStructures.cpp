@@ -70,8 +70,9 @@ void Eng::ExBuildAccStructures::Execute_SWRT(const FgContext &fg) {
 
         for (int i = 0; i < int(rt_obj_instances.count); ++i) {
             const auto &inst = rt_obj_instances.data[i];
-            const auto *acc = reinterpret_cast<const Ren::AccStructureSW *>(inst.blas_ref);
-            const mesh_t &mesh = rt_meshes_[acc->mesh_index];
+            const auto &[acc_main, acc_cold] = storages.acc_structs.Get(inst.blas);
+
+            const mesh_t &mesh = rt_meshes_[acc_main.sw.mesh_index];
             auto &new_mi = mesh_instances.emplace_back();
 
             new_mi.visibility = inst.mask;

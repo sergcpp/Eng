@@ -5,14 +5,14 @@
 
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
-#include <Ren/GL.h>
+#include <Ren/Gl/GL.h>
 #include <Ren/RastState.h>
 
 #include "../Renderer_DrawList.h"
 #include "../framegraph/FgBuilder.h"
 
 namespace ExSharedInternal {
-void _bind_textures_and_samplers(Ren::Context &ctx, const Ren::Material &mat);
+void _bind_textures_and_samplers(const Ren::StoragesRef &storages, const Ren::MaterialMain &mat);
 } // namespace ExSharedInternal
 
 void Eng::ExTransparent::DrawTransparent_Simple(
@@ -160,8 +160,8 @@ void Eng::ExTransparent::DrawTransparent_Simple(
         }
 
         if (!fg.ren_ctx().capabilities.bindless_texture && cur_mat_id != batch.mat_id) {
-            const Ren::Material &mat = (*p_list_)->materials->at(batch.mat_id);
-            _bind_textures_and_samplers(fg.ren_ctx(), mat);
+            const Ren::MaterialMain &mat = storages.materials.GetUnsafe(batch.mat_id).first;
+            _bind_textures_and_samplers(storages, mat);
         }
 
         cur_pipe_id = batch.pipe_id;
@@ -205,8 +205,8 @@ void Eng::ExTransparent::DrawTransparent_Simple(
         }
 
         if (!fg.ren_ctx().capabilities.bindless_texture && cur_mat_id != batch.mat_id) {
-            const Ren::Material &mat = (*p_list_)->materials->at(batch.mat_id);
-            _bind_textures_and_samplers(fg.ren_ctx(), mat);
+            const Ren::MaterialMain &mat = storages.materials.GetUnsafe(batch.mat_id).first;
+            _bind_textures_and_samplers(storages, mat);
         }
 
         cur_pipe_id = batch.pipe_id;
@@ -394,7 +394,7 @@ void Eng::ExTransparent::DrawTransparent_OIT_MomentBased(const FgContext &fg) {
     Ren::GLUnbindSamplers(BIND_MAT_TEX0, 8);
 }
 
-void Eng::ExTransparent::DrawTransparent_OIT_WeightedBlended(const FgContext &fg){}
+void Eng::ExTransparent::DrawTransparent_OIT_WeightedBlended(const FgContext &fg) {}
 
 //
 // This is needed for moment-based OIT

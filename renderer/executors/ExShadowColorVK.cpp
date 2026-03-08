@@ -5,7 +5,7 @@
 #include <Ren/DescriptorPool.h>
 #include <Ren/DrawCall.h>
 #include <Ren/RastState.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../Renderer_DrawList.h"
 #include "../framegraph/FgBuilder.h"

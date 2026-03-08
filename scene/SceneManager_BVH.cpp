@@ -585,7 +585,7 @@ void Eng::SceneManager::UpdateObjects() {
     __itt_task_end(__g_itt_domain);
 }
 
-std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc) {
+Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc) {
     using namespace SceneManagerInternal;
 
     const Ren::ApiContext &api = ren_ctx_.api();
@@ -698,7 +698,13 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_SWRT_BLAS(const Acc
 
     scene_data_.persistent_data->swrt.rt_meshes[mesh_index] = new_mesh;
 
-    auto new_blas = std::make_unique<Ren::AccStructureSW>(mesh_index, nodes_alloc, prim_alloc);
+    const Ren::AccStructHandle new_blas = ren_ctx_.CreateAccStruct();
+    const auto &[blas_main, blas_cold] = ren_ctx_.acc_structs().Get(new_blas);
+    if (!AccStruct_Init(blas_main, blas_cold, acc.mesh->name(), mesh_index, nodes_alloc, prim_alloc)) {
+        ren_ctx_.ReleaseAccStruct(new_blas);
+        return {};
+    }
+    scene_data_.persistent_data->rt_blases.push_back(new_blas);
 
     const auto total_nodes_size = uint32_t(temp_bvh2_nodes.size() * sizeof(gpu_bvh2_node_t));
     const auto total_prim_indices_size = uint32_t(prim_indices.size() * sizeof(uint32_t));
@@ -1290,6 +1296,8 @@ void Eng::SceneManager::RebuildLightTree() {
     scene_data_.persistent_data->stoch_lights_buf = {};
     scene_data_.persistent_data->stoch_lights_nodes_buf = {};
 
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
+
     const auto *transforms = (Transform *)scene_data_.comp_store[CompTransform]->SequentialData();
     const auto *acc_structs = (AccStructure *)scene_data_.comp_store[CompAccStructure]->SequentialData();
 
@@ -1324,16 +1332,19 @@ void Eng::SceneManager::RebuildLightTree() {
         for (int j = 0; j < int(groups.size()); ++j) {
             const Ren::tri_group_t &grp = groups[j];
 
-            const Ren::MaterialRef &front_mat =
+            const Ren::MaterialHandle front_mat =
                 (j >= acc.material_override.size()) ? grp.front_mat : acc.material_override[j][0];
-            const Ren::MaterialRef &back_mat =
-                (j >= acc.material_override.size()) ? grp.back_mat : acc.material_override[j][1];
+            const auto &[front_main, front_cold] = storages.materials.Get(front_mat);
 
-            if (!front_mat || (front_mat->flags & Ren::eMatFlags::Emissive) == 0) {
+            const Ren::MaterialHandle back_mat =
+                (j >= acc.material_override.size()) ? grp.back_mat : acc.material_override[j][1];
+            const auto &[back_main, back_cold] = storages.materials.Get(back_mat);
+
+            if (!front_mat || (front_main.flags & Ren::eMatFlags::Emissive) == 0) {
                 continue;
             }
 
-            const bool doublesided = (back_mat->flags & Ren::eMatFlags::Emissive) != 0;
+            const bool doublesided = (back_main.flags & Ren::eMatFlags::Emissive) != 0;
 
             const uint32_t index_beg = grp.byte_offset / sizeof(uint32_t);
             const uint32_t index_end = index_beg + grp.num_indices;
@@ -1368,7 +1379,7 @@ void Eng::SceneManager::RebuildLightTree() {
                     const float omega_n = doublesided ? Ren::Pi<float>() : 0.0f;
                     const float omega_e = Ren::Pi<float>() / 2.0f;
 
-                    const float lum = front_mat->params[3][1] + front_mat->params[3][2] + front_mat->params[3][3];
+                    const float lum = front_cold.params[3][1] + front_cold.params[3][2] + front_cold.params[3][3];
                     const float flux = lum * area;
                     additional_data.push_back({axis, flux, omega_n, omega_e});
 
@@ -1386,7 +1397,7 @@ void Eng::SceneManager::RebuildLightTree() {
                     if (doublesided) {
                         tri_light.type_and_flags |= LIGHT_DOUBLESIDED_BIT;
                     }
-                    memcpy(tri_light.col, ValuePtr(front_mat->params[3]) + 1, 3 * sizeof(float));
+                    memcpy(tri_light.col, ValuePtr(front_cold.params[3]) + 1, 3 * sizeof(float));
                     memcpy(tri_light.pos, ValuePtr(p0_ws), 3 * sizeof(float));
                     memcpy(tri_light.u, ValuePtr(p1_ws), 3 * sizeof(float));
                     memcpy(tri_light.v, ValuePtr(p2_ws), 3 * sizeof(float));
@@ -1398,7 +1409,7 @@ void Eng::SceneManager::RebuildLightTree() {
                     tri_light.spot = uv2[0];
                     tri_light.blend = uv2[1];
                     // use as emissive texture index
-                    tri_light.shadowreg_index = front_mat.index() * MAX_TEX_PER_MATERIAL + MAT_TEX_EMISSION;
+                    tri_light.shadowreg_index = front_mat.index * MAX_TEX_PER_MATERIAL + MAT_TEX_EMISSION;
                     // store triangle index
                     tri_light.tri_index = (indices_start + k) / 3;
                 }

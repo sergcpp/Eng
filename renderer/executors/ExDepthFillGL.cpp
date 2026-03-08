@@ -4,22 +4,22 @@
 
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
-#include <Ren/GL.h>
+#include <Ren/Gl/GL.h>
 #include <Ren/RastState.h>
 
 #include "../Renderer_DrawList.h"
 #include "../framegraph/FgBuilder.h"
 
 namespace ExSharedInternal {
-void _bind_texture0_and_sampler0(Ren::Context &ctx, const Ren::Material &mat) {
+void _bind_texture0_and_sampler0(const Ren::StoragesRef &storages, const Ren::MaterialMain &mat) {
     assert(mat.textures.size() >= 1 && mat.samplers.size() >= 1);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0, mat.textures[0]->id());
-    glBindSampler(Eng::BIND_MAT_TEX0, ctx.storages().samplers.Get(mat.samplers[0]).first.id);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0, storages.images.Get(mat.textures[0]).first.img);
+    glBindSampler(Eng::BIND_MAT_TEX0, storages.samplers.Get(mat.samplers[0]).first.id);
 }
-void _bind_texture4_and_sampler4(Ren::Context &ctx, const Ren::Material &mat) {
+void _bind_texture4_and_sampler4(const Ren::StoragesRef &storages, const Ren::MaterialMain &mat) {
     assert(mat.textures.size() >= 1 && mat.samplers.size() >= 1);
-    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX4, mat.textures[4]->id());
-    glBindSampler(Eng::BIND_MAT_TEX4, ctx.storages().samplers.Get(mat.samplers[4]).first.id);
+    ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX4, storages.images.Get(mat.textures[4]).first.img);
+    glBindSampler(Eng::BIND_MAT_TEX4, storages.samplers.Get(mat.samplers[4]).first.id);
 }
 uint32_t _draw_range(Ren::Span<const uint32_t> zfill_batch_indices,
                      Ren::Span<const Eng::basic_draw_batch_t> zfill_batches, uint32_t i, uint64_t mask,
@@ -44,10 +44,11 @@ uint32_t _draw_range(Ren::Span<const uint32_t> zfill_batch_indices,
     return i;
 }
 
-uint32_t _draw_range_ext(const Eng::FgContext &fg, const Ren::MaterialStorage *materials,
-                         Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
-                         uint32_t i, uint64_t mask, uint32_t &cur_mat_id, int *draws_count) {
+uint32_t _draw_range_ext(const Eng::FgContext &fg, Ren::Span<const uint32_t> batch_indices,
+                         Ren::Span<const Eng::basic_draw_batch_t> batches, uint32_t i, uint64_t mask,
+                         uint32_t &cur_mat_id, int *draws_count) {
     auto &ren_ctx = fg.ren_ctx();
+    const Ren::StoragesRef &storages = ren_ctx.storages();
 
     for (; i < batch_indices.size(); i++) {
         const auto &batch = batches[batch_indices[i]];
@@ -60,8 +61,8 @@ uint32_t _draw_range_ext(const Eng::FgContext &fg, const Ren::MaterialStorage *m
         }
 
         if (!ren_ctx.capabilities.bindless_texture && batch.material_index != cur_mat_id) {
-            const Ren::Material &mat = materials->at(batch.material_index);
-            _bind_texture4_and_sampler4(ren_ctx, mat);
+            const Ren::MaterialMain &mat = storages.materials.GetUnsafe(batch.material_index).first;
+            _bind_texture4_and_sampler4(storages, mat);
             cur_mat_id = batch.material_index;
         }
 
@@ -75,10 +76,11 @@ uint32_t _draw_range_ext(const Eng::FgContext &fg, const Ren::MaterialStorage *m
     return i;
 }
 
-uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage *materials,
-                          Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
-                          uint32_t i, const uint64_t mask, uint32_t &cur_mat_id, int *draws_count) {
+uint32_t _draw_range_ext2(const Eng::FgContext &fg, Ren::Span<const uint32_t> batch_indices,
+                          Ren::Span<const Eng::basic_draw_batch_t> batches, uint32_t i, const uint64_t mask,
+                          uint32_t &cur_mat_id, int *draws_count) {
     auto &ren_ctx = fg.ren_ctx();
+    const Ren::StoragesRef &storages = ren_ctx.storages();
 
     for (; i < batch_indices.size(); i++) {
         const auto &batch = batches[batch_indices[i]];
@@ -91,9 +93,9 @@ uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::MaterialStorage *
         }
 
         if (!ren_ctx.capabilities.bindless_texture && batch.material_index != cur_mat_id) {
-            const Ren::Material &mat = materials->at(batch.material_index);
-            _bind_texture0_and_sampler0(ren_ctx, mat);
-            _bind_texture4_and_sampler4(ren_ctx, mat);
+            const Ren::MaterialMain &mat = storages.materials.GetUnsafe(batch.material_index).first;
+            _bind_texture0_and_sampler0(storages, mat);
+            _bind_texture4_and_sampler4(storages, mat);
             cur_mat_id = batch.material_index;
         }
 
@@ -276,8 +278,8 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 rast_state.ApplyChanged(fg.rast_state());
                 fg.rast_state() = rast_state;
 
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, BDB::BitAlphaTest,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, BDB::BitAlphaTest, cur_mat_id,
+                                    &draws_count);
             }
 
             { // two-sided
@@ -290,8 +292,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitAlphaTest | BDB::BitTwoSided;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
         }
 
@@ -315,8 +316,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitAlphaTest | BDB::BitMoving;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
 
             { // two-sided
@@ -329,8 +329,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitAlphaTest | BDB::BitMoving | BDB::BitTwoSided;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
         }
     }
@@ -434,8 +433,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitsVege | BDB::BitAlphaTest;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
 
             { // two-sided
@@ -448,8 +446,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitsVege | BDB::BitAlphaTest | BDB::BitTwoSided;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
         }
 
@@ -472,8 +469,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitsVege | BDB::BitAlphaTest | BDB::BitMoving;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
 
             { // two-sided
@@ -486,8 +482,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitsVege | BDB::BitAlphaTest | BDB::BitMoving | BDB::BitTwoSided;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
         }
     }
@@ -589,8 +584,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitAlphaTest;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
 
             { // two-sided
@@ -603,8 +597,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitAlphaTest | BDB::BitTwoSided;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
         }
 
@@ -627,8 +620,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitAlphaTest | BDB::BitMoving;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
 
             { // two-sided
@@ -641,8 +633,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 fg.rast_state() = rast_state;
 
                 const uint64_t DrawMask = BDB::BitsSkinned | BDB::BitAlphaTest | BDB::BitMoving | BDB::BitTwoSided;
-                i = _draw_range_ext(fg, (*p_list_)->materials, zfill_batch_indices, zfill_batches, i, DrawMask,
-                                    cur_mat_id, &draws_count);
+                i = _draw_range_ext(fg, zfill_batch_indices, zfill_batches, i, DrawMask, cur_mat_id, &draws_count);
             }
         }
     }

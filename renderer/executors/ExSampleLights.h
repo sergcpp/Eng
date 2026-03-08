@@ -26,7 +26,7 @@ class ExSampleLights final : public FgExecutor {
         FgImgROHandle norm_tex;
         FgImgROHandle spec_tex;
 
-        Ren::IAccStructure *tlas = nullptr;
+        Ren::AccStructROHandle tlas;
 
         struct {
             uint32_t root_node = 0xffffffff;

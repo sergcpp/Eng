@@ -2,7 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/DrawCall.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
@@ -27,15 +27,13 @@ void Eng::ExRTShadows::Execute_HWRT(const FgContext &fg) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    auto *acc_struct = static_cast<const Ren::AccStructureVK *>(args_->tlas);
-
     VkCommandBuffer cmd_buf = fg.cmd_buf();
 
     const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
                                      {Ren::eBindTarget::TexSampled, RTShadows::NOISE_TEX_SLOT, noise_tex},
                                      {Ren::eBindTarget::TexSampled, RTShadows::DEPTH_TEX_SLOT, {depth_tex, 1}},
                                      {Ren::eBindTarget::TexSampled, RTShadows::NORM_TEX_SLOT, normal_tex},
-                                     {Ren::eBindTarget::AccStruct, RTShadows::TLAS_SLOT, *acc_struct},
+                                     {Ren::eBindTarget::AccStruct, RTShadows::TLAS_SLOT, args_->tlas},
                                      {Ren::eBindTarget::SBufRO, RTShadows::GEO_DATA_BUF_SLOT, geo_data_buf},
                                      {Ren::eBindTarget::SBufRO, RTShadows::MATERIAL_BUF_SLOT, materials_buf},
                                      {Ren::eBindTarget::SBufRO, RTShadows::VTX_BUF1_SLOT, vtx_buf1},

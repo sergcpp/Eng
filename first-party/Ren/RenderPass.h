@@ -52,11 +52,6 @@ struct RenderTargetInfo {
     eStoreOp stencil_store = eStoreOp::DontCare;
 
     RenderTargetInfo() = default;
-    RenderTargetInfo(const Image *tex, eLoadOp _load, eStoreOp _store, eLoadOp _stencil_load = eLoadOp::DontCare,
-                     eStoreOp _stencil_store = eStoreOp::DontCare)
-        : format(tex->params.format), samples(tex->params.samples), flags(tex->params.flags),
-          layout(ImageLayoutForState(tex->resource_state)), load(_load), store(_store), stencil_load(_stencil_load),
-          stencil_store(_stencil_store) {}
     RenderTargetInfo(eFormat _format, uint8_t _samples, eImageLayout _layout, eLoadOp _load, eStoreOp _store,
                      eLoadOp _stencil_load = eLoadOp::DontCare, eStoreOp _stencil_store = eStoreOp::DontCare)
         : format(_format), samples(_samples), layout(_layout), load(_load), store(_store), stencil_load(_stencil_load),

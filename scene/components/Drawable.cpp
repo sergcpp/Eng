@@ -67,16 +67,6 @@ void Eng::Drawable::Write(const Drawable &dr, Sys::JsObjectP &js_out) {
         js_out.Insert("mesh_file", Sys::JsStringP{dr.mesh->name(), alloc});
     }
 
-    if (!dr.material_override.empty()) {
-        Sys::JsArrayP js_material_override(alloc);
-
-        for (const auto &mat : dr.material_override) {
-            js_material_override.Push(Sys::JsStringP{mat[0]->name(), alloc});
-        }
-
-        js_out.Insert("material_override", std::move(js_material_override));
-    }
-
     // write visibility
     if ((dr.vis_mask & eVisibility::Camera) != (DefaultVisMask & eVisibility::Camera)) {
         js_out.Insert(

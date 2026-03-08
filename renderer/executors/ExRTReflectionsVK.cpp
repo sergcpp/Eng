@@ -2,7 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/DrawCall.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_reflections_interface.h"
@@ -52,8 +52,6 @@ void Eng::ExRTReflections::Execute_HWRT(const FgContext &fg) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    auto *acc_struct = static_cast<const Ren::AccStructureVK *>(args_->tlas);
-
     VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
@@ -63,7 +61,7 @@ void Eng::ExRTReflections::Execute_HWRT(const FgContext &fg) {
         {Ren::eBindTarget::SBufRO, RTReflections::RAY_COUNTER_SLOT, ray_counter},
         {Ren::eBindTarget::SBufRO, RTReflections::RAY_LIST_SLOT, ray_list},
         {Ren::eBindTarget::TexSampled, RTReflections::ENV_TEX_SLOT, env_tex},
-        {Ren::eBindTarget::AccStruct, RTReflections::TLAS_SLOT, *acc_struct},
+        {Ren::eBindTarget::AccStruct, RTReflections::TLAS_SLOT, args_->tlas},
         {Ren::eBindTarget::SBufRO, RTReflections::GEO_DATA_BUF_SLOT, geo_data},
         {Ren::eBindTarget::SBufRO, RTReflections::MATERIAL_BUF_SLOT, materials},
         {Ren::eBindTarget::SBufRO, RTReflections::VTX_BUF1_SLOT, vtx_buf1},

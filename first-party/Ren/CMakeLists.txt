@@ -97,7 +97,6 @@ set(SOURCE_FILES AccStructure.h
                  MQuat.h
                  MVec.h
                  Pipeline.h
-                 ProbeStorage.h
                  Program.h
                  RastState.h
                  RastState.cpp
@@ -126,72 +125,68 @@ set(SOURCE_FILES AccStructure.h
                  VertexInput.h
                  Wrap.inl)
 
-if(${REN_BACKEND} STREQUAL "GL")
-    set(SOURCE_FILES ${SOURCE_FILES}
-                     BufferGL.cpp
-                     ContextGL.cpp
-                     DebugMarkerGL.cpp
-                     DescriptorPoolGL.cpp
-                     DrawCallGL.cpp
-                     FramebufferGL.cpp
-                     GL.h
-                     GLCtx.h
-                     GLCtx.cpp
-                     GLExt.cpp
-                     GLExtDSAEmu.h
-                     GLExtDSAEmu.cpp
-                     FenceGL.cpp
-                     ImageGL.h
-                     ImageGL.cpp
-                     ImageAtlasGL.cpp
-                     MemoryAllocatorGL.cpp
-                     ResourceGL.cpp
-                     SamplerGL.h
-                     SamplerGL.cpp
-                     ShaderGL.h
-                     ShaderGL.cpp
-                     PipelineGL.cpp
-                     ProbeStorageGL.cpp
-                     ProgramGL.h
-                     ProgramGL.cpp
-                     RastStateGL.cpp
-                     RenderPassGL.cpp
-                     VertexInputGL.cpp)
+set(GL_SOURCE_FILES Gl/BufferGL.cpp
+                    Gl/ContextGL.cpp
+                    Gl/DebugMarkerGL.cpp
+                    Gl/DescriptorPoolGL.cpp
+                    Gl/DrawCallGL.cpp
+                    Gl/FenceGL.cpp
+                    Gl/FramebufferGL.cpp
+                    Gl/GL.h
+                    Gl/GLCtx.h
+                    Gl/GLCtx.cpp
+                    Gl/GLExt.cpp
+                    Gl/GLExtDSAEmu.h
+                    Gl/GLExtDSAEmu.cpp
+                    Gl/ImageGL.h
+                    Gl/ImageGL.cpp
+                    Gl/ImageAtlasGL.cpp
+                    Gl/MemoryAllocatorGL.cpp
+                    Gl/PipelineGL.cpp
+                    Gl/ProgramGL.h
+                    Gl/ProgramGL.cpp
+                    Gl/RastStateGL.cpp
+                    Gl/RenderPassGL.cpp
+                    Gl/ResourceGL.cpp
+                    Gl/SamplerGL.h
+                    Gl/SamplerGL.cpp
+                    Gl/ShaderGL.h
+                    Gl/ShaderGL.cpp
+                    Gl/VertexInputGL.cpp)
 
+set(VK_SOURCE_FILES Vk/AccStructureVK.cpp
+                    Vk/BufferVK.cpp
+                    Vk/ContextVK.cpp
+                    Vk/DebugMarkerVK.cpp
+                    Vk/DescriptorPoolVK.cpp
+                    Vk/DrawCallVK.cpp
+                    Vk/FenceVK.cpp
+                    Vk/FramebufferVK.cpp
+                    Vk/ImageVK.h
+                    Vk/ImageVK.cpp
+                    Vk/ImageAtlasVK.cpp
+                    Vk/MemoryAllocatorVK.cpp
+                    Vk/PipelineVK.cpp
+                    Vk/ProgramVK.h
+                    Vk/ProgramVK.cpp
+                    Vk/RenderPassVK.cpp
+                    Vk/ResourceVK.cpp
+                    Vk/SamplerVK.h
+                    Vk/SamplerVK.cpp
+                    Vk/ShaderVK.h
+                    Vk/ShaderVK.cpp
+                    Vk/VK.h
+                    Vk/VKCtx.h
+                    Vk/VKCtx.cpp
+                    Vk/VertexInputVK.cpp)
+
+if(${REN_BACKEND} STREQUAL "GL")
     if(WIN32)
         set(LIBS ${LIBS} opengl32 SPIRV-Reflect)
     else(WIN32)
         set(LIBS ${LIBS} SPIRV-Reflect)
     ENDIF(WIN32)
 elseif(${REN_BACKEND} STREQUAL "VK")
-    set(SOURCE_FILES ${SOURCE_FILES}
-                     AccStructureVK.cpp
-                     BufferVK.cpp
-                     ContextVK.cpp
-                     DebugMarkerVK.cpp
-                     DescriptorPoolVK.cpp
-                     DrawCallVK.cpp
-                     FenceVK.cpp
-                     FramebufferVK.cpp
-                     ImageVK.h
-                     ImageVK.cpp
-                     ImageAtlasVK.cpp
-                     MemoryAllocatorVK.cpp
-                     PipelineVK.cpp
-                     ProbeStorageVK.cpp
-                     ProgramVK.h
-                     ProgramVK.cpp
-                     RenderPassVK.cpp
-                     ResourceVK.cpp
-                     SamplerVK.h
-                     SamplerVK.cpp
-                     ShaderVK.h
-                     ShaderVK.cpp
-                     VertexInputVK.cpp
-                     VK.h
-                     VKCtx.h
-                     VKCtx.cpp)
-
     set(LIBS ${LIBS} SPIRV-Reflect)
 endif()
 
@@ -200,6 +195,14 @@ add_subdirectory(third-party/SPIRV-Reflect)
 
 list(APPEND REN_SOURCE_FILES ${SOURCE_FILES})
 source_group("src" FILES ${SOURCE_FILES})
+
+if(${REN_BACKEND} STREQUAL "GL")
+    list(APPEND REN_SOURCE_FILES ${GL_SOURCE_FILES})
+    source_group("src\\Gl" FILES ${GL_SOURCE_FILES})
+elseif(${REN_BACKEND} STREQUAL "VK")
+    list(APPEND REN_SOURCE_FILES ${VK_SOURCE_FILES})
+    source_group("src\\Vk" FILES ${VK_SOURCE_FILES})
+endif()
 
 if(NOT CMAKE_GENERATOR_PLATFORM MATCHES "ARM64")
     if(MSVC)

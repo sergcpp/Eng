@@ -155,48 +155,50 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
         using namespace std::placeholders;
 
         default_comp_storage_[CompTransform] = std::make_unique<DefaultCompStorage<Transform>>();
-        RegisterComponent(CompTransform, default_comp_storage_[CompTransform].get(), nullptr);
+        RegisterComponent(CompTransform, default_comp_storage_[CompTransform].get(), {}, {});
 
         default_comp_storage_[CompDrawable] = std::make_unique<DefaultCompStorage<Drawable>>();
         RegisterComponent(CompDrawable, default_comp_storage_[CompDrawable].get(),
-                          std::bind(&SceneManager::PostloadDrawable, this, _1, _2, _3));
+                          std::bind(&SceneManager::PostloadDrawable, this, _1, _2, _3),
+                          std::bind(&SceneManager::PostsaveDrawable, this, _1, _2));
 
         default_comp_storage_[CompOccluder] = std::make_unique<DefaultCompStorage<Occluder>>();
         RegisterComponent(CompOccluder, default_comp_storage_[CompOccluder].get(),
-                          std::bind(&SceneManager::PostloadOccluder, this, _1, _2, _3));
+                          std::bind(&SceneManager::PostloadOccluder, this, _1, _2, _3), {});
 
         default_comp_storage_[CompLightmap] = std::make_unique<DefaultCompStorage<Lightmap>>();
         RegisterComponent(CompLightmap, default_comp_storage_[CompLightmap].get(),
-                          std::bind(&SceneManager::PostloadLightmap, this, _1, _2, _3));
+                          std::bind(&SceneManager::PostloadLightmap, this, _1, _2, _3), {});
 
         default_comp_storage_[CompLightSource] = std::make_unique<DefaultCompStorage<LightSource>>();
         RegisterComponent(CompLightSource, default_comp_storage_[CompLightSource].get(),
-                          std::bind(&SceneManager::PostloadLightSource, this, _1, _2, _3));
+                          std::bind(&SceneManager::PostloadLightSource, this, _1, _2, _3), {});
 
         default_comp_storage_[CompDecal] = std::make_unique<DefaultCompStorage<Decal>>();
         RegisterComponent(CompDecal, default_comp_storage_[CompDecal].get(),
-                          std::bind(&SceneManager::PostloadDecal, this, _1, _2, _3));
+                          std::bind(&SceneManager::PostloadDecal, this, _1, _2, _3), {});
 
         default_comp_storage_[CompProbe] = std::make_unique<DefaultCompStorage<LightProbe>>();
         RegisterComponent(CompProbe, default_comp_storage_[CompProbe].get(),
-                          std::bind(&SceneManager::PostloadLightProbe, this, _1, _2, _3));
+                          std::bind(&SceneManager::PostloadLightProbe, this, _1, _2, _3), {});
 
         default_comp_storage_[CompAnimState] = std::make_unique<DefaultCompStorage<AnimState>>();
-        RegisterComponent(CompAnimState, default_comp_storage_[CompAnimState].get(), nullptr);
+        RegisterComponent(CompAnimState, default_comp_storage_[CompAnimState].get(), {}, {});
 
         default_comp_storage_[CompVegState] = std::make_unique<DefaultCompStorage<VegState>>();
-        RegisterComponent(CompVegState, default_comp_storage_[CompVegState].get(), nullptr);
+        RegisterComponent(CompVegState, default_comp_storage_[CompVegState].get(), {}, {});
 
         default_comp_storage_[CompSoundSource] = std::make_unique<DefaultCompStorage<SoundSource>>();
         RegisterComponent(CompSoundSource, default_comp_storage_[CompSoundSource].get(),
-                          std::bind(&SceneManager::PostloadSoundSource, this, _1, _2, _3));
+                          std::bind(&SceneManager::PostloadSoundSource, this, _1, _2, _3), {});
 
         default_comp_storage_[CompPhysics] = std::make_unique<DefaultCompStorage<Physics>>();
-        RegisterComponent(CompPhysics, default_comp_storage_[CompPhysics].get(), nullptr);
+        RegisterComponent(CompPhysics, default_comp_storage_[CompPhysics].get(), {}, {});
 
         default_comp_storage_[CompAccStructure] = std::make_unique<DefaultCompStorage<AccStructure>>();
         RegisterComponent(CompAccStructure, default_comp_storage_[CompAccStructure].get(),
-                          std::bind(&SceneManager::PostloadAccStructure, this, _1, _2, _3));
+                          std::bind(&SceneManager::PostloadAccStructure, this, _1, _2, _3),
+                          std::bind(&SceneManager::PostsaveAccStructure, this, _1, _2));
     }
 
     { // Load cam rig
@@ -206,10 +208,11 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
         Ren::eMeshLoadStatus status;
         cam_rig_ = ren_ctx.LoadMesh(
             "__cam_rig", &in_mesh,
-            [this](std::string_view name) -> std::array<Ren::MaterialRef, 3> {
-                Ren::eMatLoadStatus status;
-                Ren::MaterialRef mat = ren_ctx_.LoadMaterial(name, {}, &status, nullptr, nullptr, nullptr);
-                return std::array<Ren::MaterialRef, 3>{mat, mat, {}};
+            [this](std::string_view name) -> std::array<Ren::MaterialHandle, 3> {
+                Ren::String name_str{name};
+                const Ren::MaterialHandle mat = ren_ctx_.CreateMaterial(name_str, {}, nullptr, nullptr, nullptr);
+                scene_data_.name_to_material.Insert(name_str, mat);
+                return std::array<Ren::MaterialHandle, 3>{mat, mat, {}};
             },
             &status);
         assert(status == Ren::eMeshLoadStatus::CreatedFromData);
@@ -224,11 +227,8 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
         p.format = Ren::eFormat::RGBA8;
         p.w = p.h = 1;
 
-        static const uint8_t data[4] = {255, 255, 255, 255};
-
-        Ren::eImgLoadStatus status;
-        white_tex_ = ren_ctx_.LoadImage("White Tex", data, p, ren_ctx_.default_mem_allocs(), &status);
-        assert(status == Ren::eImgLoadStatus::CreatedFromData);
+        const uint8_t data[4] = {255, 255, 255, 255};
+        white_tex_ = ren_ctx_.CreateImage(Ren::String{"White Tex"}, data, p, ren_ctx_.default_mem_allocs());
     }
 
     { // load error texture
@@ -241,9 +241,7 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
 
         const std::vector<uint8_t> data = LoadDDS(name_buf, &p);
         if (!data.empty()) {
-            Ren::eImgLoadStatus status;
-            error_tex_ = ren_ctx_.LoadImage(name_buf, data, p, ren_ctx_.default_mem_allocs(), &status);
-            assert(status == Ren::eImgLoadStatus::CreatedFromData);
+            error_tex_ = ren_ctx_.CreateImage(Ren::String{name_buf}, data, p, ren_ctx_.default_mem_allocs());
         } else {
             log->Error("SceneManager: Failed to load error.dds!");
         }
@@ -279,12 +277,17 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
 Eng::SceneManager::~SceneManager() {
     StopTextureLoaderThread();
     ClearScene();
+
+    ren_ctx_.ReleaseImage(white_tex_);
+    ren_ctx_.ReleaseImage(error_tex_);
 }
 
 void Eng::SceneManager::RegisterComponent(const uint32_t index, CompStorage *storage,
-                                          const std::function<PostLoadFunc> &post_init) {
+                                          const std::function<PostLoadFunc> &post_load,
+                                          const std::function<PostSaveFunc> &post_save) {
     scene_data_.comp_store[index] = storage;
-    component_post_load_[index] = post_init;
+    component_post_load_[index] = post_load;
+    component_post_save_[index] = post_save;
 }
 
 void Eng::SceneManager::LoadScene(const Sys::JsObjectP &js_scene, const Ren::Bitmask<eSceneLoadFlags> load_flags) {
@@ -303,7 +306,7 @@ void Eng::SceneManager::LoadScene(const Sys::JsObjectP &js_scene, const Ren::Bit
             std::make_unique<Ren::MemAllocators>("Scene Mem Allocs", &api, 16 * 1024 * 1024 /* initial_block_size */,
                                                  1.5f /* growth_factor */, 128 * 1024 * 1024 /* max_pool_size */);
         // Temp. solution (prevent reallocation)
-        scene_data_.textures.reserve(16384);
+        ren_ctx_.images().reserve(16384);
         if (load_flags & eSceneLoadFlags::Textures) {
             StartTextureLoaderThread();
         }
@@ -667,6 +670,10 @@ void Eng::SceneManager::SaveScene(Sys::JsObjectP &js_scene) {
                     Sys::JsObjectP js_comp(alloc);
                     comp_storage[i]->WriteToJs(p_comp, js_comp);
 
+                    if (component_post_save_[i]) {
+                        component_post_save_[i](p_comp, js_comp);
+                    }
+
                     js_obj.Insert(comp_storage[i]->name(), std::move(js_comp));
                 }
             }
@@ -702,16 +709,22 @@ void Eng::SceneManager::ClearScene() {
     scene_data_.env = {};
     scene_data_.persistent_data->Release();
 
-    assert(scene_data_.meshes.empty());
-    assert(scene_data_.materials.empty());
-    assert(scene_data_.textures.empty());
-    // assert(scene_data_.buffers.size() == 3);
+    for (const auto &img : scene_data_.name_to_texture) {
+        ren_ctx_.ReleaseImage(img.val);
+    }
+    scene_data_.name_to_texture.clear();
+
+    for (const auto &mat : scene_data_.name_to_material) {
+        ren_ctx_.ReleaseMaterial(mat.val);
+    }
+    scene_data_.name_to_material.clear();
 
     for (const Ren::SamplerHandle s : scene_data_.samplers) {
         ren_ctx_.ReleaseSampler(s);
     }
     scene_data_.samplers.clear();
 
+    assert(scene_data_.meshes.empty());
     scene_data_.objects.clear();
     scene_data_.name_to_object.clear();
     scene_data_.lm_splitter.Clear();
@@ -897,16 +910,14 @@ void Eng::SceneManager::Release_TLAS(const bool immediate) {
                 ren_ctx_.ReleaseBuffer(buf, true /* immediately */);
             }
         }
-        for (auto &tlas : scene_data_.persistent_data->rt_tlas) {
-            if (tlas) {
-                tlas->FreeImmediate();
-            }
+        for (auto &tlas : scene_data_.persistent_data->rt_tlases) {
+            ren_ctx_.ReleaseAccStruct(tlas, true /* immediately */);
         }
     }
     std::fill(std::begin(scene_data_.persistent_data->rt_tlas_buf), std::end(scene_data_.persistent_data->rt_tlas_buf),
               Ren::BufferHandle{});
-    std::fill(std::begin(scene_data_.persistent_data->rt_tlas), std::end(scene_data_.persistent_data->rt_tlas),
-              nullptr);
+    std::fill(std::begin(scene_data_.persistent_data->rt_tlases), std::end(scene_data_.persistent_data->rt_tlases),
+              Ren::AccStructHandle{});
 }
 
 bool Eng::SceneManager::AllocMeshBuffers() {
@@ -1011,9 +1022,8 @@ void Eng::SceneManager::ReleaseMeshBuffers(const bool immediately) {
             Ren::Mesh *mesh = acc.mesh.get();
             assert(mesh->type() == Ren::eMeshType::Simple);
             mesh->ReleaseBufferData();
-            if (immediately && mesh->blas) {
-                mesh->blas->FreeImmediate();
-            }
+
+            ren_ctx_.ReleaseAccStruct(mesh->blas, immediately);
             mesh->blas = {};
         }
     }
@@ -1072,8 +1082,8 @@ void Eng::SceneManager::ReleaseInstanceBuffer(const bool immediately) {
 void Eng::SceneManager::AllocMaterialsBuffer() {
     scene_data_.persistent_data->materials_buf = ren_ctx_.CreateBuffer(
         Ren::String{"Materials Buffer"}, Ren::eBufType::Storage, uint32_t(8 * sizeof(material_data_t)));
-    for (auto it = scene_data_.materials.begin(); it != scene_data_.materials.end(); ++it) {
-        scene_data_.material_changes.push_back(it.index());
+    for (auto it = scene_data_.name_to_material.begin(); it != scene_data_.name_to_material.end(); ++it) {
+        scene_data_.material_changes.push_back(it->val.index);
     }
 }
 
@@ -1587,29 +1597,69 @@ void Eng::SceneManager::PostloadAccStructure(const Sys::JsObjectP &js_comp_obj, 
     }
 }
 
-std::array<Ren::MaterialRef, 3> Eng::SceneManager::OnLoadMaterial(std::string_view name) {
-    using namespace SceneManagerConstants;
+void Eng::SceneManager::PostsaveDrawable(const void *comp, Sys::JsObjectP &js_out) {
+    const auto &dr = *(const Drawable *)comp;
+    const auto &alloc = js_out.elements.get_allocator();
 
-    std::array<Ren::MaterialRef, 3> ret;
+    if (!dr.material_override.empty()) {
+        Sys::JsArrayP js_material_override(alloc);
+
+        for (const auto &mat : dr.material_override) {
+            std::string mat_name;
+            if (mat[0]) {
+                mat_name = ren_ctx_.materials().Get(mat[0]).second.name;
+            } else if (mat[2]) {
+                mat_name = ren_ctx_.materials().Get(mat[2]).second.name;
+                mat_name = mat_name.substr(0, mat_name.length() - 4);
+            }
+            js_material_override.Push(Sys::JsStringP{mat_name, alloc});
+        }
+
+        js_out.Insert("material_override", std::move(js_material_override));
+    }
+}
+
+void Eng::SceneManager::PostsaveAccStructure(const void *comp, Sys::JsObjectP &js_out) {
+    const auto &as = *(const AccStructure *)comp;
+    const auto &alloc = js_out.elements.get_allocator();
+
+    if (!as.material_override.empty()) {
+        Sys::JsArrayP js_material_override(alloc);
+
+        for (const auto &mat : as.material_override) {
+            std::string mat_name;
+            if (mat[0]) {
+                mat_name = ren_ctx_.materials().Get(mat[0]).second.name;
+            } else if (mat[2]) {
+                mat_name = ren_ctx_.materials().Get(mat[2]).second.name;
+                mat_name = mat_name.substr(0, mat_name.length() - 4);
+            }
+            js_material_override.Push(Sys::JsStringP{mat_name, alloc});
+        }
+
+        js_out.Insert("material_override", std::move(js_material_override));
+    }
+}
+
+std::array<Ren::MaterialHandle, 3> Eng::SceneManager::OnLoadMaterial(std::string_view name) {
+    using namespace SceneManagerConstants;
 
     const std::string backside_name = std::string(name) + "@back";
     const std::string volumetric_name = std::string(name) + "@vol";
 
-    /*Ren::eMatLoadStatus status;
-    ret[0] = LoadMaterial(name, {}, &status, nullptr, nullptr, nullptr);
-    if (ret[0]->ready()) {
-        ret[1] = scene_data_.materials.FindByName(backside_name);
-        if (!ret[1]) {
-            ret[1] = ret[0];
-        }
-    }*/
-
-    ret[0] = scene_data_.materials.FindByName(name);
-    ret[1] = scene_data_.materials.FindByName(backside_name);
+    std::array<Ren::MaterialHandle, 3> ret;
+    if (const Ren::MaterialHandle *p_handle = scene_data_.name_to_material.Find(name)) {
+        ret[0] = *p_handle;
+    }
+    if (const Ren::MaterialHandle *p_handle = scene_data_.name_to_material.Find(backside_name)) {
+        ret[1] = *p_handle;
+    }
+    if (const Ren::MaterialHandle *p_handle = scene_data_.name_to_material.Find(volumetric_name)) {
+        ret[2] = *p_handle;
+    }
     if (!ret[1]) {
         ret[1] = ret[0];
     }
-    ret[2] = scene_data_.materials.FindByName(volumetric_name);
 
     if (!ret[0] && !ret[1] && !ret[2]) {
         Sys::AssetFile in_file(std::string(paths_.materials_path).append(name));
@@ -1626,43 +1676,85 @@ std::array<Ren::MaterialRef, 3> Eng::SceneManager::OnLoadMaterial(std::string_vi
 
         using namespace std::placeholders;
 
-        Ren::eMatLoadStatus status;
-        if (mat_src[0] == '-' && mat_src[1] == '-' && mat_src[2] == '-') {
-            status = Ren::eMatLoadStatus::CreatedFromData_NeedsMore;
-        } else {
-            ret[0] = ret[1] = LoadMaterial(name, mat_src, &status,
-                                           std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
-                                           std::bind(&SceneManager::OnLoadTexture, this, _1, _2, _3),
-                                           std::bind(&SceneManager::OnLoadSampler, this, _1));
+        bool needs_more = false;
+        /*if (mat_src.length() > 3 && mat_src[0] == '-' && mat_src[1] == '-' && mat_src[2] == '-') {
+            needs_more = true;
+        } else*/ {
+            const Ren::String name_str{name};
+            ret[0] = ret[1] = ren_ctx_.CreateMaterial(
+                name_str, mat_src, std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
+                std::bind(&SceneManager::OnLoadTexture, this, _1, _2, _3),
+                std::bind(&SceneManager::OnLoadSampler, this, _1));
+            scene_data_.name_to_material.Insert(name_str, ret[0]);
+
+            const size_t n1 = mat_src.find("---");
+            if (n1 != std::string::npos) {
+                mat_src = mat_src.substr(n1 + 4);
+                needs_more = true;
+            }
         }
-        if (status == Ren::eMatLoadStatus::CreatedFromData_NeedsMore) {
+        if (needs_more) {
+            needs_more = false;
+
+            const Ren::String backside_name_str{backside_name};
+            ret[1] = ren_ctx_.CreateMaterial(backside_name_str, mat_src,
+                                             std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
+                                             std::bind(&SceneManager::OnLoadTexture, this, _1, _2, _3),
+                                             std::bind(&SceneManager::OnLoadSampler, this, _1));
+            scene_data_.name_to_material.Insert(backside_name_str, ret[1]);
+
+            const size_t n1 = mat_src.find("---");
+            if (n1 != std::string::npos) {
+                mat_src = mat_src.substr(n1 + 4);
+                needs_more = true;
+            }
+        }
+        if (needs_more) {
+            needs_more = false;
+
+            const Ren::String volumetric_name_str{volumetric_name};
+            ret[2] = ren_ctx_.CreateMaterial(volumetric_name_str, mat_src,
+                                             std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
+                                             std::bind(&SceneManager::OnLoadTexture, this, _1, _2, _3),
+                                             std::bind(&SceneManager::OnLoadSampler, this, _1));
+            scene_data_.name_to_material.Insert(volumetric_name_str, ret[2]);
+        }
+
+        /*if (needs_more) {
             const size_t n1 = mat_src.find("---");
             mat_src = mat_src.substr(n1 + 4);
+
+            needs_more = false;
             if (mat_src[0] == '-' && mat_src[1] == '-' && mat_src[2] == '-') {
-                status = Ren::eMatLoadStatus::CreatedFromData_NeedsMore;
+                needs_more = true;
             } else {
-                ret[1] = LoadMaterial(backside_name, mat_src, &status,
-                                      std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
-                                      std::bind(&SceneManager::OnLoadTexture, this, _1, _2, _3),
-                                      std::bind(&SceneManager::OnLoadSampler, this, _1));
+                const Ren::String backside_name_str{backside_name};
+                ret[1] = ren_ctx_.CreateMaterial(
+                    backside_name_str, mat_src, std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
+                    std::bind(&SceneManager::OnLoadTexture, this, _1, _2, _3),
+                    std::bind(&SceneManager::OnLoadSampler, this, _1));
+                scene_data_.name_to_material.Insert(backside_name_str, ret[1]);
             }
-            if (status == Ren::eMatLoadStatus::CreatedFromData_NeedsMore) {
+            if (needs_more) {
                 const size_t n2 = mat_src.find("---");
                 mat_src = mat_src.substr(n2 + 4);
-                ret[2] = LoadMaterial(volumetric_name, mat_src, &status,
-                                      std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
-                                      std::bind(&SceneManager::OnLoadTexture, this, _1, _2, _3),
-                                      std::bind(&SceneManager::OnLoadSampler, this, _1));
+
+                const Ren::String volumetric_name_str{volumetric_name};
+                ret[2] =
+                    ren_ctx_.CreateMaterial(volumetric_name_str, mat_src,
+                                            std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
+                                            std::bind(&SceneManager::OnLoadTexture, this, _1, _2, _3),
+                                            std::bind(&SceneManager::OnLoadSampler, this, _1));
+                scene_data_.name_to_material.Insert(volumetric_name_str, ret[2]);
             }
-        }
-        assert(status == Ren::eMatLoadStatus::CreatedFromData);
+        }*/
     }
-    scene_data_.material_changes.push_back(ret[0].index());
+    scene_data_.material_changes.push_back(ret[0].index);
     if (ret[1] != ret[0]) {
-        scene_data_.material_changes.push_back(ret[1].index());
+        scene_data_.material_changes.push_back(ret[1].index);
     }
     if (ret[2]) {
-        scene_data_.material_changes.push_back(ret[2].index());
+        scene_data_.material_changes.push_back(ret[2].index);
     }
     return ret;
 }
@@ -1677,8 +1769,8 @@ void Eng::SceneManager::OnLoadPipelines(Ren::Bitmask<Ren::eMatFlags> flags, std:
     //  init_pipelines_(ret, flags, scene_data_.persistent_data->pipelines, out_pipelines);
 }
 
-Ren::ImgRef Eng::SceneManager::OnLoadTexture(const std::string_view name, const uint8_t color[4],
-                                             const Ren::Bitmask<Ren::eImgFlags> flags) {
+Ren::ImageHandle Eng::SceneManager::OnLoadTexture(const std::string_view name, const uint8_t color[4],
+                                                  const Ren::Bitmask<Ren::eImgFlags> flags) {
     using namespace SceneManagerConstants;
 
     Ren::ImgParams p;
@@ -1690,14 +1782,21 @@ Ren::ImgRef Eng::SceneManager::OnLoadTexture(const std::string_view name, const 
     p.usage = Ren::Bitmask(Ren::eImgUsage::Transfer) | Ren::eImgUsage::Sampled;
     p.sampling.lod_bias.from_float(-1.0f); // TAA compensation
 
-    Ren::eImgLoadStatus status;
-    Ren::ImgRef ret = LoadImage(name, Ren::Span{color, color + 4}, p, &status);
+    if (const Ren::ImageHandle *h = scene_data_.name_to_texture.Find(name)) {
+        return *h;
+    }
 
-    if (status == Ren::eImgLoadStatus::CreatedFromData) {
+    Ren::String name_str{name};
+    const Ren::ImageHandle ret =
+        ren_ctx_.CreateImage(name_str, Ren::Span{color, color + 4}, p, scene_data_.persistent_data->mem_allocs.get());
+    if (ret) {
+        scene_data_.name_to_texture.Insert(name_str, ret);
+
         TextureRequest new_req;
-        new_req.ref = ret;
+        new_req.img = ret;
 
-        if (ret->name().StartsWith("lightmaps/")) {
+        const Ren::ImageCold &img_cold = ren_ctx_.images().Get(ret).second;
+        if (img_cold.name.StartsWith("lightmaps/")) {
             // set max initial priority for lightmaps
             new_req.sort_key = 0;
         }
@@ -1743,46 +1842,6 @@ Ren::MeshRef Eng::SceneManager::LoadMesh(std::string_view name, std::istream *da
                       *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
                       *scene_data_.persistent_data->skin_vertex_buf, *scene_data_.persistent_data->delta_buf,
                       load_status, ren_ctx_.log());
-        }
-    }
-
-    return ref;
-}
-
-Ren::MaterialRef Eng::SceneManager::LoadMaterial(std::string_view name, std::string_view mat_src,
-                                                 Ren::eMatLoadStatus *status,
-                                                 const Ren::pipelines_load_callback &on_pipes_load,
-                                                 const Ren::texture_load_callback &on_tex_load,
-                                                 const Ren::sampler_load_callback &on_sampler_load) {
-    Ren::MaterialRef ref = scene_data_.materials.FindByName(name);
-    if (!ref) {
-        ref = scene_data_.materials.Insert(name, mat_src, status, on_pipes_load, on_tex_load, on_sampler_load,
-                                           ren_ctx_.log());
-    } else {
-        if (ref->ready()) {
-            if (status) {
-                (*status) = Ren::eMatLoadStatus::Found;
-            }
-        } else if (!ref->ready() && !mat_src.empty()) {
-            ref->Init(mat_src, status, on_pipes_load, on_tex_load, on_sampler_load, ren_ctx_.log());
-        }
-    }
-    return ref;
-}
-
-Ren::ImgRef Eng::SceneManager::LoadImage(std::string_view name, Ren::Span<const uint8_t> data, const Ren::ImgParams &p,
-                                         Ren::eImgLoadStatus *load_status) {
-    Ren::ImgRef ref = scene_data_.textures.FindByName(name);
-    if (!ref) {
-        ref = scene_data_.textures.Insert(name, &ren_ctx_.api(), data, p, scene_data_.persistent_data->mem_allocs.get(),
-                                          load_status, ren_ctx_.log());
-    } else {
-        if (load_status) {
-            (*load_status) = Ren::eImgLoadStatus::Found;
-        }
-        if ((Ren::Bitmask<Ren::eImgFlags>{ref->params.flags} & Ren::eImgFlags::Stub) &&
-            !(p.flags & Ren::eImgFlags::Stub) && !data.empty()) {
-            ref->Init(data, p, scene_data_.persistent_data->mem_allocs.get(), load_status, ren_ctx_.log());
         }
     }
 

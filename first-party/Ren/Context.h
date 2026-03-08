@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AccStructure.h"
 #include "Anim.h"
 #include "Buffer.h"
 #include "Common.h"
@@ -65,8 +66,6 @@ class Context {
     ILog *log_ = nullptr;
 
     MeshStorage meshes_;
-    MaterialStorage materials_;
-    ImageStorage images_old_;
     ImageRegionStorage image_regions_;
     AnimSeqStorage anims_;
 
@@ -79,9 +78,11 @@ class Context {
     DualStorage<ImageMain, ImageCold> images_;
     DualStorage<SamplerMain, SamplerCold> samplers_;
     DualStorage<FramebufferMain, FramebufferCold> framebuffers_;
+    DualStorage<AccStructMain, AccStructCold> acc_structs_;
+    DualStorage<MaterialMain, MaterialCold> materials_;
 
-    StoragesRef storages_ = StoragesRef{vtx_inputs_, shaders_, programs_, pipelines_,   render_passes_,
-                                        buffers_,    images_,  samplers_, framebuffers_};
+    StoragesRef storages_ = {vtx_inputs_, shaders_,  programs_,     pipelines_,   render_passes_, buffers_,
+                             images_,     samplers_, framebuffers_, acc_structs_, materials_};
 
     std::unique_ptr<ResizableBuffer> default_vertex_buf1_, default_vertex_buf2_, default_skin_vertex_buf_,
         default_delta_vertex_buf_, default_indices_buf_;
@@ -118,9 +119,6 @@ class Context {
 
     ILog *log() const { return log_; }
 
-    ImageStorage &images_old() { return images_old_; }
-    MaterialStorage &materials() { return materials_; }
-
     DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() { return vtx_inputs_; }
     DualStorage<ShaderMain, ShaderCold> &shaders() { return shaders_; }
     DualStorage<ProgramMain, ProgramCold> &programs() { return programs_; }
@@ -130,6 +128,8 @@ class Context {
     DualStorage<ImageMain, ImageCold> &images() { return images_; }
     DualStorage<SamplerMain, SamplerCold> &samplers() { return samplers_; }
     DualStorage<FramebufferMain, FramebufferCold> &framebuffers() { return framebuffers_; }
+    DualStorage<AccStructMain, AccStructCold> &acc_structs() { return acc_structs_; }
+    DualStorage<MaterialMain, MaterialCold> &materials() { return materials_; }
 
     const DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() const { return vtx_inputs_; }
     const DualStorage<ShaderMain, ShaderCold> &shaders() const { return shaders_; }
@@ -140,6 +140,8 @@ class Context {
     const DualStorage<ImageMain, ImageCold> &images() const { return images_; }
     const DualStorage<SamplerMain, SamplerCold> &samplers() const { return samplers_; }
     const DualStorage<FramebufferMain, FramebufferCold> &framebuffers() const { return framebuffers_; }
+    const DualStorage<AccStructMain, AccStructCold> &acc_structs() const { return acc_structs_; }
+    const DualStorage<MaterialMain, MaterialCold> &materials() const { return materials_; }
 
     const StoragesRef &storages() const { return storages_; }
 
@@ -177,11 +179,15 @@ class Context {
                      ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
                      ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf, eMeshLoadStatus *load_status);
 
-    /*** Material ***/
-    MaterialRef LoadMaterial(std::string_view name, std::string_view mat_src, eMatLoadStatus *status,
-                             const pipelines_load_callback &on_pipes_load, const texture_load_callback &on_tex_load,
-                             const sampler_load_callback &on_sampler_load);
-    int NumMaterialsNotReady();
+    // Material
+    MaterialHandle CreateMaterial(Ren::String name, Bitmask<eMatFlags> flags, Span<const PipelineHandle> pipelines,
+                                  Span<const ImageHandle> textures, Span<const SamplerHandle> samplers,
+                                  Span<const Vec4f> params);
+    MaterialHandle CreateMaterial(Ren::String name, std::string_view mat_src,
+                                  const pipelines_load_callback &on_pipes_load,
+                                  const texture_load_callback &on_tex_load,
+                                  const sampler_load_callback &on_sampler_load);
+    void ReleaseMaterial(MaterialHandle handle);
     void ReleaseMaterials();
 
     // Program
@@ -200,7 +206,6 @@ class Context {
     ProgramHandle CreateProgram2(ShaderROHandle rgs, ShaderROHandle chs, ShaderROHandle ahs, ShaderROHandle ms,
                                  ShaderROHandle is);
 #endif
-
     void ReleasePrograms();
 
     // VertexInput
@@ -222,31 +227,22 @@ class Context {
     void ReleasePipeline(PipelineHandle handle, bool immediately = false);
 
     // Image
-    ImgRef LoadImage(std::string_view name, const ImgParams &p, MemAllocators *mem_allocs, eImgLoadStatus *load_status);
-    ImgRef LoadImage(std::string_view name, const ImgHandle &handle, const ImgParams &p, MemAllocation &&alloc,
-                     eImgLoadStatus *load_status);
-    ImgRef LoadImage(std::string_view name, Span<const uint8_t> data, const ImgParams &p, MemAllocators *mem_allocs,
-                     eImgLoadStatus *load_status);
-    ImgRef LoadImageCube(std::string_view name, Span<const uint8_t> data[6], const ImgParams &p,
-                         MemAllocators *mem_allocs, eImgLoadStatus *load_status);
-
     ImageHandle CreateImage(const String &name, Span<const uint8_t> data, const ImgParams &p,
                             MemAllocators *mem_allocs);
     ImageHandle CreateImage(const String &name, Span<const uint8_t> data[6], const ImgParams &p,
                             MemAllocators *mem_allocs);
     ImageHandle CreateImage(const String &name, const ImgParams &p, const ImageMain &img_main, MemAllocation &&alloc);
+    ImageHandle CreateImage(ImageHandle src, const ImgParams &p, MemAllocators *mem_allocs, CommandBuffer cmd_buf);
     void ReleaseImage(ImageHandle handle, bool immediately = false);
     int CreateImageView(ImageHandle handle, eFormat format, int mip_level, int mip_count, int base_layer,
                         int layer_count);
 
     void CmdClearImage(ImageHandle handle, const ClearColor &col, CommandBuffer cmd_buf);
     void CmdCopyImageToBuffer(ImageROHandle img, BufferRWHandle buf, CommandBuffer cmd_buf, uint32_t data_off);
-    void CmdCopyImageToImage(CommandBuffer cmd_buf, ImageROHandle src, uint32_t src_level, uint32_t src_x,
-                             uint32_t src_y, uint32_t src_z, ImageRWHandle dst, uint32_t dst_level, uint32_t dst_x,
-                             uint32_t dst_y, uint32_t dst_z, uint32_t dst_face, uint32_t w, uint32_t h, uint32_t d);
+    void CmdCopyImageToImage(CommandBuffer cmd_buf, ImageROHandle src, uint32_t src_level, const Vec3i &src_offset,
+                             ImageRWHandle dst, uint32_t dst_level, const Vec3i &dst_offset, uint32_t dst_face,
+                             const Vec3i &size);
 
-    void VisitImages(eImgFlags mask, const std::function<void(Image &img)> &callback);
-    int NumImagesNotReady();
     void ReleaseImages();
 
     // Framebuffer
@@ -254,6 +250,10 @@ class Context {
                                         const FramebufferAttachment &stencil,
                                         Span<const FramebufferAttachment> color_attachments);
     void ReleaseFramebuffer(FramebufferHandle handle, bool immediately = false);
+
+    AccStructHandle CreateAccStruct();
+    void ReleaseAccStruct(AccStructHandle handle, bool immediately = false);
+    void ReleaseAccStructs();
 
     /** Image regions (placed on default atlas) **/
     ImageRegionRef LoadImageRegion(std::string_view name, Span<const uint8_t> data, const ImgParams &p,

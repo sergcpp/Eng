@@ -28,7 +28,7 @@ class ExDebugRT final : public FgExecutor {
         FgImgROHandle distance_tex;
         FgImgROHandle offset_tex;
 
-        const Ren::IAccStructure *tlas = nullptr;
+        Ren::AccStructROHandle tlas;
         uint32_t cull_mask = 0xffffffff;
 
         struct {

@@ -3,7 +3,7 @@
 #include <Ren/Context.h>
 #include <Ren/DescriptorPool.h>
 #include <Ren/Utils.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 #include <Sys/ScopeExit.h>
 
 #include "../renderer/Renderer_Structs.h"
@@ -45,12 +45,14 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
     using namespace SceneManagerInternal;
 
     const Ren::ApiContext &api = ren_ctx_.api();
+    const Ren::StoragesRef &storages = ren_ctx_.storages();
+
     auto &pers_data = *scene_data_.persistent_data;
 
-    const uint32_t max_mat_count = scene_data_.materials.capacity();
+    const uint32_t max_mat_count = storages.materials.Capacity();
     const uint32_t req_mat_buf_size = std::max(1u, max_mat_count) * sizeof(material_data_t);
 
-    const auto &[mat_buf_main, mat_buf_cold] = ren_ctx_.buffers().Get(pers_data.materials_buf);
+    const auto &[mat_buf_main, mat_buf_cold] = storages.buffers.Get(pers_data.materials_buf);
     if (mat_buf_cold.size < req_mat_buf_size) {
         if (!Buffer_Resize(api, mat_buf_main, mat_buf_cold, req_mat_buf_size, ren_ctx_.log())) {
             return false;
@@ -253,44 +255,42 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
     Ren::SmallVector<Ren::TransitionInfo, 256> img_transitions;
     img_infos.reserve((update_range.second - update_range.first) * MAX_TEX_PER_MATERIAL);
 
-    if (white_tex_->resource_state != Ren::eResState::ShaderResource) {
-        img_transitions.emplace_back(white_tex_.get(), Ren::eResState::ShaderResource);
-    }
-    if (error_tex_->resource_state != Ren::eResState::ShaderResource) {
-        img_transitions.emplace_back(error_tex_.get(), Ren::eResState::ShaderResource);
-    }
+    img_transitions.emplace_back(white_tex_, Ren::eResState::ShaderResource);
+    img_transitions.emplace_back(error_tex_, Ren::eResState::ShaderResource);
 
-    const Ren::StoragesRef &storages = ren_ctx_.storages();
-
+    const auto &is_occupied = storages.materials.is_occupied();
     for (uint32_t i = update_range.first; i < update_range.second; ++i) {
         const uint32_t rel_i = i - update_range.first;
 
         // const uint32_t set_index = i / materials_per_descriptor;
         const uint32_t arr_offset = i % materials_per_descriptor;
+        if (is_occupied[i]) {
+            const auto &[mat_main, mat_cold] = storages.materials.GetUnsafe(i);
 
-        const Ren::Material *mat = scene_data_.materials.GetOrNull(i);
-        if (mat) {
             int j = 0;
-            for (; j < int(mat->textures.size()); ++j) {
+            for (; j < int(mat_main.textures.size()); ++j) {
                 material_data[rel_i].texture_indices[j] = arr_offset * MAX_TEX_PER_MATERIAL + j;
 
-                if (mat->textures[j]->resource_state != Ren::eResState::ShaderResource) {
-                    img_transitions.emplace_back(mat->textures[j].get(), Ren::eResState::ShaderResource);
+                const Ren::ImageMain &img_main = storages.images.Get(mat_main.textures[j]).first;
+                if (img_main.resource_state != Ren::eResState::ShaderResource) {
+                    img_transitions.emplace_back(mat_main.textures[j], Ren::eResState::ShaderResource);
                 }
 
                 auto &img_info = img_infos.emplace_back();
-                img_info.sampler = storages.samplers.Get(mat->samplers[j]).first.handle;
-                img_info.imageView = mat->textures[j]->handle().views[0];
+                img_info.sampler = storages.samplers.Get(mat_main.samplers[j]).first.handle;
+                img_info.imageView = img_main.views[0];
                 img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             }
             for (; j < MAX_TEX_PER_MATERIAL; ++j) {
                 material_data[rel_i].texture_indices[j] = i * MAX_TEX_PER_MATERIAL + j;
-                img_infos.push_back(white_tex_->vk_desc_image_info());
+
+                const Ren::ImageMain &white_main = storages.images.Get(white_tex_).first;
+                img_infos.push_back(Image_GetDescriptorImageInfo(api, white_main));
             }
 
             int k = 0;
-            for (; k < int(mat->params.size()); ++k) {
-                material_data[rel_i].params[k] = mat->params[k];
+            for (; k < int(mat_cold.params.size()); ++k) {
+                material_data[rel_i].params[k] = mat_cold.params[k];
             }
             for (; k < MAX_MATERIAL_PARAMS; ++k) {
                 material_data[rel_i].params[k] = Ren::Vec4f{0.0f};
@@ -298,7 +298,9 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
         } else {
             for (int j = 0; j < MAX_TEX_PER_MATERIAL; ++j) {
                 material_data[rel_i].texture_indices[j] = i * MAX_TEX_PER_MATERIAL + j;
-                img_infos.push_back(error_tex_->vk_desc_image_info());
+
+                const Ren::ImageMain &error_main = storages.images.Get(error_tex_).first;
+                img_infos.push_back(Image_GetDescriptorImageInfo(api, error_main));
             }
         }
     }
@@ -350,7 +352,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
     return false;
 }
 
-std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc) {
+Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc) {
     using namespace SceneManagerInternal;
 
     Ren::ApiContext &api = ren_ctx_.api();
@@ -365,7 +367,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
     tri_data.vertexStride = 16;
     tri_data.indexType = VK_INDEX_TYPE_UINT32;
     tri_data.indexData.deviceAddress = Buffer_GetDeviceAddress(api, storages.buffers.Get(indices.buf).first);
-    tri_data.maxVertex = attribs.size / 16;
+    tri_data.maxVertex = uint32_t(acc.mesh->attribs().size() / 13);
 
     //
     // Gather geometries
@@ -378,20 +380,24 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
     const Ren::Span<const Ren::tri_group_t> groups = acc.mesh->groups();
     for (int j = 0; j < int(groups.size()); ++j) {
         const Ren::tri_group_t &grp = groups[j];
-        const Ren::MaterialRef &front_mat =
+        const Ren::MaterialHandle front_mat =
             (j >= acc.material_override.size()) ? grp.front_mat : acc.material_override[j][0];
-        const Ren::MaterialRef &back_mat =
+        const Ren::MaterialMain &front_main = storages.materials.Get(front_mat).first;
+
+        const Ren::MaterialHandle back_mat =
             (j >= acc.material_override.size()) ? grp.back_mat : acc.material_override[j][1];
-        const Ren::MaterialRef &vol_mat =
+        const Ren::MaterialMain &back_main = storages.materials.Get(back_mat).first;
+
+        const Ren::MaterialHandle vol_mat =
             (j >= acc.material_override.size()) ? grp.vol_mat : acc.material_override[j][2];
 
         auto &new_geo = geometries.emplace_back();
         new_geo = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
         new_geo.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
         new_geo.flags = 0;
-        if (front_mat && back_mat && !(front_mat->flags & Ren::eMatFlags::AlphaTest) &&
-            !(back_mat->flags & Ren::eMatFlags::AlphaTest) && !(front_mat->flags & Ren::eMatFlags::AlphaBlend) &&
-            !(back_mat->flags & Ren::eMatFlags::AlphaBlend)) {
+        if (front_mat && back_mat && !(front_main.flags & Ren::eMatFlags::AlphaTest) &&
+            !(back_main.flags & Ren::eMatFlags::AlphaTest) && !(front_main.flags & Ren::eMatFlags::AlphaBlend) &&
+            !(back_main.flags & Ren::eMatFlags::AlphaBlend)) {
             new_geo.flags |= VK_GEOMETRY_OPAQUE_BIT_KHR;
         }
         if (vol_mat) {
@@ -436,7 +442,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
     if (!Buffer_Init(api, acc_structs_buf_main, acc_structs_buf_cold, Ren::String{"BLAS Before-Compaction Buf"},
                      Ren::eBufType::AccStructure, needed_total_acc_struct_size, ren_ctx_.log())) {
         ren_ctx_.log()->Error("Failed to initialize %s", acc_structs_buf_cold.name.c_str());
-        return nullptr;
+        return {};
     }
     SCOPE_EXIT({ Buffer_DestroyImmediately(api, acc_structs_buf_main, acc_structs_buf_cold); })
 
@@ -448,7 +454,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
     VkResult res = api.vkCreateQueryPool(api.device, &query_pool_create_info, nullptr, &query_pool);
     if (res != VK_SUCCESS) {
         ren_ctx_.log()->Error("Failed to create query pool!");
-        return nullptr;
+        return {};
     }
     SCOPE_EXIT({ api.vkDestroyQueryPool(api.device, query_pool, nullptr); })
 
@@ -462,7 +468,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
         if (!Buffer_Init(api, scratch_buf_main, scratch_buf_cold, Ren::String{"BLAS Scratch Buf"},
                          Ren::eBufType::Storage, needed_build_scratch_size, ren_ctx_.log())) {
             ren_ctx_.log()->Error("Failed to initialize %s", scratch_buf_cold.name.c_str());
-            return nullptr;
+            return {};
         }
         SCOPE_EXIT({ Buffer_DestroyImmediately(api, scratch_buf_main, scratch_buf_cold); })
 
@@ -477,7 +483,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
             api.vkCreateAccelerationStructureKHR(api.device, &acc_create_info, nullptr, &blas_before_compaction);
         if (_res != VK_SUCCESS) {
             ren_ctx_.log()->Error("Failed to create acceleration structure!");
-            return nullptr;
+            return {};
         }
 
         build_info.pGeometries = geometries.cdata();
@@ -514,7 +520,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
                                     sizeof(VkDeviceSize), VK_QUERY_RESULT_WAIT_BIT);
     if (res != VK_SUCCESS) {
         ren_ctx_.log()->Error("Failed to query compacted structure size!");
-        return nullptr;
+        return {};
     }
 
     Ren::FreelistAlloc::Allocation mem_alloc =
@@ -529,7 +535,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
         const uint16_t pool_index = scene_data_.persistent_data->hwrt.rt_blas_mem_alloc.AddPool(buf_size);
         if (pool_index != scene_data_.persistent_data->hwrt.rt_blas_buffers.size() - 1) {
             ren_ctx_.log()->Error("Invalid pool index!");
-            return nullptr;
+            return {};
         }
         // try to allocate again
         mem_alloc =
@@ -537,7 +543,7 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
         assert(mem_alloc.offset != 0xffffffff);
     }
 
-    std::unique_ptr<Ren::AccStructureVK> compacted_blas = std::make_unique<Ren::AccStructureVK>();
+    const Ren::AccStructHandle compacted_blas = ren_ctx_.CreateAccStruct();
 
     { // Submit compaction commands
         VkCommandBuffer cmd_buf = api.BegSingleTimeCommands();
@@ -566,16 +572,19 @@ std::unique_ptr<Ren::IAccStructure> Eng::SceneManager::Build_HWRT_BLAS(const Acc
 
         api.vkCmdCopyAccelerationStructureKHR(cmd_buf, &copy_info);
 
-        compacted_blas->mem_alloc = mem_alloc;
-        if (!compacted_blas->Init(&api, compact_acc_struct)) {
-            ren_ctx_.log()->Error("Blas compaction failed!");
-            return nullptr;
-        }
-
         api.EndSingleTimeCommands(cmd_buf);
+
+        const auto &[blas_main, blas_cold] = ren_ctx_.acc_structs().Get(compacted_blas);
+        if (!AccStruct_Init(blas_main, blas_cold, acc.mesh->name(), compact_acc_struct, mem_alloc)) {
+            ren_ctx_.ReleaseAccStruct(compacted_blas);
+            ren_ctx_.log()->Error("Blas compaction failed!");
+            return {};
+        }
 
         api.vkDestroyAccelerationStructureKHR(api.device, blas_before_compaction, nullptr);
     }
+
+    scene_data_.persistent_data->rt_blases.push_back(compacted_blas);
 
     return compacted_blas;
 }
@@ -633,11 +642,12 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
             ren_ctx_.log()->Error("Failed to create acceleration structure!");
         }
 
-        std::unique_ptr<Ren::AccStructureVK> vk_tlas = std::make_unique<Ren::AccStructureVK>();
-        if (!vk_tlas->Init(&api, tlas_handle)) {
+        const Ren::AccStructHandle tlas = ren_ctx_.CreateAccStruct();
+        const auto &[tlas_main, tlas_cold] = ren_ctx_.acc_structs().Get(tlas);
+        if (!AccStruct_Init(tlas_main, tlas_cold, Ren::String{"TLAS Main"}, tlas_handle, {})) {
             ren_ctx_.log()->Error("Failed to init TLAS!");
         }
-        scene_data_.persistent_data->rt_tlas[int(eTLASIndex::Main)] = std::move(vk_tlas);
+        scene_data_.persistent_data->rt_tlases[int(eTLASIndex::Main)] = tlas;
     }
     { // Shadow TLAS
         const auto &[buf_main, buf_cold] =
@@ -655,11 +665,12 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
             ren_ctx_.log()->Error("Failed to create acceleration structure!");
         }
 
-        std::unique_ptr<Ren::AccStructureVK> vk_tlas = std::make_unique<Ren::AccStructureVK>();
-        if (!vk_tlas->Init(&api, tlas_handle)) {
+        const Ren::AccStructHandle tlas = ren_ctx_.CreateAccStruct();
+        const auto &[tlas_main, tlas_cold] = ren_ctx_.acc_structs().Get(tlas);
+        if (!AccStruct_Init(tlas_main, tlas_cold, Ren::String{"TLAS Shadow"}, tlas_handle, {})) {
             ren_ctx_.log()->Error("Failed to init TLAS!");
         }
-        scene_data_.persistent_data->rt_tlas[int(eTLASIndex::Shadow)] = std::move(vk_tlas);
+        scene_data_.persistent_data->rt_tlases[int(eTLASIndex::Shadow)] = tlas;
     }
     { // Volume TLAS
         const auto &[buf_main, buf_cold] =
@@ -677,11 +688,12 @@ void Eng::SceneManager::Alloc_HWRT_TLAS() {
             ren_ctx_.log()->Error("Failed to create acceleration structure!");
         }
 
-        std::unique_ptr<Ren::AccStructureVK> vk_tlas = std::make_unique<Ren::AccStructureVK>();
-        if (!vk_tlas->Init(&api, tlas_handle)) {
+        const Ren::AccStructHandle tlas = ren_ctx_.CreateAccStruct();
+        const auto &[tlas_main, tlas_cold] = ren_ctx_.acc_structs().Get(tlas);
+        if (!AccStruct_Init(tlas_main, tlas_cold, Ren::String{"TLAS Volume"}, tlas_handle, {})) {
             ren_ctx_.log()->Error("Failed to init TLAS!");
         }
-        scene_data_.persistent_data->rt_tlas[int(eTLASIndex::Volume)] = std::move(vk_tlas);
+        scene_data_.persistent_data->rt_tlases[int(eTLASIndex::Volume)] = tlas;
     }
 
     scene_data_.persistent_data->hwrt.rt_tlas_build_scratch_size = uint32_t(size_info.buildScratchSize);

@@ -106,16 +106,16 @@ class SceneManager {
     Ren::Camera &main_cam() { return cam_; }
     Ren::Camera &ext_cam() { return ext_cam_; }
     Ren::Mesh *cam_rig() { return cam_rig_.get(); }
-    Eng::SceneData &scene_data() { return scene_data_; }
+    SceneData &scene_data() { return scene_data_; }
     Snd::Source &ambient_sound() { return amb_sound_; }
 
-    const Eng::PersistentGpuData &persistent_data() const { return *scene_data_.persistent_data; }
+    const PersistentGpuData &persistent_data() const { return *scene_data_.persistent_data; }
 
     void set_tex_memory_limit(const size_t limit) { tex_memory_limit_ = limit; }
 
     void set_load_flags(const Ren::Bitmask<eSceneLoadFlags> load_flags) { scene_data_.load_flags = load_flags; }
 
-    Eng::SceneObject *GetObject(const uint32_t i) { return &scene_data_.objects[i]; }
+    SceneObject *GetObject(const uint32_t i) { return &scene_data_.objects[i]; }
 
     uint32_t FindObject(std::string_view name) {
         uint32_t *p_ndx = scene_data_.name_to_object.Find(name);
@@ -128,7 +128,7 @@ class SceneManager {
         }
         changed_objects_.insert(changed_objects_.end(), indices.begin(), indices.end());
     }
-    void InvalidateTexture(const Ren::ImgRef &ref);
+    void InvalidateTexture(Ren::ImageHandle handle);
 
     void LoadScene(const Sys::JsObjectP &js_scene, Ren::Bitmask<eSceneLoadFlags> load_flags = SceneLoadAll);
     void SaveScene(Sys::JsObjectP &js_scene);
@@ -164,7 +164,9 @@ class SceneManager {
                    Ren::Vec2f sensor_shift, float gamma, float min_exposure, float max_exposure);
 
     using PostLoadFunc = void(const Sys::JsObjectP &js_comp_obj, void *comp, Ren::Vec3f obj_bbox[2]);
-    void RegisterComponent(uint32_t index, Eng::CompStorage *storage, const std::function<PostLoadFunc> &post_init);
+    using PostSaveFunc = void(const void *comp, Sys::JsObjectP &js_comp_obj);
+    void RegisterComponent(uint32_t index, CompStorage *storage, const std::function<PostLoadFunc> &post_load,
+                           const std::function<PostSaveFunc> &post_save);
 
     void
     SetPipelineInitializer(std::function<void(const Ren::ProgramHandle prog, Ren::Bitmask<Ren::eMatFlags> mat_flags,
@@ -192,8 +194,6 @@ class SceneManager {
     static void RegisterAsset(const char *in_ext, const char *out_ext, const ConvertAssetFunc &convert_func);
     static bool PrepareAssets(const char *in_folder, const char *out_folder, std::string_view platform,
                               Sys::ThreadPool *p_threads, Ren::ILog *log);
-    static bool WriteProbeCache(const char *out_folder, const char *scene_name, const Ren::ProbeStorage &probes,
-                                const Eng::CompStorage *light_probe_storage, Ren::ILog *log);
 
   private:
     void PostloadDrawable(const Sys::JsObjectP &js_comp_obj, void *comp, Ren::Vec3f obj_bbox[2]);
@@ -205,21 +205,18 @@ class SceneManager {
     void PostloadSoundSource(const Sys::JsObjectP &js_comp_obj, void *comp, Ren::Vec3f obj_bbox[2]);
     void PostloadAccStructure(const Sys::JsObjectP &js_comp_obj, void *comp, Ren::Vec3f obj_bbox[2]);
 
-    std::array<Ren::MaterialRef, 3> OnLoadMaterial(std::string_view name);
+    void PostsaveDrawable(const void *comp, Sys::JsObjectP &js_comp_obj);
+    void PostsaveAccStructure(const void *comp, Sys::JsObjectP &js_comp_obj);
+
+    std::array<Ren::MaterialHandle, 3> OnLoadMaterial(std::string_view name);
     void OnLoadPipelines(Ren::Bitmask<Ren::eMatFlags> flags, std::string_view v_shader, std::string_view f_shader,
                          std::string_view tc_shader, std::string_view te_shader,
                          Ren::SmallVectorImpl<Ren::PipelineHandle> &out_pipelines);
-    Ren::ImgRef OnLoadTexture(std::string_view name, const uint8_t color[4], Ren::Bitmask<Ren::eImgFlags> flags);
+    Ren::ImageHandle OnLoadTexture(std::string_view name, const uint8_t color[4], Ren::Bitmask<Ren::eImgFlags> flags);
     Ren::SamplerHandle OnLoadSampler(Ren::SamplingParams params);
 
     Ren::MeshRef LoadMesh(std::string_view name, std::istream *data, const Ren::material_load_callback &on_mat_load,
                           Ren::eMeshLoadStatus *load_status);
-    Ren::MaterialRef LoadMaterial(std::string_view name, std::string_view mat_src, Ren::eMatLoadStatus *status,
-                                  const Ren::pipelines_load_callback &on_pipes_load,
-                                  const Ren::texture_load_callback &on_tex_load,
-                                  const Ren::sampler_load_callback &on_sampler_load);
-    Ren::ImgRef LoadImage(std::string_view name, Ren::Span<const uint8_t> data, const Ren::ImgParams &p,
-                          Ren::eImgLoadStatus *load_status);
     Ren::Vec4f LoadDecalTexture(std::string_view name);
 
     void EstimateTextureMemory(int portion_size);
@@ -236,8 +233,8 @@ class SceneManager {
     bool UpdateMaterialsBuffer();
     bool UpdateInstanceBuffer();
     void UpdateInstanceBufferRange(uint32_t obj_beg, uint32_t obj_end);
-    std::unique_ptr<Ren::IAccStructure> Build_HWRT_BLAS(const AccStructure &acc);
-    std::unique_ptr<Ren::IAccStructure> Build_SWRT_BLAS(const AccStructure &acc);
+    Ren::AccStructHandle Build_HWRT_BLAS(const AccStructure &acc);
+    Ren::AccStructHandle Build_SWRT_BLAS(const AccStructure &acc);
     void Alloc_HWRT_TLAS();
     void Alloc_SWRT_TLAS();
 
@@ -245,10 +242,10 @@ class SceneManager {
     void RemoveNode(uint32_t node_index);
 
     Ren::Context &ren_ctx_;
-    Eng::ShaderLoader &sh_;
+    ShaderLoader &sh_;
     Snd::Context *snd_ctx_ = nullptr;
     Ren::MeshRef cam_rig_;
-    Ren::ImgRef white_tex_, error_tex_;
+    Ren::ImageHandle white_tex_, error_tex_;
     Sys::ThreadPool &threads_;
     path_config_t paths_;
 
@@ -257,15 +254,16 @@ class SceneManager {
     double last_cam_time_s_ = 0.0;
     Snd::Source amb_sound_;
 
-    Eng::SceneData scene_data_;
+    SceneData scene_data_;
     std::vector<uint32_t> changed_objects_, last_changed_objects_;
     std::vector<uint32_t> instance_data_to_update_;
 
-    std::unique_ptr<Eng::CompStorage> default_comp_storage_[Eng::MAX_COMPONENT_TYPES];
-    std::function<PostLoadFunc> component_post_load_[Eng::MAX_COMPONENT_TYPES];
+    std::unique_ptr<CompStorage> default_comp_storage_[MAX_COMPONENT_TYPES];
+    std::function<PostLoadFunc> component_post_load_[MAX_COMPONENT_TYPES];
+    std::function<PostSaveFunc> component_post_save_[MAX_COMPONENT_TYPES];
 
     struct TextureRequest {
-        Ren::ImgRef ref;
+        Ren::ImageHandle img;
         uint32_t sort_key = 0xffffffff;
 
         uint16_t frame_dist = 0;

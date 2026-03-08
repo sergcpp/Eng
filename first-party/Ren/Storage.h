@@ -508,6 +508,7 @@ template <typename T, typename U> class DualStorage {
   protected:
     std::vector<T> data_main_;
     std::vector<U> data_cold_;
+    std::vector<bool> occupied_;
     mutable std::vector<uint32_t> generation_;
 
     std::vector<uint32_t> free_indices_;
@@ -523,16 +524,19 @@ template <typename T, typename U> class DualStorage {
 
     const T *data_main() const { return data_main_.data(); }
     const U *data_cold() const { return data_cold_.data(); }
+    const std::vector<bool> &is_occupied() const { return occupied_; }
 
     ~DualStorage() {
         assert(free_indices_.size() == data_main_.size());
         assert(free_indices_.size() == data_cold_.size());
         assert(generation_.size() == data_cold_.size());
+        assert(occupied_.size() == data_cold_.size());
     }
 
     void reserve(const size_t size) {
         data_main_.reserve(size);
         data_cold_.reserve(size);
+        occupied_.reserve(size);
         generation_.reserve(size);
     }
 
@@ -541,12 +545,14 @@ template <typename T, typename U> class DualStorage {
             const uint32_t index = uint32_t(generation_.size());
             data_main_.emplace_back();
             data_cold_.emplace_back();
+            occupied_.emplace_back(true);
             generation_.push_back(0);
             return Handle<T, RWTag>{index, 0};
         }
 
         const uint32_t index = free_indices_.back();
         free_indices_.pop_back();
+        occupied_[index] = true;
 
         return Handle<T, RWTag>{index, generation_[index]};
     }
@@ -555,6 +561,7 @@ template <typename T, typename U> class DualStorage {
         assert(handle.generation == generation_[handle.index]);
         data_main_[handle.index] = {};
         data_cold_[handle.index] = {};
+        occupied_[handle.index] = false;
         ++generation_[handle.index];
         free_indices_.push_back(handle.index);
     }
@@ -562,28 +569,36 @@ template <typename T, typename U> class DualStorage {
     void FreeUnsafe(const uint32_t index) {
         data_main_[index] = {};
         data_cold_[index] = {};
+        occupied_[index] = false;
         ++generation_[index];
         free_indices_.push_back(index);
     }
 
     std::pair<const T &, const U &> Get(const Handle<T, ROTag> handle) const {
         assert(handle.generation == generation_[handle.index]);
+        assert(occupied_[handle.index]);
         return {data_main_[handle.index], data_cold_[handle.index]};
     }
 
     std::pair<T &, U &> Get(const Handle<T, RWTag> handle) {
         assert(handle.generation == generation_[handle.index]);
+        assert(occupied_[handle.index]);
         return {data_main_[handle.index], data_cold_[handle.index]};
     }
 
     std::pair<const T &, const U &> GetUnsafe(const uint32_t index) const {
+        assert(occupied_[index]);
         return {data_main_[index], data_cold_[index]};
     }
 
-    std::pair<T &, U &> GetUnsafe(const uint32_t index) { return {data_main_[index], data_cold_[index]}; }
+    std::pair<T &, U &> GetUnsafe(const uint32_t index) {
+        assert(occupied_[index]);
+        return {data_main_[index], data_cold_[index]};
+    }
 
     std::pair<const T *, const U *> TryGet(const Handle<T, ROTag> handle) const {
         if (handle.generation == generation_[handle.index]) {
+            assert(occupied_[handle.index]);
             return {&data_main_[handle.index], &data_cold_[handle.index]};
         }
         return {nullptr, nullptr};
@@ -599,6 +614,7 @@ template <typename T, typename U> class DualStorage {
     void Clear() {
         data_main_.clear();
         data_cold_.clear();
+        occupied_.clear();
         generation_.clear();
         free_indices_.clear();
     }

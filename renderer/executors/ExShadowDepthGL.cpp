@@ -2,7 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
-#include <Ren/GL.h>
+#include <Ren/Gl/GL.h>
 #include <Ren/RastState.h>
 
 #include "../Renderer_DrawList.h"
@@ -13,10 +13,10 @@ namespace ExSharedInternal {
 uint32_t _draw_range(Ren::Span<const uint32_t> zfill_batch_indices,
                      Ren::Span<const Eng::basic_draw_batch_t> zfill_batches, uint32_t i, uint64_t mask,
                      int *draws_count);
-uint32_t _draw_range_ext(const Eng::FgContext &fg, const Ren::MaterialStorage *materials,
-                         Ren::Span<const uint32_t> batch_indices, Ren::Span<const Eng::basic_draw_batch_t> batches,
-                         uint32_t i, uint64_t mask, uint32_t &cur_mat_id, int *draws_count);
-void _bind_texture4_and_sampler4(Ren::Context &ctx, const Ren::Material &mat,
+uint32_t _draw_range_ext(const Eng::FgContext &fg, Ren::Span<const uint32_t> batch_indices,
+                         Ren::Span<const Eng::basic_draw_batch_t> batches, uint32_t i, uint64_t mask,
+                         uint32_t &cur_mat_id, int *draws_count);
+void _bind_texture4_and_sampler4(Ren::Context &ctx, const Ren::MaterialMain &mat,
                                  Ren::SmallVectorImpl<Ren::SamplerHandle> &temp_samplers);
 } // namespace ExSharedInternal
 namespace ExShadowDepthInternal {
@@ -226,8 +226,8 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
                 uint32_t cur_mat_id = 0xffffffff;
 
                 uint32_t j = batch_points[i];
-                j = _draw_range_ext(fg, (*p_list_)->materials, batch_indices, (*p_list_)->shadow_batches, j,
-                                    BitFlags[pi], cur_mat_id, &draw_calls_count);
+                j = _draw_range_ext(fg, batch_indices, (*p_list_)->shadow_batches, j, BitFlags[pi], cur_mat_id,
+                                    &draw_calls_count);
                 batch_points[i] = j;
             }
 

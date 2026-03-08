@@ -24,7 +24,7 @@ class ExRTGICache final : public FgExecutor {
         FgBufROHandle items_buf;
         FgBufROHandle tlas_buf; // fake read for now
 
-        Ren::IAccStructure *tlas = nullptr;
+        Ren::AccStructROHandle tlas;
 
         struct {
             uint32_t root_node = 0xffffffff;

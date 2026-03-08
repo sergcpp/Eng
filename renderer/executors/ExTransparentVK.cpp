@@ -3,7 +3,7 @@
 #include <Ren/Context.h>
 #include <Ren/DebugMarker.h>
 #include <Ren/RastState.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../Renderer_DrawList.h"
 #include "../framegraph/FgBuilder.h"
@@ -303,7 +303,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
 
             if (cur_mat_id != batch.mat_id) {
                 const uint32_t pipe_id =
-                    (*(*p_list_)->materials)[batch.mat_id].pipelines[int(eFwdPipeline::BackfaceDraw)].index;
+                    storages.materials.GetUnsafe(batch.mat_id).first.pipelines[int(eFwdPipeline::BackfaceDraw)].index;
 
                 if (cur_pipe_id != pipe_id) {
                     api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -346,7 +346,7 @@ void Eng::ExTransparent::DrawTransparent_Simple(
 
             if (cur_mat_id != batch.mat_id) {
                 const uint32_t pipe_id =
-                    (*(*p_list_)->materials)[batch.mat_id].pipelines[int(eFwdPipeline::FrontfaceDraw)].index;
+                    storages.materials.GetUnsafe(batch.mat_id).first.pipelines[int(eFwdPipeline::FrontfaceDraw)].index;
 
                 if (cur_pipe_id != pipe_id) {
                     api.vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,

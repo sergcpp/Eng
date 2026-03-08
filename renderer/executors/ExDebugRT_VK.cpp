@@ -2,7 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/DrawCall.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../framegraph/FgBuilder.h"
 #include "../shaders/rt_debug_interface.h"
@@ -34,13 +34,11 @@ void Eng::ExDebugRT::Execute_HWRT(const FgContext &fg) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    const auto *acc_struct = static_cast<const Ren::AccStructureVK *>(args_->tlas);
-
     VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-        {Ren::eBindTarget::AccStruct, RTDebug::TLAS_SLOT, *acc_struct},
+        {Ren::eBindTarget::AccStruct, RTDebug::TLAS_SLOT, args_->tlas},
         {Ren::eBindTarget::TexSampled, RTDebug::ENV_TEX_SLOT, env_tex},
         {Ren::eBindTarget::SBufRO, RTDebug::GEO_DATA_BUF_SLOT, geo_data_buf},
         {Ren::eBindTarget::SBufRO, RTDebug::MATERIAL_BUF_SLOT, materials_buf},

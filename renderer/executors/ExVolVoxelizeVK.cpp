@@ -2,7 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/DrawCall.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_DrawList.h"
@@ -24,13 +24,11 @@ void Eng::ExVolVoxelize::Execute_HWRT(const FgContext &fg) {
         return;
     }
 
-    auto *acc_struct = static_cast<Ren::AccStructureVK *>(args_->tlas);
-
     const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
                                      {Ren::eBindTarget::TexSampled, Fog::STBN_TEX_SLOT, stbn_tex},
                                      {Ren::eBindTarget::SBufRO, Fog::GEO_DATA_BUF_SLOT, geo_data_buf},
                                      {Ren::eBindTarget::SBufRO, Fog::MATERIAL_BUF_SLOT, materials_buf},
-                                     {Ren::eBindTarget::AccStruct, Fog::TLAS_SLOT, *acc_struct},
+                                     {Ren::eBindTarget::AccStruct, Fog::TLAS_SLOT, args_->tlas},
                                      {Ren::eBindTarget::ImageRW, Fog::OUT_FR_EMISSION_IMG_SLOT, out_emission_tex},
                                      {Ren::eBindTarget::ImageRW, Fog::OUT_FR_SCATTER_IMG_SLOT, out_scatter_tex}};
 

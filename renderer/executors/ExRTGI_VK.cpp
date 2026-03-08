@@ -2,7 +2,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/DrawCall.h>
-#include <Ren/VKCtx.h>
+#include <Ren/Vk/VKCtx.h>
 
 #include "../../utils/ShaderLoader.h"
 #include "../Renderer_Structs.h"
@@ -28,8 +28,6 @@ void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
     const Ren::ApiContext &api = fg.ren_ctx().api();
     const Ren::StoragesRef &storages = fg.storages();
 
-    auto *acc_struct = static_cast<Ren::AccStructureVK *>(args_->tlas);
-
     VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
     Ren::SmallVector<Ren::Binding, 24> bindings = {
@@ -39,7 +37,7 @@ void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
         {Ren::eBindTarget::TexSampled, RTGI::NOISE_TEX_SLOT, noise_tex},
         {Ren::eBindTarget::SBufRW, RTGI::RAY_COUNTER_SLOT, ray_counter_buf},
         {Ren::eBindTarget::SBufRO, RTGI::RAY_LIST_SLOT, ray_list_buf},
-        {Ren::eBindTarget::AccStruct, RTGI::TLAS_SLOT, *acc_struct},
+        {Ren::eBindTarget::AccStruct, RTGI::TLAS_SLOT, args_->tlas},
         {Ren::eBindTarget::SBufRO, RTGI::GEO_DATA_BUF_SLOT, geo_data_buf},
         {Ren::eBindTarget::SBufRO, RTGI::MATERIAL_BUF_SLOT, materials_buf},
         {Ren::eBindTarget::SBufRO, RTGI::VTX_BUF1_SLOT, vtx_buf1},

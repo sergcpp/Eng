@@ -8,53 +8,39 @@
 #include "Resource.h"
 
 namespace Ren {
-struct ApiContext;
+enum class eAccStructType { SWRT, HWRT, _Count };
 
-class IAccStructure {
-  public:
-    virtual ~IAccStructure() {}
-
-    virtual void Free() {}
-    virtual void FreeImmediate() { Free(); }
-};
-
-#if defined(REN_VK_BACKEND)
-class AccStructureVK : public IAccStructure {
-    const ApiContext *api_ = nullptr;
-    VkAccelerationStructureKHR handle_ = {};
-
-  public:
-    FreelistAlloc::Allocation mem_alloc;
-
-    AccStructureVK() = default;
-    ~AccStructureVK() override { Free(); }
-
-    AccStructureVK(const AccStructureVK &rhs) = delete;
-    AccStructureVK(AccStructureVK &&rhs) = delete;
-
-    AccStructureVK &operator=(const AccStructureVK &rhs) = delete;
-    AccStructureVK &operator=(AccStructureVK &&rhs) = delete;
-
-    [[nodiscard]] const VkAccelerationStructureKHR &vk_handle() const {
-        return handle_;
-    } // needs to be reference as we take it's address later
-    [[nodiscard]] VkDeviceAddress vk_device_address() const;
-
-    [[nodiscard]] bool Init(const ApiContext *api, VkAccelerationStructureKHR handle);
-
-    void Free() override;
-    void FreeImmediate() override;
-
+struct AccStructMain {
+    eAccStructType type = eAccStructType::_Count;
     eResState resource_state = eResState::Undefined;
+    union {
+        struct {
+            uint32_t mesh_index;
+            SubAllocation nodes_alloc, prim_alloc;
+        } sw;
+        struct {
+#if defined(REN_VK_BACKEND)
+            VkAccelerationStructureKHR handle;
+            FreelistAlloc::Allocation mem_alloc;
+#endif
+        } hw;
+    };
+    AccStructMain() {}
 };
+
+struct AccStructCold {
+    String name;
+};
+
+bool AccStruct_Init(AccStructMain &acc_main, AccStructCold &acc_cold, String name, uint32_t mesh_index,
+                    SubAllocation nodes_alloc, SubAllocation prim_alloc);
+#if defined(REN_VK_BACKEND)
+bool AccStruct_Init(AccStructMain &acc_main, AccStructCold &acc_cold, String name, VkAccelerationStructureKHR handle,
+                    FreelistAlloc::Allocation mem_alloc);
+VkDeviceAddress AccStruct_GetDeviceAddress(const ApiContext &api, const AccStructMain &acc_main);
 #endif
 
-class AccStructureSW : public IAccStructure {
-  public:
-    AccStructureSW(const uint32_t _mesh_index, const SubAllocation _nodes_alloc, const SubAllocation _prim_alloc)
-        : mesh_index(_mesh_index), nodes_alloc(_nodes_alloc), prim_alloc(_prim_alloc) {}
+void AccStruct_Destroy(const ApiContext &api, AccStructMain &acc_main, AccStructCold &acc_cold);
+void AccStruct_DestroyImmediately(const ApiContext &api, AccStructMain &acc_main, AccStructCold &acc_cold);
 
-    uint32_t mesh_index;
-    SubAllocation nodes_alloc, prim_alloc;
-};
 } // namespace Ren

@@ -35,8 +35,9 @@ typedef struct VkTraceRaysIndirectCommandKHR {
 #endif
 
 namespace Ren {
+struct AccStructMain;
+struct AccStructCold;
 #if defined(REN_VK_BACKEND)
-class AccStructureVK;
 using CommandBuffer = VkCommandBuffer;
 #else
 using CommandBuffer = void *;
@@ -51,13 +52,12 @@ class DescrPool;
 class DescrMultiPoolAlloc;
 struct FramebufferMain;
 struct FramebufferCold;
-class IAccStructure;
 class ILog;
-class Material;
+struct MaterialMain;
+struct MaterialCold;
 class Mesh;
 struct PipelineMain;
 struct PipelineCold;
-class ProbeStorage;
 struct ProgramMain;
 struct ProgramCold;
 struct RastState;
@@ -68,7 +68,6 @@ struct SamplerMain;
 struct SamplerCold;
 struct ShaderMain;
 struct ShaderCold;
-class Image;
 struct ImageMain;
 struct ImageCold;
 class ImageAtlas;
@@ -78,11 +77,11 @@ struct VertexInputMain;
 struct VertexInputCold;
 
 using AnimSeqRef = StrongRef<AnimSequence, NamedStorage<AnimSequence>>;
-using MaterialRef = StrongRef<Material, NamedStorage<Material>>;
 using MeshRef = StrongRef<Mesh, NamedStorage<Mesh>>;
-using ImgRef = StrongRef<Image, NamedStorage<Image>>;
-using WeakImgRef = WeakRef<Image, NamedStorage<Image>>;
 
+using AccStructRWHandle = Handle<AccStructMain, RWTag>;
+using AccStructROHandle = Handle<AccStructMain, ROTag>;
+using AccStructHandle = AccStructRWHandle;
 using BufferRWHandle = Handle<BufferMain, RWTag>;
 using BufferROHandle = Handle<BufferMain, ROTag>;
 using BufferHandle = BufferRWHandle;
@@ -110,6 +109,9 @@ using RenderPassHandle = RenderPassRWHandle;
 using SamplerRWHandle = Handle<SamplerMain, RWTag>;
 using SamplerROHandle = Handle<SamplerMain, ROTag>;
 using SamplerHandle = SamplerRWHandle;
+using MaterialRWHandle = Handle<MaterialMain, RWTag>;
+using MaterialROHandle = Handle<MaterialMain, ROTag>;
+using MaterialHandle = MaterialRWHandle;
 
 struct StoragesRef {
     DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs;
@@ -121,6 +123,8 @@ struct StoragesRef {
     DualStorage<ImageMain, ImageCold> &images;
     DualStorage<SamplerMain, SamplerCold> &samplers;
     DualStorage<FramebufferMain, FramebufferCold> &framebuffers;
+    DualStorage<AccStructMain, AccStructCold> &acc_structs;
+    DualStorage<MaterialMain, MaterialCold> &materials;
 };
 
 const char *Version();

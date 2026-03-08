@@ -904,8 +904,8 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
         auto &acc_structs = *fg_builder_.AllocTempData<AccelerationStructures>();
         for (int i = 0; i < int(eTLASIndex::_Count); ++i) {
             acc_structs.rt_tlas_buf[i] = fg_builder_.ImportResource(persistent_data.rt_tlas_buf[i]);
-            if (persistent_data.rt_tlas[i]) {
-                acc_structs.rt_tlases[i] = persistent_data.rt_tlas[i].get();
+            if (persistent_data.rt_tlases[i]) {
+                acc_structs.rt_tlases[i] = persistent_data.rt_tlases[i];
             }
         }
         acc_structs.hwrt.rt_tlas_build_scratch_size = persistent_data.hwrt.rt_tlas_build_scratch_size;
@@ -1799,9 +1799,7 @@ void Eng::Renderer::SetTonemapLUT(const int res, const Ren::eFormat format, Ren:
     assert(format == Ren::eFormat::RGB10_A2);
 
     if (data.empty()) {
-        if (tonemap_lut_) {
-            ctx_.ReleaseImage(tonemap_lut_);
-        }
+        ctx_.ReleaseImage(tonemap_lut_);
         tonemap_lut_ = {};
         return;
     }

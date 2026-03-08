@@ -13,7 +13,7 @@ struct AccStructure {
 
     Ren::Bitmask<eRayType> vis_mask = DefaultVisMask;
     Ren::MeshRef mesh;
-    std::vector<std::array<Ren::MaterialRef, 3>> material_override;
+    std::vector<std::array<Ren::MaterialHandle, 3>> material_override;
     float surf_area = 0.0f;
 
     static void Read(const Sys::JsObjectP &js_in, AccStructure &acc);

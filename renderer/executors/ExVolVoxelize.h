@@ -16,7 +16,7 @@ class ExVolVoxelize final : public FgExecutor {
         FgBufROHandle materials;
         FgBufROHandle tlas_buf;
 
-        Ren::IAccStructure *tlas = nullptr;
+        Ren::AccStructROHandle tlas;
 
         struct {
             uint32_t root_node = 0xffffffff;
