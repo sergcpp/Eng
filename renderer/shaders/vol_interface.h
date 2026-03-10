@@ -8,7 +8,7 @@ INTERFACE_START(Fog)
 struct Params {
     ivec4 froxel_res;
     ivec2 img_res;
-    float _pad;
+    int thread_offset;
     float anisotropy;
     vec4 scatter_color; // w is absorption
     vec4 emission_color; // w is density
@@ -19,8 +19,12 @@ struct Params {
     int _pad2[2];
 };
 
-const int GRP_SIZE_X = 8;
-const int GRP_SIZE_Y = 8;
+const int GRP_SIZE_2D_X = 8;
+const int GRP_SIZE_2D_Y = 8;
+
+const int GRP_SIZE_3D_X = 4;
+const int GRP_SIZE_3D_Y = 4;
+const int GRP_SIZE_3D_Z = 4;
 
 const int SHADOW_DEPTH_TEX_SLOT = 2;
 const int SHADOW_COLOR_TEX_SLOT = 3;

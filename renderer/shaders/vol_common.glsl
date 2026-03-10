@@ -98,10 +98,30 @@ vec3 EvaluateLightSource_Vol(const _light_item_t litem, const vec3 P, const vec3
         points[3] = litem.pos_and_radius.xyz - litem.u_and_reg.xyz + litem.v_and_blend.xyz;
         const float solid_angle = RectangleSolidAngle(P, points);
         ret += litem.col_and_type.xyz * solid_angle / (4.0 * M_PI);
+        const float tan_half_spread = litem.dir_and_spot.w, spread_normalization = litem.v_and_blend.w;
+        if (spread_normalization > 0.0) {
+            vec2 tuv = vec2(dot(litem.u_and_reg.xyz, P - litem.pos_and_radius.xyz) / length2(litem.u_and_reg.xyz),
+                            dot(litem.v_and_blend.xyz, P - litem.pos_and_radius.xyz) / length2(litem.v_and_blend.xyz));
+            tuv = clamp(tuv, vec2(-1.0), vec2(1.0));
+
+            const vec3 closest_P = litem.pos_and_radius.xyz + tuv.x * litem.u_and_reg.xyz + tuv.y * litem.v_and_blend.xyz;
+            const float att = spread_attenuation(normalize(P - closest_P), litem.dir_and_spot.xyz, tan_half_spread, spread_normalization);
+            ret *= att;
+        }
     } else if (type == LIGHT_TYPE_DISK && ENABLE_DISK_LIGHT != 0) {
         const float inv_solid_angle = sqr_dist / (length(litem.u_and_reg.xyz) * length(litem.v_and_blend.xyz));
         const float front_dot_l = saturate(dot(litem.dir_and_spot.xyz, L));
         ret += litem.col_and_type.xyz * saturate(front_dot_l / (1.0 + inv_solid_angle)) / 4.0;
+        const float tan_half_spread = litem.dir_and_spot.w, spread_normalization = litem.v_and_blend.w;
+        if (spread_normalization > 0.0) {
+            vec2 tuv = vec2(dot(litem.u_and_reg.xyz, P - litem.pos_and_radius.xyz) / length2(litem.u_and_reg.xyz),
+                            dot(litem.v_and_blend.xyz, P - litem.pos_and_radius.xyz) / length2(litem.v_and_blend.xyz));
+            tuv /= max(1.0 , length(tuv));
+
+            const vec3 closest_P = litem.pos_and_radius.xyz + tuv.x * litem.u_and_reg.xyz + tuv.y * litem.v_and_blend.xyz;
+            const float att = spread_attenuation(normalize(P - closest_P), litem.dir_and_spot.xyz, tan_half_spread, spread_normalization);
+            ret *= att;
+        }
     } else if (type == LIGHT_TYPE_LINE && ENABLE_LINE_LIGHT != 0) {
         const float brightness_mul = 0.004 * litem.pos_and_radius.w;
         const vec3 L0 = litem.pos_and_radius.xyz + litem.v_and_blend.xyz - P;

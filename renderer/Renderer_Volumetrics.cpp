@@ -615,12 +615,13 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
             const Ren::ImageCold &img_cold = fg.storages().images.Get(out_emission_tex).second;
             const auto froxel_res = Ren::Vec4i{img_cold.params.w, img_cold.params.h, img_cold.params.d, 0};
 
-            const Ren::Vec3u grp_count =
-                Ren::Vec3u{(froxel_res[0] + Fog::GRP_SIZE_X - 1u) / Fog::GRP_SIZE_X,
-                           (froxel_res[1] + Fog::GRP_SIZE_Y - 1u) / Fog::GRP_SIZE_Y, froxel_res[2]};
+            const Ren::Vec3u grp_count = Ren::Vec3u(Ren::DivCeil(froxel_res[0], Fog::GRP_SIZE_3D_X) + 1,
+                                                    Ren::DivCeil(froxel_res[1], Fog::GRP_SIZE_3D_Y) + 1,
+                                                    Ren::DivCeil(froxel_res[2], Fog::GRP_SIZE_3D_Z) + 1);
 
             Fog::Params uniform_params;
             uniform_params.froxel_res = froxel_res;
+            uniform_params.thread_offset = (view_state_.frame_index % 4) - 3;
             uniform_params.scatter_color =
                 Ren::Saturate(Ren::Vec4f{p_list_->env.fog.scatter_color, p_list_->env.fog.absorption});
             uniform_params.emission_color =
@@ -683,8 +684,8 @@ void Eng::Renderer::AddVolumetricPasses(const CommonBuffers &common_buffers, con
             const Ren::ImageCold &img_cold = fg.storages().images.Get(output_tex).second;
             const auto froxel_res = Ren::Vec4i{img_cold.params.w, img_cold.params.h, img_cold.params.d, 0};
 
-            const Ren::Vec3u grp_count = Ren::Vec3u{(froxel_res[0] + Fog::GRP_SIZE_X - 1u) / Fog::GRP_SIZE_X,
-                                                    (froxel_res[1] + Fog::GRP_SIZE_Y - 1u) / Fog::GRP_SIZE_Y, 1};
+            const Ren::Vec3u grp_count = Ren::Vec3u(Ren::DivCeil(froxel_res[0], Fog::GRP_SIZE_2D_X),
+                                                    Ren::DivCeil(froxel_res[1], Fog::GRP_SIZE_2D_Y), 1);
 
             Fog::Params uniform_params;
             uniform_params.froxel_res = froxel_res;

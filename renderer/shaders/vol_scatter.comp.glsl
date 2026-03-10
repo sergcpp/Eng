@@ -4,6 +4,7 @@
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #extension GL_KHR_shader_subgroup_ballot : require
 #extension GL_KHR_shader_subgroup_vote : require
+#extension GL_KHR_shader_subgroup_shuffle : require
 #endif
 
 #include "_cs_common.glsl"
@@ -17,6 +18,8 @@
 #pragma multi_compile _ ALL_CASCADES
 #pragma multi_compile _ GI_CACHE
 #pragma multi_compile _ NO_SUBGROUP
+
+#define ENABLE_HISTORY_CLAMPING 0
 
 #if defined(NO_SUBGROUP)
     #define subgroupMin(x) (x)
@@ -71,10 +74,10 @@ vec3 LightVisibility(const _light_item_t litem, const vec3 P) {
     return textureLod(g_shadow_depth_tex, pp.xyz, 0.0) * textureLod(g_shadow_color_tex, pp.xy, 0.0).xyz;
 }
 
-layout (local_size_x = GRP_SIZE_X, local_size_y = GRP_SIZE_Y, local_size_z = 1) in;
+layout (local_size_x = GRP_SIZE_3D_X, local_size_y = GRP_SIZE_3D_Y, local_size_z = GRP_SIZE_3D_Z) in;
 
 void main() {
-    const ivec3 icoord = ivec3(gl_GlobalInvocationID.xyz);
+    const ivec3 icoord = ivec3(gl_GlobalInvocationID.xyz) + g_params.thread_offset;
     if (any(greaterThanEqual(icoord, g_params.froxel_res.xyz))) {
         return;
     }
@@ -216,6 +219,14 @@ void main() {
 
     scatter_absorption.xyz = light_total;
 
+#if !defined(NO_SUBGROUP) && ENABLE_HISTORY_CLAMPING
+    const vec4 scatter_absorption_min = subgroupMin(scatter_absorption);
+    const vec4 scatter_absorption_max = subgroupMax(scatter_absorption);
+
+    const vec4 emission_density_min = subgroupMin(emission_density);
+    const vec4 emission_density_max = subgroupMax(emission_density);
+#endif
+
     { // history accumulation
         const vec3 pos_uvw_no_offset = froxel_to_uvw(icoord, 0.5, g_params.froxel_res.xyz);
         const vec4 pos_cs_no_offset = vec4(2.0 * pos_uvw_no_offset.xy - 1.0, pos_uvw_no_offset.z, 1.0);
@@ -230,6 +241,12 @@ void main() {
             emission_density_hist.xyz *= g_params.hist_weight;
             vec4 scatter_absorption_hist = textureLod(g_fr_scatter_hist_tex, hist_uvw, 0.0);
             scatter_absorption_hist.xyz *= g_params.hist_weight;
+
+#if !defined(NO_SUBGROUP) && ENABLE_HISTORY_CLAMPING
+            const float UnclampedHistoryContribution = 0.85;
+            scatter_absorption_hist = mix(clamp(scatter_absorption_hist, scatter_absorption_min, scatter_absorption_max), scatter_absorption_hist, UnclampedHistoryContribution);
+            emission_density_hist = mix(clamp(emission_density_hist, emission_density_min, emission_density_max), emission_density_hist, UnclampedHistoryContribution);
+#endif
 
             const float HistoryWeightMin = 0.87;
             const float HistoryWeightMax = 0.95;
