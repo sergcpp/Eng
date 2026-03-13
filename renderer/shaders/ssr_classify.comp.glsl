@@ -37,15 +37,15 @@ layout(binding = BN_PMJ_SEQ_BUF_SLOT) uniform usamplerBuffer g_bn_pmj_seq;
 layout(binding = OUT_REFL_IMG_SLOT, rgba16f) uniform restrict writeonly image2D g_refl_img;
 layout(binding = OUT_NOISE_IMG_SLOT, rgba8) uniform restrict writeonly image2D g_noise_img;
 
-bool IsBaseRay(uvec2 dispatch_thread_id, uint samples_per_quad) {
-    switch (samples_per_quad) {
-    case 1:
+bool IsBaseRay(uvec2 dispatch_thread_id, const uint samples_per_quad) {
+    dispatch_thread_id.x = dispatch_thread_id.x ^ ((g_params.frame_index >> 0u) & 1u);
+    dispatch_thread_id.y = dispatch_thread_id.y ^ ((g_params.frame_index >> 1u) & 1u);
+    if (samples_per_quad == 1u) {
         return ((dispatch_thread_id.x & 1u) | (dispatch_thread_id.y & 1u)) == 0u; // Deactivates 3 out of 4 rays
-    case 2:
+    } else if (samples_per_quad == 2u) {
         return (dispatch_thread_id.x & 1u) == (dispatch_thread_id.y & 1u); // Deactivates 2 out of 4 rays. Keeps diagonal.
-    default: // case 4:
-        return true;
     }
+    return true;
 }
 
 uint GetBitMaskFromPixelPosition(uvec2 pixel_pos) {
@@ -126,7 +126,7 @@ void ClassifyTiles(uvec2 dispatch_thread_id, uvec2 group_thread_id, float roughn
     // Next we have to figure out which pixels that ray is creating the values for. Thus, if we have to copy its value horizontal, vertical or across.
     const bool require_copy = !needs_ray && needs_denoiser; // Our pixel only requires a copy if we want to run a denoiser on it but don't want to shoot a ray for it.
 #ifndef NO_SUBGROUP
-     // Subgroup reads need to be unconditional (should be first), probably a compiler bug!!!
+    // Subgroup reads need to be unconditional (should be first)!
     const bool copy_horizontal = subgroupShuffleXor(require_copy, 1u) && (samples_per_quad != 4u) && is_base_ray; // 0b01 QuadReadAcrossX
     const bool copy_vertical = subgroupShuffleXor(require_copy, 2u) && (samples_per_quad == 1u) && is_base_ray; // 0b10 QuadReadAcrossY
     const bool copy_diagonal = subgroupShuffleXor(require_copy, 3u) && (samples_per_quad == 1u) && is_base_ray; // 0b11 QuadReadAcrossDiagonal
