@@ -718,9 +718,9 @@ void Eng::SceneManager::ForceTextureReload() {
     StartTextureLoaderThread();
 }
 
-void Eng::SceneManager::ReleaseImages(const bool immediate) {
+void Eng::SceneManager::ReleaseImages(const bool immediately) {
     StopTextureLoaderThread();
-    assert(immediate);
+    assert(immediately);
 
     auto new_alloc = std::make_unique<Ren::MemAllocators>(
         "Scene Mem Allocs", &ren_ctx_.api(), 16 * 1024 * 1024 /* initial_block_size */, 1.5f /* growth_factor */,
@@ -774,4 +774,11 @@ void Eng::SceneManager::ReleaseImages(const bool immediate) {
     fill(begin(scene_data_.texture_mem_buckets), end(scene_data_.texture_mem_buckets), 0);
     scene_data_.tex_mem_bucket_index = 0;
     scene_data_.estimated_texture_mem = 0;
+}
+
+void Eng::SceneManager::Release_BLASes(const bool immediately) {
+    for (const Ren::AccStructHandle acc : scene_data_.persistent_data->rt_blases) {
+        ren_ctx_.ReleaseAccStruct(acc, immediately);
+    }
+    scene_data_.persistent_data->rt_blases.clear();
 }

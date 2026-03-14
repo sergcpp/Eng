@@ -147,7 +147,8 @@ class SceneManager {
     void LoadMeshBuffers();
     void ReleaseMeshBuffers(bool immediately = false);
 
-    void ReleaseImages(bool immediate = false);
+    void ReleaseImages(bool immediately = false);
+    void Release_BLASes(bool immmediately = false);
 
     void RebuildLightTree();
     void ReleaseLightTree(bool immediate = false);

@@ -1023,7 +1023,6 @@ void Eng::SceneManager::ReleaseMeshBuffers(const bool immediately) {
             assert(mesh->type() == Ren::eMeshType::Simple);
             mesh->ReleaseBufferData();
 
-            ren_ctx_.ReleaseAccStruct(mesh->blas, immediately);
             mesh->blas = {};
         }
     }
