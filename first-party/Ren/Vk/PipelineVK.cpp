@@ -1,5 +1,6 @@
 #include "../Pipeline.h"
 
+#include "../Config.h"
 #include "../Program.h"
 #include "../RastState.h"
 #include "../VertexInput.h"
@@ -165,6 +166,13 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
             log->Error("Failed to create pipeline layout!");
             return false;
         }
+#ifdef ENABLE_GPU_DEBUG
+        VkDebugUtilsObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
+        name_info.objectType = VK_OBJECT_TYPE_PIPELINE_LAYOUT;
+        name_info.objectHandle = uint64_t(pipeline_main.layout);
+        name_info.pObjectName = pipeline_name.c_str();
+        api.vkSetDebugUtilsObjectNameEXT(api.device, &name_info);
+#endif
     }
 
     if (type == ePipelineType::Compute) {
@@ -293,6 +301,14 @@ bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, Sha
         }
     }
 
+#ifdef ENABLE_GPU_DEBUG
+    VkDebugUtilsObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
+    name_info.objectType = VK_OBJECT_TYPE_PIPELINE;
+    name_info.objectHandle = uint64_t(pipeline_main.pipeline);
+    name_info.pObjectName = pipeline_name.c_str();
+    api.vkSetDebugUtilsObjectNameEXT(api.device, &name_info);
+#endif
+
     pipeline_cold.type = type;
     pipeline_main.prog = prog;
 
@@ -347,6 +363,13 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
             log->Error("Failed to create pipeline layout!");
             return false;
         }
+#ifdef ENABLE_GPU_DEBUG
+        VkDebugUtilsObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
+        name_info.objectType = VK_OBJECT_TYPE_PIPELINE_LAYOUT;
+        name_info.objectHandle = uint64_t(pipeline_main.layout);
+        name_info.pObjectName = pipeline_name.c_str();
+        api.vkSetDebugUtilsObjectNameEXT(api.device, &name_info);
+#endif
     }
 
     { // create graphics pipeline
@@ -509,6 +532,14 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
             return false;
         }
     }
+
+#ifdef ENABLE_GPU_DEBUG
+    VkDebugUtilsObjectNameInfoEXT name_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
+    name_info.objectType = VK_OBJECT_TYPE_PIPELINE;
+    name_info.objectHandle = uint64_t(pipeline_main.pipeline);
+    name_info.pObjectName = pipeline_name.c_str();
+    api.vkSetDebugUtilsObjectNameEXT(api.device, &name_info);
+#endif
 
     pipeline_main.rast_state = rast_state;
     pipeline_main.render_pass = render_pass;

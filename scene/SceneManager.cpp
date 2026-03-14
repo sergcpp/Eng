@@ -903,15 +903,13 @@ void Eng::SceneManager::Alloc_TLAS() {
     }
 }
 
-void Eng::SceneManager::Release_TLAS(const bool immediate) {
-    if (immediate) {
+void Eng::SceneManager::Release_TLAS(const bool immediately) {
+    if (immediately) {
         for (const Ren::BufferHandle buf : scene_data_.persistent_data->rt_tlas_buf) {
-            if (buf) {
-                ren_ctx_.ReleaseBuffer(buf, true /* immediately */);
-            }
+            ren_ctx_.ReleaseBuffer(buf, immediately);
         }
         for (auto &tlas : scene_data_.persistent_data->rt_tlases) {
-            ren_ctx_.ReleaseAccStruct(tlas, true /* immediately */);
+            ren_ctx_.ReleaseAccStruct(tlas, immediately);
         }
     }
     std::fill(std::begin(scene_data_.persistent_data->rt_tlas_buf), std::end(scene_data_.persistent_data->rt_tlas_buf),
@@ -1678,7 +1676,8 @@ std::array<Ren::MaterialHandle, 3> Eng::SceneManager::OnLoadMaterial(std::string
         bool needs_more = false;
         /*if (mat_src.length() > 3 && mat_src[0] == '-' && mat_src[1] == '-' && mat_src[2] == '-') {
             needs_more = true;
-        } else*/ {
+        } else*/
+        {
             const Ren::String name_str{name};
             ret[0] = ret[1] = ren_ctx_.CreateMaterial(
                 name_str, mat_src, std::bind(&SceneManager::OnLoadPipelines, this, _1, _2, _3, _4, _5, _6),
