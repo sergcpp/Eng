@@ -83,11 +83,7 @@ void main() {
             }
         }
     }
-    float out_disocclusion = (total_weight > 0.0) ? saturate(1.0 - total_depth / total_weight) : 0.0;
-    if (dilated_depth < FLT_EPS) {
-        // Mark sky pixels
-        out_disocclusion = 1.0;
-    }
+    const float out_disocclusion = (total_weight > 0.0) ? saturate(1.0 - total_depth / total_weight) : 0.0;
 
     //
     // Compute motion divergence
@@ -111,7 +107,11 @@ void main() {
             }
         }
     }
-    const float out_motion_divergence = saturate(1.0 - min_convergence) * saturate(100.0 * max_velocity_uv);
+    float out_motion_divergence = saturate(1.0 - min_convergence) * saturate(100.0 * max_velocity_uv);
+    if (dilated_depth < FLT_EPS) {
+        // Mark sky pixels
+        out_motion_divergence = 1.0;
+    }
 
     imageStore(g_out_img, icoord, vec4(out_disocclusion, out_motion_divergence, 0.0, 0.0));
 }

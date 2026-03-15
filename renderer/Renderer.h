@@ -263,13 +263,13 @@ class Renderer {
         FgImgRWHandle depth, opaque_depth;
         FgImgDesc velocity_desc;
         FgImgRWHandle velocity;
-        FgImgROHandle disocclusion_mask;
+        FgImgRWHandle disocclusion_mask;
 
         FgImgROHandle exposure;
         FgImgROHandle sun_shadow;
         FgBufRWHandle oit_depth_buf;
 
-        FgImgROHandle ssao;
+        FgImgRWHandle ssao;
         FgImgROHandle gi_diffuse;
 
         // External

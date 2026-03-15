@@ -1601,11 +1601,11 @@ void Eng::Renderer::ExecuteDrawList(const DrawList &list, const PersistentGpuDat
             bloom_tex = {};
         }
         if (list.render_settings.debug_disocclusion) {
-            // resolved_color = frame_textures.disocclusion_mask;
+            resolved_color = frame_textures.disocclusion_mask;
             bloom_tex = {};
         }
         if (list.render_settings.debug_ssao) {
-            // resolved_color = frame_textures.ssao;
+            resolved_color = frame_textures.ssao;
             bloom_tex = {};
         }
         if (list.render_settings.debug_depth) {

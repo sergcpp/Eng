@@ -228,10 +228,14 @@ void main() {
         col_avg.yz = chroma_center;
     #endif
 
-    col_curr.xyz = (color_weight.xyz / color_weight.w);
+    color_weight.w *= float(color_weight.w > 0.001);
+    if (color_weight.w > 0.001) {
+        col_curr.xyz = (color_weight.xyz / color_weight.w);
+        color_weight.w *= (1.0 / 12.0);
 
-    // Deringing
-    col_curr.xyz = clamp(col_curr.xyz, col_min, col_max);
+        // Deringing
+        col_curr.xyz = clamp(col_curr.xyz, col_min, col_max);
+    }
 
     bool set_lock = false;
 #if defined(LOCKING)
@@ -340,9 +344,10 @@ void main() {
     const float unbiased_diff = abs(lum_curr - lum_hist) / max3(lum_curr, lum_hist, 0.2);
     const float unbiased_weight = 1.0 - unbiased_diff;
     const float unbiased_weight_sqr = unbiased_weight * unbiased_weight;
-    const float history_weight = mix(HistoryWeightMin, HistoryWeightMax, unbiased_weight_sqr);
+    float history_weight = mix(HistoryWeightMin, HistoryWeightMax, unbiased_weight_sqr);
+    history_weight = max(0.05, history_weight * float(disocclusion.x < 0.9));
 
-    const float alpha = max(0.001, min(color_weight.w, 1.0 - history_weight));
+    const float alpha = color_weight.w / (history_weight + color_weight.w);
     vec3 col_temporal = mix(col_hist.xyz, col_curr.xyz, alpha);
 #if defined(YCoCg)
     col_temporal = YCoCg_to_RGB(col_temporal);
