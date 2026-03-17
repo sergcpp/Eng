@@ -6,12 +6,11 @@
 #include <iosfwd>
 #include <vector>
 
-#include "MMat.h"
-#include "MQuat.h"
-
-#include "Span.h"
-#include "Storage.h"
-#include "String.h"
+#include "math/Mat.h"
+#include "math/Quat.h"
+#include "utils/Span.h"
+#include "utils/Storage.h"
+#include "utils/String.h"
 
 namespace Ren {
 enum class eAnimBoneFlags { AnimHasTranslate = 1 };

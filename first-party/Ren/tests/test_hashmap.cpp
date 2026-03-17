@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "../HashMap32.h"
+#include "../utils/HashMap32.h"
 
 struct alignas(64) TestHashMapStruct {
     uint32_t val;

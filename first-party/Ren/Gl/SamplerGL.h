@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../SamplingParams.h"
-#include "../Storage.h"
+#include "../utils/Storage.h"
 
 namespace Ren {
 struct ApiContext;

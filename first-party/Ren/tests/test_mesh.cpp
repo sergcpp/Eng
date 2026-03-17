@@ -4,7 +4,7 @@
 
 #include "../Context.h"
 #include "../Mesh.h"
-#include "../Utils.h"
+#include "../utils/Utils.h"
 
 namespace {
 [[maybe_unused]] static const unsigned char __ivy_mesh[] = {
@@ -123,10 +123,10 @@ void test_mesh() {
 
         require(!m_ref->attribs().empty());
         // 16 bytes per vertex in each buffer
-        //require(m_ref->attribs_buf1().size == 48);
-        //require(m_ref->attribs_buf2().size == 48);
+        // require(m_ref->attribs_buf1().size == 48);
+        // require(m_ref->attribs_buf2().size == 48);
         require(!m_ref->indices().empty());
-        //require(m_ref->indices_buf().size == 20);
+        // require(m_ref->indices_buf().size == 20);
 
         require(m_ref->flags() == eMeshFlags::HasAlpha);
         require(m_ref->groups()[0].flags == eMeshFlags::HasAlpha);

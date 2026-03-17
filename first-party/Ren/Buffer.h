@@ -3,14 +3,14 @@
 #include <utility>
 #include <vector>
 
-#include "Bitmask.h"
 #include "Fence.h"
 #include "ImageParams.h"
 #include "MemoryAllocator.h"
 #include "Resource.h"
-#include "SmallVector.h"
-#include "Storage.h"
-#include "String.h"
+#include "utils/Bitmask.h"
+#include "utils/SmallVector.h"
+#include "utils/Storage.h"
+#include "utils/String.h"
 
 namespace Ren {
 class ILog;

@@ -1,6 +1,6 @@
 #include "Atmosphere.h"
 
-#include <Ren/MMat.h>
+#include <Ren/math/Mat.h>
 
 namespace Eng {
 // Math
@@ -40,7 +40,8 @@ Ren::Vec2f SphereIntersection(Ren::Vec4f ray_start, const Ren::Vec4f &ray_dir, c
     }
 }
 
-Ren::Vec2f PlanetIntersection(const atmosphere_params_t &params, const Ren::Vec4f &ray_start, const Ren::Vec4f &ray_dir) {
+Ren::Vec2f PlanetIntersection(const atmosphere_params_t &params, const Ren::Vec4f &ray_start,
+                              const Ren::Vec4f &ray_dir) {
     const Ren::Vec4f planet_center = Ren::Vec4f(0, -params.planet_radius, 0, 0);
     return SphereIntersection(ray_start, ray_dir, planet_center, params.planet_radius);
 }

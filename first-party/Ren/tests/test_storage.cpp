@@ -1,6 +1,6 @@
 #include "test_common.h"
 
-#include "../Storage.h"
+#include "../utils/Storage.h"
 
 void test_storage() {
     using namespace Ren;

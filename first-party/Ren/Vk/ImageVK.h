@@ -5,8 +5,8 @@
 
 #include "../Buffer.h"
 #include "../ImageParams.h"
-#include "../MVec.h"
 #include "../MemoryAllocator.h"
+#include "../math/Vec.h"
 
 #include "VK.h"
 

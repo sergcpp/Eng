@@ -5,7 +5,7 @@
 
 #include "../Buffer.h"
 #include "../ImageParams.h"
-#include "../MVec.h"
+#include "../math/Vec.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)

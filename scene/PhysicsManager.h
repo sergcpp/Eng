@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include <Ren/Span.h>
+#include <Ren/utils/Span.h>
 
 namespace Phy {
 class Body;
@@ -29,8 +29,6 @@ class PhysicsManager {
   public:
     void Update(SceneData &scene, float dt_s);
 
-    [[nodiscard]] Ren::Span<const uint32_t> updated_objects() const {
-        return updated_objects_;
-    }
+    [[nodiscard]] Ren::Span<const uint32_t> updated_objects() const { return updated_objects_; }
 };
 } // namespace Eng

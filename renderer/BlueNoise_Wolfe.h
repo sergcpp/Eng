@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Ren/MVec.h>
+#include <Ren/math/Vec.h>
 
 //
 // Blue noise generator described in "Scalar Spatiotemporal Blue Noise Masks" https://arxiv.org/pdf/2112.09629

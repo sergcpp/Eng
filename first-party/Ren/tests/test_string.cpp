@@ -1,6 +1,6 @@
 #include "test_common.h"
 
-#include "../String.h"
+#include "../utils/String.h"
 
 void test_string() {
     using namespace Ren;

@@ -11,14 +11,14 @@
 #include <Ren/Common.h>
 #include <Ren/Framebuffer.h>
 #include <Ren/Fwd.h>
-#include <Ren/HashMap32.h>
 #include <Ren/Image.h>
 #include <Ren/Log.h>
 #include <Ren/Pipeline.h>
 #include <Ren/RastState.h>
 #include <Ren/Sampler.h>
-#include <Ren/SmallVector.h>
-#include <Ren/SparseArray.h>
+#include <Ren/utils/HashMap32.h>
+#include <Ren/utils/SmallVector.h>
+#include <Ren/utils/SparseArray.h>
 #include <Sys/MonoAlloc.h>
 
 #include "FgResource.h"

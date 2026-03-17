@@ -8,10 +8,10 @@
 
 #include "../Fwd.h"
 #include "../Shader.h"
-#include "../SmallVector.h"
-#include "../Span.h"
-#include "../Storage.h"
-#include "../String.h"
+#include "../utils/SmallVector.h"
+#include "../utils/Span.h"
+#include "../utils/Storage.h"
+#include "../utils/String.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)

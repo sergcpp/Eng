@@ -7,8 +7,8 @@
 #include <thread>
 
 #include <Ren/Camera.h>
-#include <Ren/RingBuffer.h>
-#include <Ren/Span.h>
+#include <Ren/utils/RingBuffer.h>
+#include <Ren/utils/Span.h>
 #include <Sys/AsyncFileReader.h>
 #include <Sys/DynLib.h>
 

@@ -9,7 +9,7 @@
 #include <memory>
 #include <random>
 
-#include <Ren/Utils.h>
+#include <Ren/utils/Utils.h>
 
 namespace Eng::BNInternal {
 namespace STBN {

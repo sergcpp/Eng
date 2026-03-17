@@ -3,7 +3,7 @@
 #include <vector>
 
 #include <Ren/Fwd.h>
-#include <Ren/MVec.h>
+#include <Ren/math/Vec.h>
 
 #include "Common.h"
 

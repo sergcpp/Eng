@@ -1,6 +1,6 @@
 #include "../DescriptorPool.h"
 
-#include "../SmallVector.h"
+#include "../utils/SmallVector.h"
 #include "VKCtx.h"
 
 namespace Ren {

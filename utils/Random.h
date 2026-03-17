@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include <Ren/MVec.h>
+#include <Ren/math/Vec.h>
 
 namespace Eng {
 class Random_Impl;

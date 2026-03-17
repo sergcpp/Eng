@@ -2,14 +2,21 @@
 
 #include <string_view>
 
-#include <Ren/Bitmask.h>
-#include <Ren/MMat.h>
+#include <Ren/math/Mat.h>
+#include <Ren/utils/Bitmask.h>
 
 #include "Common.h"
 
 namespace Eng {
 enum class eLightType : uint8_t { Sphere, Rect, Disk, Line, _Count };
-enum class eLightFlags : uint8_t { SkyPortal, CastShadow, AffectDiffuse, AffectSpecular, AffectRefraction, AffectVolume };
+enum class eLightFlags : uint8_t {
+    SkyPortal,
+    CastShadow,
+    AffectDiffuse,
+    AffectSpecular,
+    AffectRefraction,
+    AffectVolume
+};
 
 struct LightSource {
     eLightType type;

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Image.h"
-#include "ImageSplitter.h"
 #include "Resource.h"
 #include "Sampler.h"
-#include "SmallVector.h"
+#include "utils/ImageSplitter.h"
+#include "utils/SmallVector.h"
 
 namespace Ren {
 class ImageAtlas {

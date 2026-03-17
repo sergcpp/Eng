@@ -4,9 +4,9 @@
 
 #include <variant>
 
-#include "Bitmask.h"
 #include "Fwd.h"
-#include "Span.h"
+#include "utils/Bitmask.h"
+#include "utils/Span.h"
 
 namespace Ren {
 struct ApiContext;

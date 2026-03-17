@@ -4,12 +4,12 @@
 
 #include <atomic>
 
-#include <Ren/HashMap32.h>
 #include <Ren/ImageAtlas.h>
-#include <Ren/MMat.h>
 #include <Ren/Mesh.h>
 #include <Ren/Pipeline.h>
-#include <Ren/Storage.h>
+#include <Ren/math/Mat.h>
+#include <Ren/utils/HashMap32.h>
+#include <Ren/utils/Storage.h>
 
 #include "Atmosphere.h"
 #include "components/AccStructure.h"

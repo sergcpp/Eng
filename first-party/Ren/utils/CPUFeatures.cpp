@@ -1,7 +1,7 @@
 #include "CPUFeatures.h"
 
 extern "C" {
-#include "SW/SWcpu.h"
+#include "../SW/SWcpu.h"
 }
 
 namespace Ren {

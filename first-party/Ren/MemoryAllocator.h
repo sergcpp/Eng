@@ -3,8 +3,8 @@
 #include <memory>
 #include <string>
 
-#include "FreelistAlloc.h"
-#include "SmallVector.h"
+#include "utils/FreelistAlloc.h"
+#include "utils/SmallVector.h"
 
 #if defined(REN_VK_BACKEND)
 typedef uint32_t VkFlags;

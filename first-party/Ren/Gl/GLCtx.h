@@ -2,8 +2,8 @@
 
 #include "../Common.h"
 #include "../Fence.h"
-#include "../SmallVector.h"
-#include "../Storage.h"
+#include "../utils/SmallVector.h"
+#include "../utils/Storage.h"
 
 namespace Ren {
 struct ImageMain;

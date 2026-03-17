@@ -1,6 +1,6 @@
 #include "../DescriptorPool.h"
 
-#include "../SmallVector.h"
+#include "../utils/SmallVector.h"
 #include "GLCtx.h"
 
 Ren::DescrPool &Ren::DescrPool::operator=(DescrPool &&rhs) noexcept {

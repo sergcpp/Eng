@@ -3,12 +3,10 @@
 #include <fstream>
 #include <numeric>
 
-#include <Gui/third-party/stb_truetype.h>
-
-#include <Ren/ImageSplitter.h>
-
 #include <Gui/BitmapFont.h>
 #include <Gui/Utils.h>
+#include <Gui/third-party/stb_truetype.h>
+#include <Ren/utils/ImageSplitter.h>
 
 bool Eng::SceneManager::HConvTTFToFont(assets_context_t &ctx, const char *in_file, const char *out_file,
                                        Ren::SmallVectorImpl<std::string> &, Ren::SmallVectorImpl<asset_output_t> &) {

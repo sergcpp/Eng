@@ -3,9 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <Ren/MMat.h>
-#include <Ren/MQuat.h>
-#include <Ren/SmallVector.h>
+#include <Ren/math/Mat.h>
+#include <Ren/math/Quat.h>
+#include <Ren/utils/SmallVector.h>
 
 #include <Ren/Bindless.h>
 #include <Ren/Buffer.h>

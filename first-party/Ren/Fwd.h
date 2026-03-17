@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Bitmask.h"
 #include "Log.h"
-#include "Storage.h"
+#include "utils/Bitmask.h"
+#include "utils/Storage.h"
 
 #if defined(REN_VK_BACKEND)
 typedef uint64_t VkDeviceAddress;

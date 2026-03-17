@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Ren/Span.h>
+#include <Ren/utils/Span.h>
 
 #include "../Renderer_DrawList.h"
 #include "../framegraph/FgNode.h"

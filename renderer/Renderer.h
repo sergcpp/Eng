@@ -4,7 +4,7 @@
 #include <optional>
 
 #include <Ren/Common.h>
-#include <Ren/ImageSplitter.h>
+#include <Ren/utils/ImageSplitter.h>
 extern "C" {
 #include <Ren/SW/SWculling.h>
 }

@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <string_view>
 
-#include "Bitmask.h"
 #include "SamplingParams.h"
+#include "utils/Bitmask.h"
 
 namespace Ren {
 #define X(_0, ...) _0,

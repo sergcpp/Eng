@@ -3,8 +3,8 @@
 #include <array>
 #include <deque>
 
+#include "../ImageParams.h"
 #include "CPUFeatures.h"
-#include "Image.h"
 
 #ifdef __GNUC__
 #define force_inline __attribute__((always_inline)) inline

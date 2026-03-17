@@ -9,7 +9,7 @@
 #include "../Config.h"
 #include "../Image.h"
 #include "../Log.h"
-#include "../SmallVector.h"
+#include "../utils/SmallVector.h"
 
 namespace Ren {
 #if defined(_WIN32)

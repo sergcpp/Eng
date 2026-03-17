@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../input/InputManager.h"
-#include <Ren/MMat.h>
+#include <Ren/math/Mat.h>
 
 namespace Eng {
 class FreeCamController {

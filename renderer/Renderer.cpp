@@ -4,7 +4,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/ResizableBuffer.h>
-#include <Ren/Utils.h>
+#include <Ren/utils/Utils.h>
 #include <Sys/MonoAlloc.h>
 #include <Sys/ScopeExit.h>
 #include <Sys/ThreadPool.h>
@@ -481,7 +481,8 @@ Eng::Renderer::Renderer(Ren::Context &ctx, ShaderLoader &sh, Random &rand, Sys::
              Ren::eStoreOp::Store},
 #endif
             {Ren::eFormat::RGBA8_srgb, 1 /* samples */, Ren::eImageLayout::ColorAttachmentOptimal, Ren::eLoadOp::Load,
-             Ren::eStoreOp::Store}};
+             Ren::eStoreOp::Store}
+        };
 
         // color_rts[2].flags = Ren::eImgFlags::SRGB;
 

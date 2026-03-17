@@ -3,7 +3,7 @@
 #include <cfloat>
 
 #include <Ren/Context.h>
-#include <Ren/Utils.h>
+#include <Ren/utils/Utils.h>
 #include <Sys/ThreadPool.h>
 #include <Sys/Time_.h>
 
@@ -180,7 +180,7 @@ __itt_string_handle *itt_proc_occluders_str = __itt_string_handle_create("Proces
     }
 
 #define _CROSS(x, y)                                                                                                   \
-    {(x)[1] * (y)[2] - (x)[2] * (y)[1], (x)[2] * (y)[0] - (x)[0] * (y)[2], (x)[0] * (y)[1] - (x)[1] * (y)[0]}
+    { (x)[1] * (y)[2] - (x)[2] * (y)[1], (x)[2] * (y)[0] - (x)[0] * (y)[2], (x)[0] * (y)[1] - (x)[1] * (y)[0] }
 
 void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &cam, const Ren::Camera &ext_cam,
                                     DrawList &list) {
@@ -319,7 +319,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     list.draw_cam.near());
     swCullCtxClear(&cull_ctx_);
 
-    const Mat4f view_from_identity = view_from_world * Mat4f{1.0f},
+    const Mat4f view_from_identity = view_from_world *Mat4f{1.0f},
                 clip_from_identity = clip_from_view * view_from_identity;
 
     uint32_t stack[MAX_STACK_SIZE];
@@ -618,8 +618,8 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         auto dir = Vec4f{-light.dir[0], -light.dir[1], -light.dir[2], 0.0f};
                         dir = tr.world_from_object * dir;
 
-                        const auto u = tr.world_from_object * Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
-                        const auto v = tr.world_from_object * Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
+                        const auto u = tr.world_from_object *Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
+                        const auto v = tr.world_from_object *Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
 
                         litem_to_lsource_.emplace_back(obj.components[CompLightSource]);
                         proc_objects_[i.index].li_index = int32_t(list.lights.size());
@@ -810,8 +810,8 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     auto dir = Vec4f{-light.dir[0], -light.dir[1], -light.dir[2], 0.0f};
                     dir = tr.world_from_object * dir;
 
-                    const auto u = tr.world_from_object * Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
-                    const auto v = tr.world_from_object * Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
+                    const auto u = tr.world_from_object *Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
+                    const auto v = tr.world_from_object *Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
 
                     litem_to_lsource_.emplace_back(obj.components[CompLightSource]);
                     light_item_t &ls = list.lights.emplace_back();

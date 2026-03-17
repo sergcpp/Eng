@@ -45,12 +45,10 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Config.h.in ${CMAKE_CURRENT_SOURCE_DI
 
 set(SOURCE_FILES AccStructure.h
                  AccStructure.cpp
-                 AlignedAlloc.h
                  Anim.h
                  Anim.cpp
                  ApiContext.h
                  Bindless.h
-                 Bitmask.h
                  BlendFactor.inl
                  BlendOp.inl
                  Buffer.h
@@ -62,13 +60,9 @@ set(SOURCE_FILES AccStructure.h
                  Config.h
                  Context.h
                  Context.cpp
-                 CPUFeatures.h
-                 CPUFeatures.cpp
                  DebugMarker.h
                  DescriptorPool.h
                  DrawCall.h
-                 FreelistAlloc.h
-                 FreelistAlloc.cpp
                  MemoryAllocator.h
                  Fence.h
                  Filter.inl
@@ -76,8 +70,6 @@ set(SOURCE_FILES AccStructure.h
                  Format.inl
                  Framebuffer.h
                  Fwd.h
-                 HashMap32.h
-                 HashSet32.h
                  Image.h
                  Image.cpp
                  ImageAtlas.h
@@ -86,16 +78,11 @@ set(SOURCE_FILES AccStructure.h
                  ImageParams.cpp
                  ImageRegion.h
                  ImageRegion.cpp
-                 ImageSplitter.h
-                 ImageSplitter.cpp
                  Log.h
                  Material.h
                  Material.cpp
                  Mesh.h
                  Mesh.cpp
-                 MMat.h
-                 MQuat.h
-                 MVec.h
                  Pipeline.h
                  Program.h
                  RastState.h
@@ -106,24 +93,39 @@ set(SOURCE_FILES AccStructure.h
                  ResizableBuffer.cpp
                  Resource.h
                  Resource.cpp
-                 RingBuffer.h
                  Sampler.h
                  SamplingParams.h
                  Shader.h
-                 SmallVector.h
-                 Span.h
-                 SparseArray.h
                  StencilOp.inl
-                 Storage.h
-                 String.h
                  Types.inl
-                 Utils.h
-                 Utils.cpp
-                 Utils_AVX.cpp
-                 Utils_SSE2.cpp
-                 Utils_NEON.cpp
                  VertexInput.h
                  Wrap.inl)
+
+set(MATH_SOURCE_FILES math/Mat.h
+                      math/Quat.h
+                      math/Vec.h)
+
+set(UTILS_SOURCE_FILES utils/AlignedAlloc.h
+                       utils/Bitmask.h
+                       utils/CPUFeatures.h
+                       utils/CPUFeatures.cpp
+                       utils/FreelistAlloc.h
+                       utils/FreelistAlloc.cpp
+                       utils/HashMap32.h
+                       utils/HashSet32.h
+                       utils/ImageSplitter.h
+                       utils/ImageSplitter.cpp
+                       utils/RingBuffer.h
+                       utils/SmallVector.h
+                       utils/Span.h
+                       utils/SparseArray.h
+                       utils/Storage.h
+                       utils/String.h
+                       utils/Utils.h
+                       utils/Utils.cpp
+                       utils/Utils_AVX.cpp
+                       utils/Utils_SSE2.cpp
+                       utils/Utils_NEON.cpp)
 
 set(GL_SOURCE_FILES Gl/BufferGL.cpp
                     Gl/ContextGL.cpp
@@ -196,6 +198,12 @@ add_subdirectory(third-party/SPIRV-Reflect)
 list(APPEND REN_SOURCE_FILES ${SOURCE_FILES})
 source_group("src" FILES ${SOURCE_FILES})
 
+list(APPEND REN_SOURCE_FILES ${MATH_SOURCE_FILES})
+source_group("src\\math" FILES ${MATH_SOURCE_FILES})
+
+list(APPEND REN_SOURCE_FILES ${UTILS_SOURCE_FILES})
+source_group("src\\utils" FILES ${UTILS_SOURCE_FILES})
+
 if(${REN_BACKEND} STREQUAL "GL")
     list(APPEND REN_SOURCE_FILES ${GL_SOURCE_FILES})
     source_group("src\\Gl" FILES ${GL_SOURCE_FILES})
@@ -207,18 +215,18 @@ endif()
 if(NOT CMAKE_GENERATOR_PLATFORM MATCHES "ARM64")
     if(MSVC)
         if(NOT CMAKE_CL_64)
-            set_source_files_properties(Utils_SSE2.cpp PROPERTIES COMPILE_FLAGS /arch:SSE2)
+            set_source_files_properties(utils/Utils_SSE2.cpp PROPERTIES COMPILE_FLAGS /arch:SSE2)
         endif()
         if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-            set_source_files_properties(Utils_SSE2.cpp PROPERTIES COMPILE_FLAGS -msse4.1)
-            set_source_files_properties(Utils_AVX.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
+            set_source_files_properties(utils/Utils_SSE2.cpp PROPERTIES COMPILE_FLAGS -msse4.1)
+            set_source_files_properties(utils/Utils_AVX.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
         else()
-            set_source_files_properties(Utils_AVX.cpp PROPERTIES COMPILE_FLAGS /arch:AVX)
+            set_source_files_properties(utils/Utils_AVX.cpp PROPERTIES COMPILE_FLAGS /arch:AVX)
         endif()
         list(APPEND REN_SOURCE_FILES _CustomTypes.natvis)
     else(MSVC)
-        set_source_files_properties(Utils_SSE2.cpp PROPERTIES COMPILE_FLAGS -msse2)
-        set_source_files_properties(Utils_AVX.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
+        set_source_files_properties(utils/Utils_SSE2.cpp PROPERTIES COMPILE_FLAGS -msse2)
+        set_source_files_properties(utils/Utils_AVX.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
     endif(MSVC)
 endif(NOT CMAKE_GENERATOR_PLATFORM MATCHES "ARM64")
 

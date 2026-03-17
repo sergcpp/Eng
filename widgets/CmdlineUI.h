@@ -4,9 +4,9 @@
 #include <string_view>
 
 #include <Gui/Image9Patch.h>
-#include <Ren/HashMap32.h>
-#include <Ren/SmallVector.h>
-#include <Ren/Span.h>
+#include <Ren/utils/HashMap32.h>
+#include <Ren/utils/SmallVector.h>
+#include <Ren/utils/Span.h>
 
 namespace Eng {
 class CmdlineUI final : public Gui::BaseElement {

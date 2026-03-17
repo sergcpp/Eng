@@ -2,7 +2,7 @@
 
 #include "Fwd.h"
 #include "Image.h"
-#include "Span.h"
+#include "utils/Span.h"
 
 namespace Ren {
 struct ApiContext;

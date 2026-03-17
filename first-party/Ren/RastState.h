@@ -4,12 +4,10 @@
 #include <cstring>
 
 #include <string_view>
-
-#include "MVec.h"
-
 #undef Always
 
 #include "SamplingParams.h"
+#include "math/Vec.h"
 
 namespace Ren {
 #define X(_0, ...) _0,

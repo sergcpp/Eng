@@ -1,6 +1,6 @@
 #include "test_common.h"
 
-#include "../MMat.h"
+#include "../math/Mat.h"
 
 void test_math() {
     using namespace Ren;

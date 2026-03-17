@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include <Ren/MVec.h>
+#include <Ren/math/Vec.h>
 
 //
 // Blue noise optimization described in "A Low-Discrepancy Sampler that Distributes Monte Carlo Errors as a Blue Noise

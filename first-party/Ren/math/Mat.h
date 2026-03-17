@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MVec.h"
+#include "Vec.h"
 
 #ifdef __GNUC__
 #define force_inline __attribute__((always_inline)) inline

@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "../SmallVector.h"
+#include "../utils/SmallVector.h"
 
 void test_small_vector() {
     using namespace Ren;

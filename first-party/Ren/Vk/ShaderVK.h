@@ -3,9 +3,9 @@
 #include <cstdint>
 
 #include "../Shader.h"
-#include "../SmallVector.h"
-#include "../Span.h"
-#include "../Storage.h"
+#include "../utils/SmallVector.h"
+#include "../utils/Span.h"
+#include "../utils/Storage.h"
 
 namespace Ren {
 class ILog;

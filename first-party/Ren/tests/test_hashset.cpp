@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "../HashSet32.h"
+#include "../utils/HashSet32.h"
 
 struct alignas(64) TestHashSetStruct {
     uint32_t val;

@@ -2,7 +2,7 @@
 
 #include "ApiContext.h"
 #include "ImageAtlas.h"
-#include "Utils.h"
+#include "utils/Utils.h"
 
 Ren::ImageRegion::ImageRegion(std::string_view name, ImageAtlasArray *atlas, const int pos[3])
     : name_(name), atlas_(atlas) {

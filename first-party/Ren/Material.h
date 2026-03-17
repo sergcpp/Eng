@@ -9,11 +9,10 @@
 #include "Image.h"
 #include "Program.h"
 #include "Sampler.h"
-#include "SmallVector.h"
-#include "Storage.h"
-#include "String.h"
-
-#include "MVec.h"
+#include "math/Vec.h"
+#include "utils/SmallVector.h"
+#include "utils/Storage.h"
+#include "utils/String.h"
 
 namespace Ren {
 class ILog;

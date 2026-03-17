@@ -1,6 +1,6 @@
 #include "test_common.h"
 
-#include "../Span.h"
+#include "../utils/Span.h"
 
 void test_span() {
     using namespace Ren;

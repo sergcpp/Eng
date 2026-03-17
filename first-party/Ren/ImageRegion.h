@@ -2,8 +2,8 @@
 
 #include "Fwd.h"
 #include "ImageParams.h"
-#include "Span.h"
-#include "Storage.h"
+#include "utils/Span.h"
+#include "utils/Storage.h"
 
 namespace Ren {
 class ImageAtlasArray;

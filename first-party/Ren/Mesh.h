@@ -5,12 +5,12 @@
 
 #include "AccStructure.h"
 #include "Anim.h"
-#include "Bitmask.h"
 #include "Buffer.h"
 #include "Material.h"
-#include "SmallVector.h"
-#include "Span.h"
-#include "String.h"
+#include "utils/Bitmask.h"
+#include "utils/SmallVector.h"
+#include "utils/Span.h"
+#include "utils/String.h"
 
 namespace Ren {
 class ILog;

@@ -6,8 +6,8 @@
 #include "Program.h"
 #include "RastState.h"
 #include "RenderPass.h"
-#include "Span.h"
 #include "VertexInput.h"
+#include "utils/Span.h"
 
 namespace Ren {
 struct ApiContext;

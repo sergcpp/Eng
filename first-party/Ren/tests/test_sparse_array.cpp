@@ -4,7 +4,7 @@
 #include <random>
 #include <vector>
 
-#include "../SparseArray.h"
+#include "../utils/SparseArray.h"
 
 namespace {
 std::vector<int> GenTestData(int size) {

@@ -3,7 +3,7 @@
 #include <utility>
 
 #include "Fwd.h"
-#include "SmallVector.h"
+#include "utils/SmallVector.h"
 
 namespace Ren {
 struct ApiContext;

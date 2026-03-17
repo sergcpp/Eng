@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-#include "MVec.h"
+#include "../math/Vec.h"
 #include "Span.h"
 
 namespace Ren {

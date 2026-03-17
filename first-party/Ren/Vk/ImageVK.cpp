@@ -5,7 +5,7 @@
 #include "../Config.h"
 #include "../ImageParams.h"
 #include "../Log.h"
-#include "../Utils.h"
+#include "../utils/Utils.h"
 #include "VKCtx.h"
 
 #ifdef _MSC_VER

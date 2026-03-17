@@ -4,7 +4,7 @@
 
 #include "../Config.h"
 #include "../Context.h"
-#include "../Utils.h"
+#include "../utils/Utils.h"
 #include "GL.h"
 #include "GLCtx.h"
 

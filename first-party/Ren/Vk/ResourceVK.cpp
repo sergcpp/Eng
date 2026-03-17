@@ -1,7 +1,7 @@
 #include "../Resource.h"
 
-#include "../Bitmask.h"
 #include "../Image.h"
+#include "../utils/Bitmask.h"
 #include "VKCtx.h"
 
 namespace Ren {

@@ -5,8 +5,8 @@
 #include "Image.h"
 #include "ImageParams.h"
 #include "RenderPass.h"
-#include "SmallVector.h"
-#include "Span.h"
+#include "utils/SmallVector.h"
+#include "utils/Span.h"
 
 namespace Ren {
 struct FramebufferAttachment {

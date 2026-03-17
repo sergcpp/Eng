@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Buffer.h"
-#include "Span.h"
+#include "utils/Span.h"
 
 namespace Ren {
 struct VtxAttribDesc {

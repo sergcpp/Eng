@@ -4,7 +4,7 @@
 
 #include <Gui/BitmapFont.h>
 #include <Ren/Context.h>
-#include <Ren/HashMap32.h>
+#include <Ren/utils/HashMap32.h>
 #include <Sys/ScopeExit.h>
 #include <Sys/Time_.h>
 

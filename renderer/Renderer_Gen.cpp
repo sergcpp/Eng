@@ -2,7 +2,7 @@
 
 #include <random>
 
-#include <Ren/Utils.h>
+#include <Ren/utils/Utils.h>
 
 #include "../scene/Atmosphere.h"
 

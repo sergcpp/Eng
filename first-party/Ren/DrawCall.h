@@ -3,8 +3,8 @@
 #include <cstdint>
 
 #include "Fwd.h"
-#include "MVec.h"
-#include "Span.h"
+#include "math/Vec.h"
+#include "utils/Span.h"
 
 namespace Ren {
 struct ApiContext;

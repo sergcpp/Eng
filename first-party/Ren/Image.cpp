@@ -1,7 +1,7 @@
 #include "Image.h"
 
 #include "ApiContext.h"
-#include "Utils.h"
+#include "utils/Utils.h"
 
 #if defined(REN_GL_BACKEND)
 #include "Gl/GL.h"

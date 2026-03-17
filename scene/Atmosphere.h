@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Ren/MVec.h>
-#include <Ren/Span.h>
+#include <Ren/math/Vec.h>
+#include <Ren/utils/Span.h>
 
 namespace Eng {
 struct atmosphere_params_t {
@@ -58,7 +58,8 @@ inline float from_sub_uvs_to_unit(const float u, const float resolution) {
 // https://github.com/ebruneton/precomputed_atmospheric_scattering
 void UvToLutTransmittanceParams(const atmosphere_params_t &params, Ren::Vec2f uv, float &view_height,
                                 float &view_zenith_cos_angle);
-Ren::Vec2f LutTransmittanceParamsToUv(const atmosphere_params_t &params, float view_height, float view_zenith_cos_angle);
+Ren::Vec2f LutTransmittanceParamsToUv(const atmosphere_params_t &params, float view_height,
+                                      float view_zenith_cos_angle);
 
 Ren::Vec4f IntegrateOpticalDepth(const atmosphere_params_t &params, const Ren::Vec4f &ray_start,
                                  const Ren::Vec4f &ray_dir);

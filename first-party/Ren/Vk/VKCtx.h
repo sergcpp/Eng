@@ -2,8 +2,8 @@
 
 #include "../Common.h"
 #include "../MemoryAllocator.h"
-#include "../SmallVector.h"
-#include "../Storage.h"
+#include "../utils/SmallVector.h"
+#include "../utils/Storage.h"
 #include "VK.h"
 
 namespace Ren {

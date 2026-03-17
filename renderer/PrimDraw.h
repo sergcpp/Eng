@@ -4,10 +4,10 @@
 #include <Ren/Framebuffer.h>
 #include <Ren/Fwd.h>
 #include <Ren/Image.h>
-#include <Ren/MMat.h>
 #include <Ren/Pipeline.h>
 #include <Ren/RenderPass.h>
 #include <Ren/VertexInput.h>
+#include <Ren/math/Mat.h>
 
 #if defined(REN_VK_BACKEND)
 #include <Ren/DescriptorPool.h>

@@ -5,7 +5,7 @@
 
 #include "ImageParams.h"
 #include "SamplingParams.h"
-#include "Utils.h"
+#include "utils/Utils.h"
 
 namespace Ren {
 class Context;

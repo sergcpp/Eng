@@ -7,7 +7,7 @@
 
 #include <Ren/Context.h>
 #include <Ren/ResizableBuffer.h>
-#include <Ren/Utils.h>
+#include <Ren/utils/Utils.h>
 #include <Snd/Context.h>
 #include <Sys/AssetFile.h>
 #include <Sys/AssetFileIO.h>

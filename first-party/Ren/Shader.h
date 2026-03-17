@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Bitmask.h"
-#include "String.h"
+#include "utils/Bitmask.h"
+#include "utils/String.h"
 #if defined(REN_VK_BACKEND)
 #include "Vk/VK.h"
 #endif

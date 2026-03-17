@@ -1,6 +1,6 @@
 #include "test_common.h"
 
-#include "../FreelistAlloc.h"
+#include "../utils/FreelistAlloc.h"
 
 void test_freelist_alloc() {
     using namespace Ren;
