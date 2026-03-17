@@ -92,8 +92,8 @@ static const uint32_t SkipFrustumCheckBit = (1u << 31u);
 static const uint32_t IndexBits = ~SkipFrustumCheckBit;
 
 void __push_ellipsoids(const Eng::Drawable &dr, const Ren::Mat4f &world_from_object, Eng::DrawList &list);
-uint32_t __push_skeletal_mesh(uint32_t skinned_buf_vtx_offset, const Eng::AnimState &as, const Ren::Mesh *mesh,
-                              Eng::DrawList &list);
+uint32_t __push_skeletal_mesh(uint32_t skinned_buf_vtx_offset, const Eng::AnimState &as, const Ren::MeshMain &mesh_main,
+                              const Ren::MeshCold &mesh_cold, Eng::DrawList &list);
 uint32_t __record_texture(std::vector<Eng::TexEntry> &storage, Ren::ImageHandle tex, int prio, uint16_t distance);
 void __record_textures(std::vector<Eng::TexEntry> &storage, const Ren::MaterialMain &mat, bool is_animated,
                        uint16_t distance);
@@ -180,7 +180,7 @@ __itt_string_handle *itt_proc_occluders_str = __itt_string_handle_create("Proces
     }
 
 #define _CROSS(x, y)                                                                                                   \
-    { (x)[1] * (y)[2] - (x)[2] * (y)[1], (x)[2] * (y)[0] - (x)[0] * (y)[2], (x)[0] * (y)[1] - (x)[1] * (y)[0] }
+    {(x)[1] * (y)[2] - (x)[2] * (y)[1], (x)[2] * (y)[0] - (x)[0] * (y)[2], (x)[0] * (y)[1] - (x)[1] * (y)[0]}
 
 void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &cam, const Ren::Camera &ext_cam,
                                     DrawList &list) {
@@ -319,7 +319,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     list.draw_cam.near());
     swCullCtxClear(&cull_ctx_);
 
-    const Mat4f view_from_identity = view_from_world *Mat4f{1.0f},
+    const Mat4f view_from_identity = view_from_world * Mat4f{1.0f},
                 clip_from_identity = clip_from_view * view_from_identity;
 
     uint32_t stack[MAX_STACK_SIZE];
@@ -374,19 +374,19 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                                 clip_from_object = cull_clip_from_view * view_from_object;
 
                     const Occluder &occ = occluders[obj.components[CompOccluder]];
-                    const Mesh *mesh = occ.mesh.get();
+                    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(occ.mesh);
 
                     SWcull_surf surf[64];
                     int surf_count = 0;
 
-                    for (const auto &grp : mesh->groups()) {
+                    for (const auto &grp : mesh_cold.groups) {
                         SWcull_surf *_surf = &surf[surf_count++];
 
                         _surf->type = SW_OCCLUDER;
                         _surf->prim_type = SW_TRIANGLES;
                         _surf->index_type = SW_UNSIGNED_INT;
-                        _surf->attribs = mesh->attribs().data();
-                        _surf->indices = ((const uint8_t *)mesh->indices().data() + grp.byte_offset);
+                        _surf->attribs = mesh_cold.attribs.data();
+                        _surf->indices = ((const uint8_t *)mesh_cold.indices.data() + grp.byte_offset);
                         _surf->stride = 13 * sizeof(float);
 
                         _surf->count = SWuint(grp.num_indices);
@@ -463,24 +463,24 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     if (!bool(dr.vis_mask & render_mask)) {
                         continue;
                     }
-                    const Mesh *mesh = dr.mesh.get();
+                    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(dr.mesh);
 
                     const float cam_dist = Distance(cam.world_position(), 0.5f * (tr.bbox_min_ws + tr.bbox_max_ws));
                     const auto cam_dist_u8 = uint8_t(std::min(255 * cam_dist / 500.0f, 255.0f));
                     const uint16_t cam_dist_u16 = uint16_t(0xffffu * (cam_dist / 500.0f));
 
-                    uint32_t base_vertex = mesh->attribs_buf1().sub.offset / 16;
+                    uint32_t base_vertex = mesh_main.attribs_buf1.sub.offset / 16;
 
                     if (obj.comp_mask & CompAnimStateBit) {
                         const AnimState &as = anims[obj.components[CompAnimState]];
-                        base_vertex = __push_skeletal_mesh(skinned_buf_vtx_offset, as, mesh, list);
+                        base_vertex = __push_skeletal_mesh(skinned_buf_vtx_offset, as, mesh_main, mesh_cold, list);
                     }
                     proc_objects_[i.index].base_vertex = base_vertex;
 
                     __push_ellipsoids(dr, tr.world_from_object, list);
 
-                    const uint32_t indices_start = mesh->indices_buf().sub.offset;
-                    const Ren::Span<const Ren::tri_group_t> groups = mesh->groups();
+                    const uint32_t indices_start = mesh_main.indices_buf.sub.offset;
+                    const Ren::Span<const Ren::tri_group_t> groups = mesh_cold.groups;
                     for (int j = 0; j < int(groups.size()); ++j) {
                         const Ren::tri_group_t &grp = groups[j];
 
@@ -565,7 +565,8 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     if (!(acc.vis_mask & AccStructure::eRayType::Volume)) {
                         continue;
                     }
-                    if (acc.mesh->blas && list.rt_obj_instances[2].count < MAX_RT_OBJ_INSTANCES_TOTAL) {
+                    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(acc.mesh);
+                    if (mesh_cold.blas && list.rt_obj_instances[2].count < MAX_RT_OBJ_INSTANCES_TOTAL) {
                         const Mat4f world_from_object_trans = Transpose(tr.world_from_object);
 
                         rt_obj_instance_t &new_instance =
@@ -576,10 +577,10 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         new_instance.geo_count = 0;
                         new_instance.mask = uint8_t(acc.vis_mask);
                         memcpy(new_instance.bbox_max_ws, ValuePtr(tr.bbox_max_ws), 3 * sizeof(float));
-                        new_instance.blas = acc.mesh->blas;
+                        new_instance.blas = mesh_cold.blas;
 
-                        const uint32_t indices_start = acc.mesh->indices_buf().sub.offset;
-                        const Ren::Span<const Ren::tri_group_t> groups = acc.mesh->groups();
+                        const uint32_t indices_start = mesh_main.indices_buf.sub.offset;
+                        const Ren::Span<const Ren::tri_group_t> groups = mesh_cold.groups;
                         for (int j = 0; j < int(groups.size()); ++j) {
                             const Ren::tri_group_t &grp = groups[j];
 
@@ -591,7 +592,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                             rt_geo_instance_t &geo = list.rt_geo_instances[2].data[list.rt_geo_instances[2].count++];
                             geo.indices_start = (indices_start + grp.byte_offset) / sizeof(uint32_t);
-                            geo.vertices_start = acc.mesh->attribs_buf1().sub.offset / 16;
+                            geo.vertices_start = mesh_main.attribs_buf1.sub.offset / 16;
                             geo.material_index = vol_mat.index;
                             geo.flags = 0;
 
@@ -618,8 +619,8 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         auto dir = Vec4f{-light.dir[0], -light.dir[1], -light.dir[2], 0.0f};
                         dir = tr.world_from_object * dir;
 
-                        const auto u = tr.world_from_object *Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
-                        const auto v = tr.world_from_object *Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
+                        const auto u = tr.world_from_object * Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
+                        const auto v = tr.world_from_object * Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
 
                         litem_to_lsource_.emplace_back(obj.components[CompLightSource]);
                         proc_objects_[i.index].li_index = int32_t(list.lights.size());
@@ -748,6 +749,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
             if (!(acc.vis_mask & gi_mask)) {
                 continue;
             }
+            const auto &[mesh_main, mesh_cold] = storages.meshes.Get(acc.mesh);
 
             rt_obj_instance_t &new_instance = list.rt_obj_instances[0].data[list.rt_obj_instances[0].count++];
             memcpy(new_instance.xform, ValuePtr(Transpose(tr.world_from_object)), 12 * sizeof(float));
@@ -756,10 +758,10 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
             new_instance.geo_count = 0;
             new_instance.mask = uint8_t(acc.vis_mask);
             memcpy(new_instance.bbox_max_ws, ValuePtr(tr.bbox_max_ws), 3 * sizeof(float));
-            new_instance.blas = acc.mesh->blas;
+            new_instance.blas = mesh_cold.blas;
 
-            const uint32_t indices_start = acc.mesh->indices_buf().sub.offset;
-            const Ren::Span<const Ren::tri_group_t> groups = acc.mesh->groups();
+            const uint32_t indices_start = mesh_main.indices_buf.sub.offset;
+            const Ren::Span<const Ren::tri_group_t> groups = mesh_cold.groups;
             for (int j = 0; j < int(groups.size()); ++j) {
                 const Ren::tri_group_t &grp = groups[j];
 
@@ -773,7 +775,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
 
                 rt_geo_instance_t &geo = list.rt_geo_instances[0].data[list.rt_geo_instances[0].count++];
                 geo.indices_start = (indices_start + grp.byte_offset) / sizeof(uint32_t);
-                geo.vertices_start = acc.mesh->attribs_buf1().sub.offset / 16;
+                geo.vertices_start = mesh_main.attribs_buf1.sub.offset / 16;
                 assert(front_mat.index < 0xffff && back_mat.index < 0xffff);
                 geo.material_index = front_mat.index;
                 if (!(front_main.flags & Ren::eMatFlags::AlphaTest) &&
@@ -810,8 +812,8 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                     auto dir = Vec4f{-light.dir[0], -light.dir[1], -light.dir[2], 0.0f};
                     dir = tr.world_from_object * dir;
 
-                    const auto u = tr.world_from_object *Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
-                    const auto v = tr.world_from_object *Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
+                    const auto u = tr.world_from_object * Vec4f{0.5f * light.width, 0.0f, 0.0f, 0.0f};
+                    const auto v = tr.world_from_object * Vec4f{0.0f, 0.0f, 0.5f * light.height, 0.0f};
 
                     litem_to_lsource_.emplace_back(obj.components[CompLightSource]);
                     light_item_t &ls = list.lights.emplace_back();
@@ -1226,15 +1228,15 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         continue;
                     }
 
-                    const Mesh *mesh = dr.mesh.get();
+                    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(dr.mesh);
 
                     if (proc_objects_[i.index].base_vertex == 0xffffffff) {
-                        proc_objects_[i.index].base_vertex = mesh->attribs_buf1().sub.offset / 16;
+                        proc_objects_[i.index].base_vertex = mesh_main.attribs_buf1.sub.offset / 16;
 
                         if (obj.comp_mask & CompAnimStateBit) {
                             const AnimState &as = anims[obj.components[CompAnimState]];
                             proc_objects_[i.index].base_vertex =
-                                __push_skeletal_mesh(skinned_buf_vtx_offset, as, mesh, list);
+                                __push_skeletal_mesh(skinned_buf_vtx_offset, as, mesh_main, mesh_cold, list);
                         }
                     }
 
@@ -1243,7 +1245,9 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         proc_objects_[i.index].rt_sh_index = list.rt_obj_instances[1].count;
 
                         const AccStructure &acc = acc_structs[obj.components[CompAccStructure]];
-                        if (acc.mesh->blas && list.rt_obj_instances[1].count < MAX_RT_OBJ_INSTANCES_TOTAL) {
+                        const auto &[acc_mesh_main, acc_mesh_cold] = storages.meshes.Get(acc.mesh);
+
+                        if (acc_mesh_cold.blas && list.rt_obj_instances[1].count < MAX_RT_OBJ_INSTANCES_TOTAL) {
                             const Mat4f world_from_object_trans = Transpose(tr.world_from_object);
 
                             rt_obj_instance_t &new_instance =
@@ -1254,10 +1258,10 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                             new_instance.geo_count = 0;
                             new_instance.mask = uint8_t(acc.vis_mask);
                             memcpy(new_instance.bbox_max_ws, ValuePtr(tr.bbox_max_ws), 3 * sizeof(float));
-                            new_instance.blas = acc.mesh->blas;
+                            new_instance.blas = acc_mesh_cold.blas;
 
-                            const uint32_t indices_start = acc.mesh->indices_buf().sub.offset;
-                            const Ren::Span<const Ren::tri_group_t> groups = acc.mesh->groups();
+                            const uint32_t indices_start = acc_mesh_main.indices_buf.sub.offset;
+                            const Ren::Span<const Ren::tri_group_t> groups = acc_mesh_cold.groups;
                             for (int j = 0; j < int(groups.size()); ++j) {
                                 const Ren::tri_group_t &grp = groups[j];
 
@@ -1278,7 +1282,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                                 rt_geo_instance_t &geo =
                                     list.rt_geo_instances[1].data[list.rt_geo_instances[1].count++];
                                 geo.indices_start = (indices_start + grp.byte_offset) / sizeof(uint32_t);
-                                geo.vertices_start = acc.mesh->attribs_buf1().sub.offset / 16;
+                                geo.vertices_start = acc_mesh_main.attribs_buf1.sub.offset / 16;
                                 assert(front_mat.index < 0xffff && back_mat.index < 0xffff);
                                 geo.material_index = front_mat.index;
                                 if (!(front_main.flags & Ren::eMatFlags::AlphaTest) &&
@@ -1300,7 +1304,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         }
                     }
 
-                    const Ren::Span<const Ren::tri_group_t> groups = mesh->groups();
+                    const Ren::Span<const Ren::tri_group_t> groups = mesh_cold.groups;
                     for (int j = 0; j < int(groups.size()); ++j) {
                         const Ren::tri_group_t &grp = groups[j];
 
@@ -1335,7 +1339,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                         batch.alpha_test_bit = (front_main.flags & eMatFlags::AlphaTest) ? 1 : 0;
                         batch.moving_bit = 0;
                         batch.two_sided_bit = simple_twosided ? 1 : 0;
-                        batch.indices_offset = (mesh->indices_buf().sub.offset + grp.byte_offset) / sizeof(uint32_t);
+                        batch.indices_offset = (mesh_main.indices_buf.sub.offset + grp.byte_offset) / sizeof(uint32_t);
                         batch.base_vertex = proc_objects_[i.index].base_vertex;
                         batch.indices_count = grp.num_indices;
                         batch.instance_index = i.index;
@@ -1570,19 +1574,19 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                             near_clip = std::min(near_clip, dist - max_extent);
                             far_clip = std::max(far_clip, dist + max_extent);
 
-                            const Mesh *mesh = dr.mesh.get();
+                            const auto &[mesh_main, mesh_cold] = storages.meshes.Get(dr.mesh);
 
                             if (proc_objects_[n->prim_index].base_vertex == 0xffffffff) {
-                                proc_objects_[n->prim_index].base_vertex = mesh->attribs_buf1().sub.offset / 16;
+                                proc_objects_[n->prim_index].base_vertex = mesh_main.attribs_buf1.sub.offset / 16;
 
                                 if (obj.comp_mask & CompAnimStateBit) {
                                     const AnimState &as = anims[obj.components[CompAnimState]];
                                     proc_objects_[n->prim_index].base_vertex =
-                                        __push_skeletal_mesh(skinned_buf_vtx_offset, as, mesh, list);
+                                        __push_skeletal_mesh(skinned_buf_vtx_offset, as, mesh_main, mesh_cold, list);
                                 }
                             }
 
-                            const Ren::Span<const Ren::tri_group_t> groups = mesh->groups();
+                            const Ren::Span<const Ren::tri_group_t> groups = mesh_cold.groups;
                             for (int j = 0; j < int(groups.size()); ++j) {
                                 const Ren::tri_group_t &grp = groups[j];
 
@@ -1618,7 +1622,7 @@ void Eng::Renderer::GatherDrawables(const SceneData &scene, const Ren::Camera &c
                                 batch.moving_bit = 0;
                                 batch.two_sided_bit = simple_twosided ? 1 : 0;
                                 batch.indices_offset =
-                                    (mesh->indices_buf().sub.offset + grp.byte_offset) / sizeof(uint32_t);
+                                    (mesh_main.indices_buf.sub.offset + grp.byte_offset) / sizeof(uint32_t);
                                 batch.base_vertex = proc_objects_[n->prim_index].base_vertex;
                                 batch.indices_count = grp.num_indices;
                                 batch.instance_index = n->prim_index;
@@ -2573,14 +2577,13 @@ void RendererInternal::__push_ellipsoids(const Eng::Drawable &dr, const Ren::Mat
 }
 
 uint32_t RendererInternal::__push_skeletal_mesh(const uint32_t skinned_buf_vtx_offset, const Eng::AnimState &as,
-                                                const Ren::Mesh *mesh, Eng::DrawList &list) {
-    const Ren::Skeleton *skel = mesh->skel();
-
+                                                const Ren::MeshMain &mesh_main, const Ren::MeshCold &mesh_cold,
+                                                Eng::DrawList &list) {
     const auto palette_start = uint16_t(list.skin_transforms.size() / 2);
-    list.skin_transforms.resize(list.skin_transforms.size() + 2 * skel->bones.size());
+    list.skin_transforms.resize(list.skin_transforms.size() + 2 * mesh_cold.skel.bones.size());
     Eng::skin_transform_t *out_matr_palette = &list.skin_transforms[2 * palette_start];
 
-    for (int i = 0; i < int(skel->bones.size()); i++) {
+    for (int i = 0; i < int(mesh_cold.skel.bones.size()); i++) {
         const Ren::Mat4f matr_curr_trans = Transpose(as.matr_palette_curr[i]);
         memcpy(out_matr_palette[2 * i + 0].matr, ValuePtr(matr_curr_trans), 12 * sizeof(float));
 
@@ -2588,10 +2591,10 @@ uint32_t RendererInternal::__push_skeletal_mesh(const uint32_t skinned_buf_vtx_o
         memcpy(out_matr_palette[2 * i + 1].matr, ValuePtr(matr_prev_trans), 12 * sizeof(float));
     }
 
-    const Ren::BufferRange &sk_buf = mesh->sk_attribs_buf();
-    const Ren::BufferRange &deltas_buf = mesh->sk_deltas_buf();
+    const Ren::BufferRange &sk_buf = mesh_main.sk_attribs_buf;
+    const Ren::BufferRange &deltas_buf = mesh_main.sk_deltas_buf;
 
-    const uint32_t vertex_beg = sk_buf.sub.offset / 48, vertex_cnt = uint32_t(mesh->attribs().size() / 21);
+    const uint32_t vertex_beg = sk_buf.sub.offset / 48, vertex_cnt = uint32_t(mesh_cold.attribs.size() / 21);
     const uint32_t deltas_offset = deltas_buf.sub.offset / 24;
 
     const uint32_t curr_out_offset = skinned_buf_vtx_offset + list.skin_vertices_count;
@@ -2614,8 +2617,8 @@ uint32_t RendererInternal::__push_skeletal_mesh(const uint32_t skinned_buf_vtx_o
     list.shape_keys_data.count += as.shape_palette_count_prev;
     sr.shape_key_count_prev = as.shape_palette_count_prev;
     sr.vertex_count = vertex_cnt;
-    if (!skel->shapes.empty()) {
-        sr.shape_keyed_vertex_count = skel->shapes[0].delta_count;
+    if (!mesh_cold.skel.shapes.empty()) {
+        sr.shape_keyed_vertex_count = mesh_cold.skel.shapes[0].delta_count;
     } else {
         sr.shape_keyed_vertex_count = 0;
     }

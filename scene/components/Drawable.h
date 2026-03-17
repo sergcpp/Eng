@@ -13,7 +13,7 @@ struct Drawable {
     static const Ren::Bitmask<eVisibility> DefaultVisMask;
 
     Ren::Bitmask<eVisibility> vis_mask = DefaultVisMask;
-    Ren::MeshRef mesh;
+    Ren::MeshHandle mesh;
     std::vector<std::array<Ren::MaterialHandle, 3>> material_override;
 
     // TODO: allocate this dynamically (from pool)

@@ -110,39 +110,36 @@ void test_mesh() {
             return std::array<MaterialHandle, 3>{ret, ret, {}};
         };
 
-        eMeshLoadStatus load_status;
-        MeshRef m_ref = test.LoadMesh("ivy", &in, on_material_needed, &load_status);
-        require(load_status == eMeshLoadStatus::CreatedFromData);
-        require(m_ref->type() == eMeshType::Simple);
-        require(m_ref->name() == "ivy");
+        MeshHandle m_handle = test.CreateMesh(String{"ivy"}, in, on_material_needed);
+        require(bool(m_handle));
 
-        require(m_ref->bbox_min() == Vec3f(-10.389862f, -220.607803f, -441.704651f));
-        require(m_ref->bbox_max() == Vec3f(83.354584f, 179.815552f, 441.704651f));
+        const auto &[m_main, m_cold] = test.meshes().Get(m_handle);
+        require(m_main.type == eMeshType::Simple);
+        require(m_cold.name == "ivy");
 
-        require(m_ref->groups().size() == 1);
+        require(m_cold.bbox_min == Vec3f(-10.389862f, -220.607803f, -441.704651f));
+        require(m_cold.bbox_max == Vec3f(83.354584f, 179.815552f, 441.704651f));
 
-        require(!m_ref->attribs().empty());
+        require(m_cold.groups.size() == 1);
+
+        require(!m_cold.attribs.empty());
         // 16 bytes per vertex in each buffer
         // require(m_ref->attribs_buf1().size == 48);
         // require(m_ref->attribs_buf2().size == 48);
-        require(!m_ref->indices().empty());
+        require(!m_cold.indices.empty());
         // require(m_ref->indices_buf().size == 20);
 
-        require(m_ref->flags() == eMeshFlags::HasAlpha);
-        require(m_ref->groups()[0].flags == eMeshFlags::HasAlpha);
+        require(m_main.flags == eMeshFlags::HasAlpha);
+        require(m_cold.groups[0].flags == eMeshFlags::HasAlpha);
 
-        {
-            MeshRef m_ref2 = test.LoadMesh("ivy", &in, on_material_needed, &load_status);
-            require(load_status == eMeshLoadStatus::Found);
-            require(bool(m_ref2));
-        }
-
-        const auto &[mat_main, mat_cold] = test.materials().Get(m_ref->groups()[0].front_mat);
+        const auto &[mat_main, mat_cold] = test.materials().Get(m_cold.groups[0].front_mat);
         for (const SamplerHandle s : mat_main.samplers) {
             test.ReleaseSampler(s);
         }
 
-        test.ReleaseMaterial(m_ref->groups()[0].front_mat);
+        test.ReleaseMaterial(m_cold.groups[0].front_mat);
+
+        test.ReleaseMesh(m_handle);
     }
 
     /*{

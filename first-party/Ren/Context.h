@@ -65,9 +65,7 @@ class Context {
     int validation_level_ = 0;
     ILog *log_ = nullptr;
 
-    MeshStorage meshes_;
     ImageRegionStorage image_regions_;
-    AnimSeqStorage anims_;
 
     DualStorage<VertexInputMain, VertexInputCold> vtx_inputs_;
     DualStorage<ShaderMain, ShaderCold> shaders_;
@@ -80,9 +78,11 @@ class Context {
     DualStorage<FramebufferMain, FramebufferCold> framebuffers_;
     DualStorage<AccStructMain, AccStructCold> acc_structs_;
     DualStorage<MaterialMain, MaterialCold> materials_;
+    DualStorage<MeshMain, MeshCold> meshes_;
+    DualStorage<AnimSeqMain, AnimSeqCold> anims_;
 
-    StoragesRef storages_ = {vtx_inputs_, shaders_,  programs_,     pipelines_,   render_passes_, buffers_,
-                             images_,     samplers_, framebuffers_, acc_structs_, materials_};
+    StoragesRef storages_ = {vtx_inputs_, shaders_,      programs_,    pipelines_, render_passes_, buffers_, images_,
+                             samplers_,   framebuffers_, acc_structs_, materials_, meshes_,        anims_};
 
     std::unique_ptr<ResizableBuffer> default_vertex_buf1_, default_vertex_buf2_, default_skin_vertex_buf_,
         default_delta_vertex_buf_, default_indices_buf_;
@@ -130,6 +130,8 @@ class Context {
     DualStorage<FramebufferMain, FramebufferCold> &framebuffers() { return framebuffers_; }
     DualStorage<AccStructMain, AccStructCold> &acc_structs() { return acc_structs_; }
     DualStorage<MaterialMain, MaterialCold> &materials() { return materials_; }
+    DualStorage<MeshMain, MeshCold> &meshes() { return meshes_; }
+    DualStorage<AnimSeqMain, AnimSeqCold> &anims() { return anims_; }
 
     const DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() const { return vtx_inputs_; }
     const DualStorage<ShaderMain, ShaderCold> &shaders() const { return shaders_; }
@@ -142,6 +144,8 @@ class Context {
     const DualStorage<FramebufferMain, FramebufferCold> &framebuffers() const { return framebuffers_; }
     const DualStorage<AccStructMain, AccStructCold> &acc_structs() const { return acc_structs_; }
     const DualStorage<MaterialMain, MaterialCold> &materials() const { return materials_; }
+    const DualStorage<MeshMain, MeshCold> &meshes() const { return meshes_; }
+    const DualStorage<AnimSeqMain, AnimSeqCold> &anims() const { return anims_; }
 
     const StoragesRef &storages() const { return storages_; }
 
@@ -167,17 +171,13 @@ class Context {
 
     void Resize(int w, int h);
 
-    /*** Mesh ***/
-    MeshRef LoadMesh(std::string_view name, const float *positions, int vtx_count, const uint32_t *indices,
-                     int ndx_count, eMeshLoadStatus *load_status);
-    MeshRef LoadMesh(std::string_view name, const float *positions, int vtx_count, const uint32_t *indices,
-                     int ndx_count, ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2,
-                     ResizableBuffer &index_buf, eMeshLoadStatus *load_status);
-    MeshRef LoadMesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
-                     eMeshLoadStatus *load_status);
-    MeshRef LoadMesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
-                     ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
-                     ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf, eMeshLoadStatus *load_status);
+    // Mesh
+    MeshHandle CreateMesh(Ren::String name, std::istream &data, const material_load_callback &on_mat_load,
+                          ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
+                          ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf);
+    MeshHandle CreateMesh(Ren::String name, std::istream &data, const material_load_callback &on_mat_load);
+    void ReleaseMesh(MeshHandle handle);
+    void ReleaseMeshes();
 
     // Material
     MaterialHandle CreateMaterial(Ren::String name, Bitmask<eMatFlags> flags, Span<const PipelineHandle> pipelines,
@@ -268,10 +268,10 @@ class Context {
     void ReleaseSampler(SamplerHandle handle, bool immediately = false);
     void ReleaseSamplers();
 
-    /*** Anims ***/
-    AnimSeqRef LoadAnimSequence(std::string_view name, std::istream &data);
-    int NumAnimsNotReady();
-    void ReleaseAnims();
+    // Anims
+    AnimSeqHandle CreateAnimSequence(const String &name, std::istream &data);
+    void ReleaseAnimSequence(AnimSeqHandle handle);
+    void ReleaseAnimSequences();
 
     // Buffers
     BufferHandle CreateBuffer(const String &name, eBufType type, uint32_t initial_size, uint32_t size_alignment = 1,

@@ -590,14 +590,15 @@ Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc)
 
     const Ren::ApiContext &api = ren_ctx_.api();
 
-    const Ren::BufferRange &attribs = acc.mesh->attribs_buf1(), &indices = acc.mesh->indices_buf();
+    const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
+    const Ren::BufferRange &attribs = mesh_main.attribs_buf1, &indices = mesh_main.indices_buf;
 
     assert((attribs.sub.offset % 16) == 0);
     const uint32_t first_vertex = attribs.sub.offset / 16;
     assert((indices.sub.offset % (3 * sizeof(uint32_t))) == 0);
     const uint32_t prim_offset = indices.sub.offset / (3 * sizeof(uint32_t));
 
-    assert(acc.mesh->type() == Ren::eMeshType::Simple);
+    assert(mesh_main.type == Ren::eMeshType::Simple);
     const int VertexStride = 13;
 
     if (!scene_data_.persistent_data->swrt.rt_prim_indices_buf) {
@@ -626,10 +627,10 @@ Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc)
     std::vector<Phy::prim_t> temp_primitives;
     std::vector<uint32_t> temp_indices;
 
-    Ren::Span<const float> positions = acc.mesh->attribs();
-    Ren::Span<const uint32_t> tri_indices = acc.mesh->indices();
+    Ren::Span<const float> positions = mesh_cold.attribs;
+    Ren::Span<const uint32_t> tri_indices = mesh_cold.indices;
 
-    for (const Ren::tri_group_t &grp : acc.mesh->groups()) {
+    for (const Ren::tri_group_t &grp : mesh_cold.groups) {
         const uint32_t index_beg = grp.byte_offset / sizeof(uint32_t);
         const uint32_t index_end = index_beg + grp.num_indices;
 
@@ -700,7 +701,7 @@ Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc)
 
     const Ren::AccStructHandle new_blas = ren_ctx_.CreateAccStruct();
     const auto &[blas_main, blas_cold] = ren_ctx_.acc_structs().Get(new_blas);
-    if (!AccStruct_Init(blas_main, blas_cold, acc.mesh->name(), mesh_index, nodes_alloc, prim_alloc)) {
+    if (!AccStruct_Init(blas_main, blas_cold, mesh_cold.name, mesh_index, nodes_alloc, prim_alloc)) {
         ren_ctx_.ReleaseAccStruct(new_blas);
         return {};
     }
@@ -1321,14 +1322,15 @@ void Eng::SceneManager::RebuildLightTree() {
         const Transform &tr = transforms[obj.components[CompTransform]];
         const AccStructure &acc = acc_structs[obj.components[CompAccStructure]];
 
-        assert(acc.mesh->type() == Ren::eMeshType::Simple);
+        const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
+        assert(mesh_main.type == Ren::eMeshType::Simple);
         const int VertexStride = 13;
 
-        Ren::Span<const float> positions = acc.mesh->attribs();
-        Ren::Span<const uint32_t> tri_indices = acc.mesh->indices();
-        const uint32_t indices_start = acc.mesh->indices_buf().sub.offset / sizeof(uint32_t);
+        Ren::Span<const float> positions = mesh_cold.attribs;
+        Ren::Span<const uint32_t> tri_indices = mesh_cold.indices;
+        const uint32_t indices_start = mesh_main.indices_buf.sub.offset / sizeof(uint32_t);
 
-        const Ren::Span<const Ren::tri_group_t> groups = acc.mesh->groups();
+        const Ren::Span<const Ren::tri_group_t> groups = mesh_cold.groups;
         for (int j = 0; j < int(groups.size()); ++j) {
             const Ren::tri_group_t &grp = groups[j];
 

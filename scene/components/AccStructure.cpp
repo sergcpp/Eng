@@ -72,10 +72,10 @@ void Eng::AccStructure::Read(const Sys::JsObjectP &js_in, AccStructure &acc) {
 void Eng::AccStructure::Write(const AccStructure &acc, Sys::JsObjectP &js_out) {
     const auto &alloc = js_out.elements.get_allocator();
 
-    if (acc.mesh) {
+    /*if (acc.mesh) {
         // write mesh file name
         js_out.Insert("mesh_file", Sys::JsStringP{acc.mesh->name(), alloc});
-    }
+    }*/
 
     // write visibility
     if ((acc.vis_mask & eRayType::Camera) != (DefaultVisMask & eRayType::Camera)) {

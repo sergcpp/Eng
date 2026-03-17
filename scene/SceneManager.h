@@ -54,8 +54,7 @@ struct AssetCache {
         texture_averages.Insert(tex_name, color);
 
         Sys::JsObjectP &js_files = js_db["files"].as_obj();
-        const size_t i = js_files.IndexOf(tex_name);
-        if (i < js_files.Size()) {
+        if (const size_t i = js_files.IndexOf(tex_name); i < js_files.Size()) {
             Sys::JsObjectP &js_file = js_files[i].second.as_obj();
             if (const size_t color_ndx = js_file.IndexOf("color"); color_ndx < js_file.Size()) {
                 Sys::JsNumber &js_color = js_file[color_ndx].second.as_num();
@@ -105,7 +104,7 @@ class SceneManager {
     const Ren::Camera &main_cam() const { return cam_; }
     Ren::Camera &main_cam() { return cam_; }
     Ren::Camera &ext_cam() { return ext_cam_; }
-    Ren::Mesh *cam_rig() { return cam_rig_.get(); }
+    Ren::MeshHandle cam_rig() { return cam_rig_; }
     SceneData &scene_data() { return scene_data_; }
     Snd::Source &ambient_sound() { return amb_sound_; }
 
@@ -216,8 +215,7 @@ class SceneManager {
     Ren::ImageHandle OnLoadTexture(std::string_view name, const uint8_t color[4], Ren::Bitmask<Ren::eImgFlags> flags);
     Ren::SamplerHandle OnLoadSampler(Ren::SamplingParams params);
 
-    Ren::MeshRef LoadMesh(std::string_view name, std::istream *data, const Ren::material_load_callback &on_mat_load,
-                          Ren::eMeshLoadStatus *load_status);
+    Ren::MeshHandle LoadMesh(std::string_view name, std::istream &data, const Ren::material_load_callback &on_mat_load);
     Ren::Vec4f LoadDecalTexture(std::string_view name);
 
     void EstimateTextureMemory(int portion_size);
@@ -245,7 +243,7 @@ class SceneManager {
     Ren::Context &ren_ctx_;
     ShaderLoader &sh_;
     Snd::Context *snd_ctx_ = nullptr;
-    Ren::MeshRef cam_rig_;
+    Ren::MeshHandle cam_rig_;
     Ren::ImageHandle white_tex_, error_tex_;
     Sys::ThreadPool &threads_;
     path_config_t paths_;

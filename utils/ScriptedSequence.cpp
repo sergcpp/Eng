@@ -170,7 +170,7 @@ bool Eng::ScriptedSequence::Load(const std::string_view lookup_name, const Sys::
                     Sys::MemBuf mem = {&in_file_data[0], in_file_size};
                     std::istream in_file_stream(&mem);
 
-                    action.anim_ref = ren_ctx_.LoadAnimSequence(js_action_anim.val, in_file_stream);
+                    action.anim = ren_ctx_.CreateAnimSequence(Ren::String{js_action_anim.val}, in_file_stream);
                 }
 
                 if (const size_t caption_ndx = js_action.IndexOf("caption"); caption_ndx < js_action.Size()) {
@@ -227,7 +227,8 @@ bool Eng::ScriptedSequence::Load(const std::string_view lookup_name, const Sys::
                     }
                 }
 
-                if (const size_t sound_offset_ndx = js_action.IndexOf("sound_offset"); sound_offset_ndx < js_action.Size()) {
+                if (const size_t sound_offset_ndx = js_action.IndexOf("sound_offset");
+                    sound_offset_ndx < js_action.Size()) {
                     const Sys::JsNumber &js_action_sound_off = js_action[sound_offset_ndx].second.as_num();
                     action.sound_offset = js_action_sound_off.val;
                 } else {
@@ -351,8 +352,9 @@ void Eng::ScriptedSequence::Save(Sys::JsObject &js_seq) {
                         js_rot_end.Push(Sys::JsNumber{action.rot_end[2]});
                         js_action.Insert("rot_end", std::move(js_rot_end));
                     }
-                    if (action.anim_ref) {
-                        js_action.Insert("anim", Sys::JsString{action.anim_ref->name()});
+                    if (action.anim) {
+                        const auto &[anim_main, anim_cold] = ren_ctx_.anims().Get(action.anim);
+                        js_action.Insert("anim", Sys::JsString{anim_cold.name});
                     }
                     if (!action.caption.empty()) {
                         js_action.Insert("caption", Sys::JsString{action.caption});
@@ -436,10 +438,10 @@ void Eng::ScriptedSequence::Reset() {
                 SceneObject *actor = scene_manager_.GetObject(track.target_actor);
                 Eng::Drawable &dr = drawables[actor->components[CompDrawable]];
 
-                if (action.anim_ref) {
-                    Ren::Mesh *target_mesh = dr.mesh.get();
-                    Ren::Skeleton *target_skel = target_mesh->skel();
-                    action.anim_id = target_skel->AddAnimSequence(action.anim_ref);
+                if (action.anim) {
+                    Ren::MeshCold &target_mesh = ren_ctx_.meshes().Get(dr.mesh).second;
+                    Ren::Skeleton &target_skel = target_mesh.skel;
+                    action.anim_id = target_skel.AddAnimSequence(action.anim, ren_ctx_.anims());
                 }
 
                 if (actor->comp_mask & CompSoundSourceBit) {
@@ -447,10 +449,10 @@ void Eng::ScriptedSequence::Reset() {
                     ss.snd_src.ResetBuffers();
                 }
             } else if (track.type == eTrackType::Camera) {
-                if (action.anim_ref) {
-                    Ren::Mesh *target_mesh = scene_manager_.cam_rig();
-                    Ren::Skeleton *target_skel = target_mesh->skel();
-                    action.anim_id = target_skel->AddAnimSequence(action.anim_ref);
+                if (action.anim) {
+                    Ren::MeshCold &target_mesh = ren_ctx_.meshes().Get(scene_manager_.cam_rig()).second;
+                    Ren::Skeleton &target_skel = target_mesh.skel;
+                    action.anim_id = target_skel.AddAnimSequence(action.anim, ren_ctx_.anims());
                 }
             }
 
@@ -543,13 +545,13 @@ void Eng::ScriptedSequence::UpdateAction(const uint32_t target_actor, SeqAction 
             std::swap(as.shape_palette_curr, as.shape_palette_prev);
             std::swap(as.shape_palette_count_curr, as.shape_palette_count_prev);
 
-            Ren::Mesh *target_mesh = dr.mesh.get();
-            Ren::Skeleton *target_skel = target_mesh->skel();
+            Ren::MeshCold &target_mesh = ren_ctx_.meshes().Get(dr.mesh).second;
+            Ren::Skeleton &target_skel = target_mesh.skel;
 
-            target_skel->UpdateAnim(action.anim_id, t);
-            target_skel->ApplyAnim(action.anim_id);
-            target_skel->UpdateBones(&as.matr_palette_curr[0]);
-            as.shape_palette_count_curr = target_skel->UpdateShapes(&as.shape_palette_curr[0]);
+            target_skel.UpdateAnim(action.anim_id, t, ren_ctx_.anims());
+            target_skel.ApplyAnim(action.anim_id, ren_ctx_.anims());
+            target_skel.UpdateBones(&as.matr_palette_curr[0]);
+            as.shape_palette_count_curr = target_skel.UpdateShapes(&as.shape_palette_curr[0]);
 
             invalidate_mask |= CompDrawableBit;
         }
@@ -568,7 +570,6 @@ void Eng::ScriptedSequence::UpdateAction(const uint32_t target_actor, SeqAction 
 
                 if (play_sound) {
                     if (t >= action.sound_offset && t < (action.sound_offset + action.sound_ref->GetDurationS())) {
-
                         if (ss.snd_src.GetState() != Snd::eSrcState::Playing ||
                             ss.snd_src.GetBuffer(0).index() != action.sound_ref.index()) {
                             ss.snd_src.SetOffset(t - float(action.sound_offset));
@@ -599,20 +600,20 @@ void Eng::ScriptedSequence::UpdateAction(const uint32_t target_actor, SeqAction 
         }
     } else if (action.type == eActionType::Look) {
         Ren::Camera &cam = scene_manager_.main_cam();
-        Ren::Mesh *cam_rig = scene_manager_.cam_rig();
-        Ren::Skeleton *cam_skel = cam_rig->skel();
+        Ren::MeshCold &cam_rig = ren_ctx_.meshes().Get(scene_manager_.cam_rig()).second;
+        Ren::Skeleton &cam_skel = cam_rig.skel;
 
-        if (action.anim_ref) {
-            cam_skel->UpdateAnim(action.anim_id, t);
-            cam_skel->ApplyAnim(action.anim_id);
+        if (action.anim) {
+            cam_skel.UpdateAnim(action.anim_id, t, ren_ctx_.anims());
+            cam_skel.ApplyAnim(action.anim_id, ren_ctx_.anims());
         }
 
         Ren::Mat4f matrices[4];
-        cam_skel->UpdateBones(matrices);
+        cam_skel.UpdateBones(matrices);
 
         Ren::Mat4f cam_mat, target_mat;
-        cam_skel->bone_matrix("tip", cam_mat);
-        cam_skel->bone_matrix("target", target_mat);
+        cam_skel.bone_matrix("tip", cam_mat);
+        cam_skel.bone_matrix("target", target_mat);
 
         const auto pos = Ren::Vec3d{cam_mat[3]};
         const Ren::Vec3d trg = pos - Ren::Vec3d{cam_mat[2]};
@@ -655,7 +656,7 @@ void Eng::ScriptedSequence::UpdateAction(const uint32_t target_actor, SeqAction 
 }
 
 Ren::ImageRegionRef Eng::ScriptedSequence::RenderSoundWave(std::string_view name, const void *samples_data,
-                                                             int samples_count, const Snd::BufParams &params) {
+                                                           int samples_count, const Snd::BufParams &params) {
     { // check if sound-wave picture was already loaded
         Ren::eImgLoadStatus status;
         Ren::ImageRegionRef ret = ren_ctx_.LoadImageRegion(name, {}, {}, ren_ctx_.current_cmd_buf(), &status);

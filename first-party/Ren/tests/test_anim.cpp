@@ -44,79 +44,83 @@ void test_anim() {
         membuf sbuf(__anim, sizeof(__anim));
         std::istream in(&sbuf);
 
-        AnimSequence anim;
-        anim.Init(in);
+        TestContext test;
 
-        require(anim.act_name() == "ArmatureAction");
-        require(anim.fps() == 24);
-        require(anim.len() == 3);
-        require(anim.frame_size() == 11);
-        require(anim.frame_dur() == 1.0f / 24);
-        require(anim.anim_dur() == 3.0f / 24);
-        require(anim.num_bones() == 2);
+        const AnimSeqHandle handle = test.CreateAnimSequence(String{"Anim"}, in);
+        const auto &[anim_main, anim_cold] = test.anims().Get(handle);
 
-        require(strcmp(anim.bone(0)->name, "Bone01") == 0);
-        require(strcmp(anim.bone(0)->parent_name, "None") == 0);
-        require(anim.bone(0)->id == 0);
-        require(anim.bone(0)->offset == 0);
-        require((anim.bone(0)->flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) == 1);
+        require(anim_cold.act_name == "ArmatureAction");
+        require(anim_main.fps == 24);
+        require(anim_main.len == 3);
+        require(anim_main.frame_size == 11);
+        require(anim_main.frame_dur == 1.0f / 24);
+        require(anim_main.anim_dur == 3.0f / 24);
+        require(anim_main.bones.size() == 2);
 
-        require(strcmp(anim.bone(1)->name, "Bone02") == 0);
-        require(strcmp(anim.bone(1)->parent_name, "Bone01") == 0);
-        require(anim.bone(1)->id == 1);
-        require(anim.bone(1)->offset == 7); // 4 for rotation, 3 for translation from previous bone
-        require(anim.bone(1)->flags != uint32_t(eAnimBoneFlags::AnimHasTranslate));
+        require(anim_main.bones[0].name == "Bone01");
+        require(anim_main.bones[0].parent_name == "None");
+        require(anim_main.bones[0].id == 0);
+        require(anim_main.bones[0].offset == 0);
+        require((anim_main.bones[0].flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) == 1);
+
+        require(anim_main.bones[1].name == "Bone02");
+        require(anim_main.bones[1].parent_name == "Bone01");
+        require(anim_main.bones[1].id == 1);
+        require(anim_main.bones[1].offset == 7); // 4 for rotation, 3 for translation from previous bone
+        require(anim_main.bones[1].flags != uint32_t(eAnimBoneFlags::AnimHasTranslate));
 
         // translation of Bone01 frame 0
-        require(anim.frames()[0] == 0);
-        require(anim.frames()[1] == 0);
-        require(anim.frames()[2] == 0);
+        require(anim_main.frames[0] == 0);
+        require(anim_main.frames[1] == 0);
+        require(anim_main.frames[2] == 0);
 
         // rotation of Bone01 frame 0
-        require(anim.frames()[3] == 0);
-        require(anim.frames()[4] == 0);
-        require(anim.frames()[5] == Approx(0.7071067690849304).epsilon(0.0001));
-        require(anim.frames()[6] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[3] == 0);
+        require(anim_main.frames[4] == 0);
+        require(anim_main.frames[5] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[6] == Approx(0.7071067690849304).epsilon(0.0001));
 
         // rotation of Bone02 frame 0
-        require(anim.frames()[7] == 0);
-        require(anim.frames()[8] == 0);
-        require(anim.frames()[9] == Approx(0.7071067690849304).epsilon(0.0001));
-        require(anim.frames()[10] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[7] == 0);
+        require(anim_main.frames[8] == 0);
+        require(anim_main.frames[9] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[10] == Approx(0.7071067690849304).epsilon(0.0001));
 
         // translation of Bone01 frame 1
-        require(anim.frames()[11] == 0);
-        require(anim.frames()[12] == 5);
-        require(anim.frames()[13] == 0);
+        require(anim_main.frames[11] == 0);
+        require(anim_main.frames[12] == 5);
+        require(anim_main.frames[13] == 0);
 
         // rotation of Bone01 frame 1
-        require(anim.frames()[14] == 0);
-        require(anim.frames()[15] == 0);
-        require(anim.frames()[16] == Approx(0.7071067690849304).epsilon(0.0001));
-        require(anim.frames()[17] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[14] == 0);
+        require(anim_main.frames[15] == 0);
+        require(anim_main.frames[16] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[17] == Approx(0.7071067690849304).epsilon(0.0001));
 
         // rotation of Bone02 frame 1
-        require(anim.frames()[18] == 0);
-        require(anim.frames()[19] == 0);
-        require(anim.frames()[20] == Approx(0.7071067690849304).epsilon(0.0001));
-        require(anim.frames()[21] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[18] == 0);
+        require(anim_main.frames[19] == 0);
+        require(anim_main.frames[20] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[21] == Approx(0.7071067690849304).epsilon(0.0001));
 
         // translation of Bone01 frame 2
-        require(anim.frames()[22] == 0);
-        require(anim.frames()[23] == 0);
-        require(anim.frames()[24] == 0);
+        require(anim_main.frames[22] == 0);
+        require(anim_main.frames[23] == 0);
+        require(anim_main.frames[24] == 0);
 
         // rotation of Bone01 frame 2
-        require(anim.frames()[25] == 0);
-        require(anim.frames()[26] == 0);
-        require(anim.frames()[27] == Approx(0.7071067690849304).epsilon(0.0001));
-        require(anim.frames()[28] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[25] == 0);
+        require(anim_main.frames[26] == 0);
+        require(anim_main.frames[27] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[28] == Approx(0.7071067690849304).epsilon(0.0001));
 
         // rotation of Bone02 frame 2
-        require(anim.frames()[29] == 0);
-        require(anim.frames()[30] == 0);
-        require(anim.frames()[31] == Approx(-0.7071067690849304).epsilon(0.0001));
-        require(anim.frames()[32] == Approx(0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[29] == 0);
+        require(anim_main.frames[30] == 0);
+        require(anim_main.frames[31] == Approx(-0.7071067690849304).epsilon(0.0001));
+        require(anim_main.frames[32] == Approx(0.7071067690849304).epsilon(0.0001));
+
+        test.ReleaseAnimSequence(handle);
     }
 
     printf("OK\n");

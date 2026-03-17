@@ -14,57 +14,38 @@
 
 const char *Ren::Version() { return "v0.1.0-unknown-commit"; }
 
-Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, const float *positions, const int vtx_count,
-                                    const uint32_t *indices, const int ndx_count, eMeshLoadStatus *load_status) {
-    return LoadMesh(name, positions, vtx_count, indices, ndx_count, *default_vertex_buf1_, *default_vertex_buf2_,
-                    *default_indices_buf_, load_status);
-}
+Ren::MeshHandle Ren::Context::CreateMesh(Ren::String name, std::istream &data,
+                                         const material_load_callback &on_mat_load, ResizableBuffer &vertex_buf1,
+                                         ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
+                                         ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf) {
+    const MeshHandle ret = meshes_.Emplace();
 
-Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, const float *positions, const int vtx_count,
-                                    const uint32_t *indices, const int ndx_count, ResizableBuffer &vertex_buf1,
-                                    ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
-                                    eMeshLoadStatus *load_status) {
-    MeshRef ref = meshes_.FindByName(name);
-    if (!ref) {
-        ref = meshes_.Insert(name, positions, vtx_count, indices, ndx_count, *api_, buffers_, vertex_buf1, vertex_buf2,
-                             index_buf, load_status, log_);
-    } else {
-        if (ref->ready()) {
-            (*load_status) = eMeshLoadStatus::Found;
-        } else if (positions) {
-            ref->Init(positions, vtx_count, indices, ndx_count, *api_, buffers_, vertex_buf1, vertex_buf2, index_buf,
-                      load_status, log_);
-        }
+    const auto &[mesh_main, mesh_cold] = meshes_.Get(ret);
+    if (!Mesh_Init(*api_, mesh_main, mesh_cold, name, data, on_mat_load, buffers_, vertex_buf1, vertex_buf2, index_buf,
+                   skin_vertex_buf, delta_buf, log_)) {
+        meshes_.Free(ret);
+        return {};
     }
-
-    return ref;
+    return ret;
 }
 
-Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, std::istream *data,
-                                    const material_load_callback &on_mat_load, eMeshLoadStatus *load_status) {
-    return LoadMesh(name, data, on_mat_load, *default_vertex_buf1_, *default_vertex_buf2_, *default_indices_buf_,
-                    *default_skin_vertex_buf_, *default_delta_vertex_buf_, load_status);
+Ren::MeshHandle Ren::Context::CreateMesh(Ren::String name, std::istream &data,
+                                         const material_load_callback &on_mat_load) {
+    return CreateMesh(name, data, on_mat_load, *default_vertex_buf1_, *default_vertex_buf2_, *default_indices_buf_,
+                      *default_skin_vertex_buf_, *default_delta_vertex_buf_);
 }
 
-Ren::MeshRef Ren::Context::LoadMesh(std::string_view name, std::istream *data,
-                                    const material_load_callback &on_mat_load, ResizableBuffer &vertex_buf1,
-                                    ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
-                                    ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf,
-                                    eMeshLoadStatus *load_status) {
-    MeshRef ref = meshes_.FindByName(name);
-    if (!ref) {
-        ref = meshes_.Insert(name, data, on_mat_load, *api_, buffers_, vertex_buf1, vertex_buf2, index_buf,
-                             skin_vertex_buf, delta_buf, load_status, log_);
-    } else {
-        if (ref->ready()) {
-            (*load_status) = eMeshLoadStatus::Found;
-        } else if (data) {
-            ref->Init(data, on_mat_load, *api_, buffers_, vertex_buf1, vertex_buf2, index_buf, skin_vertex_buf,
-                      delta_buf, load_status, log_);
-        }
+void Ren::Context::ReleaseMesh(const MeshHandle handle) { meshes_.Free(handle); }
+
+void Ren::Context::ReleaseMeshes() {
+    if (meshes_.Empty()) {
+        return;
     }
-
-    return ref;
+    log_->Error("----------REMAINING MESHES---------");
+    /*for (const Material &m : materials_old_) {
+        log_->Error("%s", m.name().c_str());
+    }*/
+    log_->Error("-----------------------------------");
 }
 
 Ren::MaterialHandle Ren::Context::CreateMaterial(Ren::String name, const Bitmask<eMatFlags> flags,
@@ -622,33 +603,30 @@ void Ren::Context::ReleaseSamplers() {
     log_->Error("-----------------------------------");
 }
 
-Ren::AnimSeqRef Ren::Context::LoadAnimSequence(std::string_view name, std::istream &data) {
-    AnimSeqRef ref = anims_.FindByName(name);
-    if (!ref) {
-        ref = anims_.Insert(name, data);
-    } else {
-        if (ref->ready()) {
-        } else if (!ref->ready() && data) {
-            ref->Init(data);
-        }
+Ren::AnimSeqHandle Ren::Context::CreateAnimSequence(const String &name, std::istream &data) {
+    AnimSeqHandle ret = anims_.Emplace();
+
+    const auto &[anim_main, anim_cold] = anims_.Get(ret);
+
+    if (!AnimSeq_Init(anim_main, anim_cold, name, data, log_)) {
+        anims_.Free(ret);
+        ret = {};
     }
-    return ref;
+
+    return ret;
 }
 
-int Ren::Context::NumAnimsNotReady() {
-    return int(std::count_if(anims_.begin(), anims_.end(), [](const AnimSequence &a) { return !a.ready(); }));
-}
+void Ren::Context::ReleaseAnimSequence(const AnimSeqHandle handle) { anims_.Free(handle); }
 
-void Ren::Context::ReleaseAnims() {
-    if (anims_.empty()) {
+void Ren::Context::ReleaseAnimSequences() {
+    if (anims_.Empty()) {
         return;
     }
-    log_->Error("---------REMAINING ANIMS--------");
-    for (const AnimSequence &a : anims_) {
+    log_->Error("----------REMAINING ANIMS----------");
+    /*for (const AnimSequence &a : anims_) {
         log_->Error("%s", a.name().c_str());
-    }
+    }*/
     log_->Error("-----------------------------------");
-    anims_.clear();
 }
 
 Ren::BufferHandle Ren::Context::CreateBuffer(const String &name, const eBufType type, const uint32_t initial_size,
@@ -797,11 +775,10 @@ void Ren::Context::ReleaseDefaultBuffers() {
 }
 
 void Ren::Context::ReleaseAll() {
-    meshes_.clear();
-
     ReleaseDefaultBuffers();
 
-    ReleaseAnims();
+    ReleaseMeshes();
+    ReleaseAnimSequences();
     ReleaseMaterials();
     ReleaseImages();
     ReleaseTextureRegions();

@@ -12,7 +12,7 @@ struct AccStructure {
     static const Ren::Bitmask<eRayType> DefaultVisMask;
 
     Ren::Bitmask<eRayType> vis_mask = DefaultVisMask;
-    Ren::MeshRef mesh;
+    Ren::MeshHandle mesh;
     std::vector<std::array<Ren::MaterialHandle, 3>> material_override;
     float surf_area = 0.0f;
 

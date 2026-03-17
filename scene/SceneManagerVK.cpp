@@ -358,7 +358,8 @@ Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc)
     Ren::ApiContext &api = ren_ctx_.api();
     const Ren::StoragesRef &storages = ren_ctx_.storages();
 
-    const Ren::BufferRange &attribs = acc.mesh->attribs_buf1(), &indices = acc.mesh->indices_buf();
+    const auto &[mesh_main, mesh_cold] = storages.meshes.Get(acc.mesh);
+    const Ren::BufferRange &attribs = mesh_main.attribs_buf1, &indices = mesh_main.indices_buf;
 
     VkAccelerationStructureGeometryTrianglesDataKHR tri_data = {
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR};
@@ -367,7 +368,7 @@ Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc)
     tri_data.vertexStride = 16;
     tri_data.indexType = VK_INDEX_TYPE_UINT32;
     tri_data.indexData.deviceAddress = Buffer_GetDeviceAddress(api, storages.buffers.Get(indices.buf).first);
-    tri_data.maxVertex = uint32_t(acc.mesh->attribs().size() / 13);
+    tri_data.maxVertex = uint32_t(mesh_cold.attribs.size() / 13);
 
     //
     // Gather geometries
@@ -377,7 +378,7 @@ Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc)
     Ren::SmallVector<uint32_t, 16> prim_counts;
 
     const uint32_t indices_start = indices.sub.offset;
-    const Ren::Span<const Ren::tri_group_t> groups = acc.mesh->groups();
+    const Ren::Span<const Ren::tri_group_t> groups = mesh_cold.groups;
     for (int j = 0; j < int(groups.size()); ++j) {
         const Ren::tri_group_t &grp = groups[j];
         const Ren::MaterialHandle front_mat =
@@ -575,7 +576,7 @@ Ren::AccStructHandle Eng::SceneManager::Build_HWRT_BLAS(const AccStructure &acc)
         api.EndSingleTimeCommands(cmd_buf);
 
         const auto &[blas_main, blas_cold] = ren_ctx_.acc_structs().Get(compacted_blas);
-        if (!AccStruct_Init(blas_main, blas_cold, acc.mesh->name(), compact_acc_struct, mem_alloc)) {
+        if (!AccStruct_Init(blas_main, blas_cold, mesh_cold.name, compact_acc_struct, mem_alloc)) {
             ren_ctx_.ReleaseAccStruct(compacted_blas);
             ren_ctx_.log()->Error("Blas compaction failed!");
             return {};

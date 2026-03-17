@@ -62,10 +62,10 @@ void Eng::Drawable::Read(const Sys::JsObjectP &js_in, Drawable &dr) {
 void Eng::Drawable::Write(const Drawable &dr, Sys::JsObjectP &js_out) {
     const auto &alloc = js_out.elements.get_allocator();
 
-    if (dr.mesh) {
+    /*if (dr.mesh) {
         // write mesh file name
         js_out.Insert("mesh_file", Sys::JsStringP{dr.mesh->name(), alloc});
-    }
+    }*/
 
     // write visibility
     if ((dr.vis_mask & eVisibility::Camera) != (DefaultVisMask & eVisibility::Camera)) {

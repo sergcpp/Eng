@@ -205,17 +205,16 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
         Sys::MemBuf buf{__cam_rig_mesh, size_t(__cam_rig_mesh_size)};
         std::istream in_mesh(&buf);
 
-        Ren::eMeshLoadStatus status;
-        cam_rig_ = ren_ctx.LoadMesh(
-            "__cam_rig", &in_mesh,
+        cam_rig_ = ren_ctx.CreateMesh(
+            Ren::String{"__cam_rig"}, in_mesh,
             [this](std::string_view name) -> std::array<Ren::MaterialHandle, 3> {
                 Ren::String name_str{name};
                 const Ren::MaterialHandle mat = ren_ctx_.CreateMaterial(name_str, {}, nullptr, nullptr, nullptr);
                 scene_data_.name_to_material.Insert(name_str, mat);
                 return std::array<Ren::MaterialHandle, 3>{mat, mat, {}};
             },
-            &status);
-        assert(status == Ren::eMeshLoadStatus::CreatedFromData);
+            ren_ctx_.default_vertex_buf1(), ren_ctx_.default_vertex_buf2(), ren_ctx_.default_indices_buf(),
+            ren_ctx_.default_skin_vertex_buf(), ren_ctx_.default_delta_vertex_buf());
     }
 
     Ren::ILog *log = ren_ctx_.log();
@@ -277,6 +276,8 @@ Eng::SceneManager::SceneManager(Ren::Context &ren_ctx, Eng::ShaderLoader &sh, Sn
 Eng::SceneManager::~SceneManager() {
     StopTextureLoaderThread();
     ClearScene();
+
+    ren_ctx_.ReleaseMesh(cam_rig_);
 
     ren_ctx_.ReleaseImage(white_tex_);
     ren_ctx_.ReleaseImage(error_tex_);
@@ -709,22 +710,26 @@ void Eng::SceneManager::ClearScene() {
     scene_data_.env = {};
     scene_data_.persistent_data->Release();
 
-    for (const auto &img : scene_data_.name_to_texture) {
-        ren_ctx_.ReleaseImage(img.val);
+    for (const auto &mesh : scene_data_.name_to_mesh) {
+        ren_ctx_.ReleaseMesh(mesh.val);
     }
-    scene_data_.name_to_texture.clear();
+    scene_data_.name_to_mesh.clear();
 
     for (const auto &mat : scene_data_.name_to_material) {
         ren_ctx_.ReleaseMaterial(mat.val);
     }
     scene_data_.name_to_material.clear();
 
+    for (const auto &img : scene_data_.name_to_texture) {
+        ren_ctx_.ReleaseImage(img.val);
+    }
+    scene_data_.name_to_texture.clear();
+
     for (const Ren::SamplerHandle s : scene_data_.samplers) {
         ren_ctx_.ReleaseSampler(s);
     }
     scene_data_.samplers.clear();
 
-    assert(scene_data_.meshes.empty());
     scene_data_.objects.clear();
     scene_data_.name_to_object.clear();
     scene_data_.lm_splitter.Clear();
@@ -982,23 +987,23 @@ void Eng::SceneManager::LoadMeshBuffers() {
     for (const Eng::SceneObject &obj : scene_data_.objects) {
         if (bool(obj.comp_mask & Eng::CompDrawableBit)) {
             Eng::Drawable &dr = drawables[obj.components[Eng::CompDrawable]];
-            Ren::Mesh *mesh = dr.mesh.get();
-            assert(mesh->type() == Ren::eMeshType::Simple);
-            mesh->InitBufferData(ren_ctx_.api(), ren_ctx_.buffers(), *scene_data_.persistent_data->vertex_buf1,
-                                 *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
-                                 ren_ctx_.log());
+            const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(dr.mesh);
+            assert(mesh_main.type == Ren::eMeshType::Simple);
+            Mesh_InitBufferData(ren_ctx_.api(), mesh_main, mesh_cold, ren_ctx_.buffers(),
+                                *scene_data_.persistent_data->vertex_buf1, *scene_data_.persistent_data->vertex_buf2,
+                                *scene_data_.persistent_data->indices_buf, ren_ctx_.log());
         }
         if (bool(obj.comp_mask & Eng::CompAccStructureBit)) {
             Eng::AccStructure &acc = acc_structs[obj.components[Eng::CompAccStructure]];
-            Ren::Mesh *mesh = acc.mesh.get();
-            assert(mesh->type() == Ren::eMeshType::Simple);
-            mesh->InitBufferData(ren_ctx_.api(), ren_ctx_.buffers(), *scene_data_.persistent_data->vertex_buf1,
-                                 *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
-                                 ren_ctx_.log());
+            const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
+            assert(mesh_main.type == Ren::eMeshType::Simple);
+            Mesh_InitBufferData(ren_ctx_.api(), mesh_main, mesh_cold, ren_ctx_.buffers(),
+                                *scene_data_.persistent_data->vertex_buf1, *scene_data_.persistent_data->vertex_buf2,
+                                *scene_data_.persistent_data->indices_buf, ren_ctx_.log());
             if (ren_ctx_.capabilities.hwrt) {
-                mesh->blas = Build_HWRT_BLAS(acc);
+                mesh_cold.blas = Build_HWRT_BLAS(acc);
             } else {
-                mesh->blas = Build_SWRT_BLAS(acc);
+                mesh_cold.blas = Build_SWRT_BLAS(acc);
             }
         }
     }
@@ -1011,17 +1016,16 @@ void Eng::SceneManager::ReleaseMeshBuffers(const bool immediately) {
     for (const Eng::SceneObject &obj : scene_data_.objects) {
         if (bool(obj.comp_mask & Eng::CompDrawableBit)) {
             Eng::Drawable &dr = drawables[obj.components[Eng::CompDrawable]];
-            Ren::Mesh *mesh = dr.mesh.get();
-            assert(mesh->type() == Ren::eMeshType::Simple);
-            mesh->ReleaseBufferData();
+            const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(dr.mesh);
+            assert(mesh_main.type == Ren::eMeshType::Simple);
+            mesh_main.attribs_buf1 = mesh_main.attribs_buf2 = mesh_main.indices_buf = {};
         }
         if (bool(obj.comp_mask & Eng::CompAccStructureBit)) {
             Eng::AccStructure &acc = acc_structs[obj.components[Eng::CompAccStructure]];
-            Ren::Mesh *mesh = acc.mesh.get();
-            assert(mesh->type() == Ren::eMeshType::Simple);
-            mesh->ReleaseBufferData();
-
-            mesh->blas = {};
+            const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
+            assert(mesh_main.type == Ren::eMeshType::Simple);
+            mesh_main.attribs_buf1 = mesh_main.attribs_buf2 = mesh_main.indices_buf = {};
+            mesh_cold.blas = {};
         }
     }
 
@@ -1266,10 +1270,11 @@ void Eng::SceneManager::PostloadDrawable(const Sys::JsObjectP &js_comp_obj, void
     if (const size_t mesh_file_ndx = js_comp_obj.IndexOf("mesh_file"); mesh_file_ndx < js_comp_obj.Size()) {
         const Sys::JsStringP &js_mesh_file_name = js_comp_obj[mesh_file_ndx].second.as_str();
 
-        Ren::eMeshLoadStatus status;
-        dr->mesh = LoadMesh(js_mesh_file_name.val, nullptr, nullptr, &status);
+        if (const Ren::MeshHandle *h = scene_data_.name_to_mesh.Find(js_mesh_file_name.val)) {
+            dr->mesh = *h;
+        }
 
-        if (status != Ren::eMeshLoadStatus::Found) {
+        if (!dr->mesh) {
             const std::string mesh_path = std::string(paths_.models_path) + js_mesh_file_name.val.c_str();
 
 #if defined(__ANDROID__)
@@ -1290,9 +1295,9 @@ void Eng::SceneManager::PostloadDrawable(const Sys::JsObjectP &js_comp_obj, void
 #endif
 
             using namespace std::placeholders;
-            dr->mesh = LoadMesh(js_mesh_file_name.val, &in_file_stream,
-                                std::bind(&SceneManager::OnLoadMaterial, this, _1), &status);
-            assert(status == Ren::eMeshLoadStatus::CreatedFromData);
+            dr->mesh =
+                LoadMesh(js_mesh_file_name.val, in_file_stream, std::bind(&SceneManager::OnLoadMaterial, this, _1));
+            assert(dr->mesh);
         }
     } else {
         assert(false && "Not supported anymore, update scene file!");
@@ -1307,11 +1312,11 @@ void Eng::SceneManager::PostloadDrawable(const Sys::JsObjectP &js_comp_obj, void
         }
     }
 
+    const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(dr->mesh);
+
     if (const size_t anims_ndx = js_comp_obj.IndexOf("anims"); anims_ndx < js_comp_obj.Size()) {
         const Sys::JsArrayP &js_anims = js_comp_obj.at("anims").as_arr();
-
-        assert(dr->mesh->type() == Ren::eMeshType::Skeletal);
-        Ren::Skeleton *skel = dr->mesh->skel();
+        assert(mesh_main.type == Ren::eMeshType::Skeletal);
 
         for (const auto &js_anim : js_anims.elements) {
             const Sys::JsStringP &js_anim_name = js_anim.as_str();
@@ -1326,8 +1331,8 @@ void Eng::SceneManager::PostloadDrawable(const Sys::JsObjectP &js_comp_obj, void
             Sys::MemBuf mem = {&in_file_data[0], in_file_size};
             std::istream in_file_stream(&mem);
 
-            Ren::AnimSeqRef anim_ref = ren_ctx_.LoadAnimSequence(js_anim_name.val, in_file_stream);
-            skel->AddAnimSequence(anim_ref);
+            Ren::AnimSeqHandle anim_handle = ren_ctx_.CreateAnimSequence(Ren::String{js_anim_name.val}, in_file_stream);
+            mesh_cold.skel.AddAnimSequence(anim_handle, ren_ctx_.anims());
         }
     }
 
@@ -1351,8 +1356,8 @@ void Eng::SceneManager::PostloadDrawable(const Sys::JsObjectP &js_comp_obj, void
         }
     }*/
 
-    obj_bbox[0] = Min(obj_bbox[0], dr->mesh->bbox_min());
-    obj_bbox[1] = Max(obj_bbox[1], dr->mesh->bbox_max());
+    obj_bbox[0] = Min(obj_bbox[0], mesh_cold.bbox_min);
+    obj_bbox[1] = Max(obj_bbox[1], mesh_cold.bbox_max);
 }
 
 void Eng::SceneManager::PostloadOccluder(const Sys::JsObjectP &js_comp_obj, void *comp, Ren::Vec3f obj_bbox[2]) {
@@ -1362,10 +1367,11 @@ void Eng::SceneManager::PostloadOccluder(const Sys::JsObjectP &js_comp_obj, void
 
     const Sys::JsStringP &js_mesh_file_name = js_comp_obj.at("mesh_file").as_str();
 
-    Ren::eMeshLoadStatus status;
-    occ->mesh = LoadMesh(js_mesh_file_name.val, nullptr, nullptr, &status);
+    if (const Ren::MeshHandle *h = scene_data_.name_to_mesh.Find(js_mesh_file_name.val)) {
+        occ->mesh = *h;
+    }
 
-    if (status != Ren::eMeshLoadStatus::Found) {
+    if (!occ->mesh) {
         const std::string mesh_path = std::string(paths_.models_path) + js_mesh_file_name.val.c_str();
 
         Sys::AssetFile in_file(mesh_path);
@@ -1378,13 +1384,13 @@ void Eng::SceneManager::PostloadOccluder(const Sys::JsObjectP &js_comp_obj, void
         std::istream in_file_stream(&mem);
 
         using namespace std::placeholders;
-        occ->mesh = LoadMesh(js_mesh_file_name.val, &in_file_stream, std::bind(&SceneManager::OnLoadMaterial, this, _1),
-                             &status);
-        assert(status == Ren::eMeshLoadStatus::CreatedFromData);
+        occ->mesh = LoadMesh(js_mesh_file_name.val, in_file_stream, std::bind(&SceneManager::OnLoadMaterial, this, _1));
     }
 
-    obj_bbox[0] = Min(obj_bbox[0], occ->mesh->bbox_min());
-    obj_bbox[1] = Max(obj_bbox[1], occ->mesh->bbox_max());
+    const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(occ->mesh);
+
+    obj_bbox[0] = Min(obj_bbox[0], mesh_cold.bbox_min);
+    obj_bbox[1] = Max(obj_bbox[1], mesh_cold.bbox_max);
 }
 
 void Eng::SceneManager::PostloadLightmap(const Sys::JsObjectP &js_comp_obj, void *comp, Ren::Vec3f obj_bbox[2]) {
@@ -1548,10 +1554,11 @@ void Eng::SceneManager::PostloadAccStructure(const Sys::JsObjectP &js_comp_obj, 
 
     const Sys::JsStringP &js_mesh_file_name = js_comp_obj.at("mesh_file").as_str();
 
-    Ren::eMeshLoadStatus status;
-    acc->mesh = LoadMesh(js_mesh_file_name.val, nullptr, nullptr, &status);
+    if (const Ren::MeshHandle *h = scene_data_.name_to_mesh.Find(js_mesh_file_name.val)) {
+        acc->mesh = *h;
+    }
 
-    if (status != Ren::eMeshLoadStatus::Found) {
+    if (!acc->mesh) {
         const std::string mesh_path = std::string(paths_.models_path) + js_mesh_file_name.val.c_str();
 
         Sys::AssetFile in_file(mesh_path);
@@ -1564,9 +1571,8 @@ void Eng::SceneManager::PostloadAccStructure(const Sys::JsObjectP &js_comp_obj, 
         std::istream in_file_stream(&mem);
 
         using namespace std::placeholders;
-        acc->mesh = LoadMesh(js_mesh_file_name.val, &in_file_stream, std::bind(&SceneManager::OnLoadMaterial, this, _1),
-                             &status);
-        assert(status == Ren::eMeshLoadStatus::CreatedFromData);
+        acc->mesh = LoadMesh(js_mesh_file_name.val, in_file_stream, std::bind(&SceneManager::OnLoadMaterial, this, _1));
+        assert(acc->mesh);
     }
 
     if (const size_t material_override_ndx = js_comp_obj.IndexOf("material_override");
@@ -1578,18 +1584,20 @@ void Eng::SceneManager::PostloadAccStructure(const Sys::JsObjectP &js_comp_obj, 
         }
     }
 
+    const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc->mesh);
+
     // TODO: use better surface area estimation
-    const Ren::Vec3f e = acc->mesh->bbox_max() - acc->mesh->bbox_min();
+    const Ren::Vec3f e = mesh_cold.bbox_max - mesh_cold.bbox_min;
     acc->surf_area = 2.0f * (e[0] + e[1] + e[2]);
 
-    obj_bbox[0] = Min(obj_bbox[0], acc->mesh->bbox_min());
-    obj_bbox[1] = Max(obj_bbox[1], acc->mesh->bbox_max());
+    obj_bbox[0] = Min(obj_bbox[0], mesh_cold.bbox_min);
+    obj_bbox[1] = Max(obj_bbox[1], mesh_cold.bbox_max);
 
-    if (!acc->mesh->blas) {
+    if (!mesh_cold.blas) {
         if (ren_ctx_.capabilities.hwrt) {
-            acc->mesh->blas = Build_HWRT_BLAS(*acc);
+            mesh_cold.blas = Build_HWRT_BLAS(*acc);
         } else {
-            acc->mesh->blas = Build_SWRT_BLAS(*acc);
+            mesh_cold.blas = Build_SWRT_BLAS(*acc);
         }
     }
 }
@@ -1597,6 +1605,10 @@ void Eng::SceneManager::PostloadAccStructure(const Sys::JsObjectP &js_comp_obj, 
 void Eng::SceneManager::PostsaveDrawable(const void *comp, Sys::JsObjectP &js_out) {
     const auto &dr = *(const Drawable *)comp;
     const auto &alloc = js_out.elements.get_allocator();
+
+    if (dr.mesh) {
+        js_out.Insert("mesh_file", Sys::JsStringP{ren_ctx_.meshes().Get(dr.mesh).second.name, alloc});
+    }
 
     if (!dr.material_override.empty()) {
         Sys::JsArrayP js_material_override(alloc);
@@ -1619,6 +1631,11 @@ void Eng::SceneManager::PostsaveDrawable(const void *comp, Sys::JsObjectP &js_ou
 void Eng::SceneManager::PostsaveAccStructure(const void *comp, Sys::JsObjectP &js_out) {
     const auto &as = *(const AccStructure *)comp;
     const auto &alloc = js_out.elements.get_allocator();
+
+    if (as.mesh) {
+        // write mesh file name
+        js_out.Insert("mesh_file", Sys::JsStringP{ren_ctx_.meshes().Get(as.mesh).second.name, alloc});
+    }
 
     if (!as.material_override.empty()) {
         Sys::JsArrayP js_material_override(alloc);
@@ -1771,6 +1788,10 @@ Ren::ImageHandle Eng::SceneManager::OnLoadTexture(const std::string_view name, c
                                                   const Ren::Bitmask<Ren::eImgFlags> flags) {
     using namespace SceneManagerConstants;
 
+    if (const Ren::ImageHandle *h = scene_data_.name_to_texture.Find(name)) {
+        return *h;
+    }
+
     Ren::ImgParams p;
     p.w = p.h = 1;
     p.format = Ren::eFormat::RGBA8;
@@ -1779,10 +1800,6 @@ Ren::ImageHandle Eng::SceneManager::OnLoadTexture(const std::string_view name, c
     p.flags = Ren::eImgFlags::Stub;
     p.usage = Ren::Bitmask(Ren::eImgUsage::Transfer) | Ren::eImgUsage::Sampled;
     p.sampling.lod_bias.from_float(-1.0f); // TAA compensation
-
-    if (const Ren::ImageHandle *h = scene_data_.name_to_texture.Find(name)) {
-        return *h;
-    }
 
     Ren::String name_str{name};
     const Ren::ImageHandle ret =
@@ -1820,30 +1837,20 @@ Ren::SamplerHandle Eng::SceneManager::OnLoadSampler(const Ren::SamplingParams pa
     return ret;
 }
 
-Ren::MeshRef Eng::SceneManager::LoadMesh(std::string_view name, std::istream *data,
-                                         const Ren::material_load_callback &on_mat_load,
-                                         Ren::eMeshLoadStatus *load_status) {
-    Ren::MeshRef ref = scene_data_.meshes.FindByName(name);
-    if (!ref) {
-        ref = scene_data_.meshes.Insert(
-            name, data, on_mat_load, ren_ctx_.api(), ren_ctx_.buffers(), *scene_data_.persistent_data->vertex_buf1,
-            *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
-            *scene_data_.persistent_data->skin_vertex_buf, *scene_data_.persistent_data->delta_buf, load_status,
-            ren_ctx_.log());
-    } else {
-        if (ref->ready()) {
-            if (load_status) {
-                (*load_status) = Ren::eMeshLoadStatus::Found;
-            }
-        } else if (data) {
-            ref->Init(data, on_mat_load, ren_ctx_.api(), ren_ctx_.buffers(), *scene_data_.persistent_data->vertex_buf1,
-                      *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
-                      *scene_data_.persistent_data->skin_vertex_buf, *scene_data_.persistent_data->delta_buf,
-                      load_status, ren_ctx_.log());
-        }
+Ren::MeshHandle Eng::SceneManager::LoadMesh(std::string_view name, std::istream &data,
+                                            const Ren::material_load_callback &on_mat_load) {
+    assert(!scene_data_.name_to_mesh.Find(name));
+
+    Ren::String name_str{name};
+    const Ren::MeshHandle ret =
+        ren_ctx_.CreateMesh(name_str, data, on_mat_load, *scene_data_.persistent_data->vertex_buf1,
+                            *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
+                            *scene_data_.persistent_data->skin_vertex_buf, *scene_data_.persistent_data->delta_buf);
+    if (ret) {
+        scene_data_.name_to_mesh.Insert(name_str, ret);
     }
 
-    return ref;
+    return ret;
 }
 
 Ren::Vec4f Eng::SceneManager::LoadDecalTexture(std::string_view name) {

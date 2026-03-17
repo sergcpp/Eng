@@ -36,7 +36,7 @@ struct SeqAction {
 
     // temp data
     bool is_active;
-    Ren::AnimSeqRef anim_ref;
+    Ren::AnimSeqHandle anim;
     int anim_id;
     Snd::BufferRef sound_ref;
     bool dof;

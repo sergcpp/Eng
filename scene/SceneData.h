@@ -277,11 +277,11 @@ struct SceneData {
 
     Ren::HashMap32<Ren::String, Ren::ImageHandle> name_to_texture;
     Ren::HashMap32<Ren::String, Ren::MaterialHandle> name_to_material;
+    Ren::HashMap32<Ren::String, Ren::MeshHandle> name_to_mesh;
     std::vector<uint32_t> material_changes;
     std::vector<Ren::SamplerHandle> samplers;
     std::unique_ptr<PersistentGpuData> persistent_data;
     std::pair<uint32_t, uint32_t> mat_update_ranges[4];
-    Ren::MeshStorage meshes;
 
     std::vector<uint32_t> texture_mem_buckets;
     uint32_t tex_mem_bucket_index = 0;

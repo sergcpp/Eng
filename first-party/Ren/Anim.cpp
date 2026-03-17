@@ -7,18 +7,13 @@
 #pragma warning(disable : 4996)
 #endif
 
-Ren::AnimSequence::AnimSequence(std::string_view name, std::istream &data) {
-    name_ = String{name};
-    Init(data);
-}
-
-void Ren::AnimSequence::Init(std::istream &data) { InitAnimBones(data); }
-
-void Ren::AnimSequence::InitAnimBones(std::istream &data) {
+bool Ren::AnimSeq_Init(AnimSeqMain &anim_main, AnimSeqCold &anim_cold, Ren::String name, std::istream &data,
+                       ILog *log) {
     if (!data) {
-        ready_ = false;
-        return;
+        return false;
     }
+
+    anim_cold.name = name;
 
     char str[12];
     data.read(str, 12);
@@ -40,19 +35,22 @@ void Ren::AnimSequence::InitAnimBones(std::istream &data) {
     data.read((char *)&file_header.p[0], file_header.num_chunks * sizeof(ChunkPos));
 
     const size_t bones_count = size_t(file_header.p[SKELETON_CHUNK].length) / (64 + 64 + 4);
-    bones_.resize(bones_count);
+    anim_main.bones.resize(bones_count);
     int offset = 0;
     for (size_t i = 0; i < bones_count; i++) {
-        bones_[i].id = int(i);
-        bones_[i].flags = 0;
-        data.read(bones_[i].name, 64);
-        data.read(bones_[i].parent_name, 64);
+        anim_main.bones[i].id = int(i);
+        anim_main.bones[i].flags = 0;
+        char temp_name[64];
+        data.read(temp_name, 64);
+        anim_main.bones[i].name = String{temp_name};
+        data.read(temp_name, 64);
+        anim_main.bones[i].parent_name = String{temp_name};
         int has_translate_anim = 0;
         data.read((char *)&has_translate_anim, 4);
         if (has_translate_anim) {
-            bones_[i].flags |= uint32_t(eAnimBoneFlags::AnimHasTranslate);
+            anim_main.bones[i].flags |= uint32_t(eAnimBoneFlags::AnimHasTranslate);
         }
-        bones_[i].offset = offset;
+        anim_main.bones[i].offset = offset;
         if (has_translate_anim) {
             offset += 7;
         } else {
@@ -62,11 +60,13 @@ void Ren::AnimSequence::InitAnimBones(std::istream &data) {
 
     if (file_header.num_chunks == 4) {
         const size_t shapes_count = size_t(file_header.p[SHAPES_CHUNK].length) / 64;
-        shapes_.resize(shapes_count);
+        anim_main.shapes.resize(shapes_count);
         for (size_t i = 0; i < shapes_count; i++) {
-            data.read(shapes_[i].name, 64);
-            shapes_[i].offset = offset;
-            shapes_[i].cur_weight = 0;
+            char temp_name[64];
+            data.read(temp_name, 64);
+            anim_main.shapes[i].name = String{temp_name};
+            anim_main.shapes[i].offset = offset;
+            anim_main.shapes[i].cur_weight = 0;
             offset += 1;
         }
     }
@@ -77,29 +77,30 @@ void Ren::AnimSequence::InitAnimBones(std::istream &data) {
 
     assert(file_header.p[AnimInfoChunk].length == 64 + 2 * sizeof(int32_t));
 
-    frame_size_ = offset;
+    anim_main.frame_size = offset;
     char act_name[64];
     data.read(act_name, 64);
-    act_name_ = String{act_name};
-    data.read((char *)&fps_, 4);
-    data.read((char *)&len_, 4);
+    anim_cold.act_name = String{act_name};
+    data.read((char *)&anim_main.fps, 4);
+    data.read((char *)&anim_main.len, 4);
 
-    frames_.resize(file_header.p[FramesChunk].length / 4);
-    data.read((char *)&frames_[0], file_header.p[FramesChunk].length);
+    anim_main.frames.resize(file_header.p[FramesChunk].length / 4);
+    data.read((char *)&anim_main.frames[0], file_header.p[FramesChunk].length);
 
-    frame_dur_ = 1.0f / float(fps_);
-    anim_dur_ = float(len_) * frame_dur_;
+    anim_main.frame_dur = 1.0f / float(anim_main.fps);
+    anim_main.anim_dur = float(anim_main.len) * anim_main.frame_dur;
 
-    ready_ = true;
+    return true;
 }
 
-void Ren::AnimSequence::LinkBones(Span<const Bone> bones, int *out_bone_indices) {
+void Ren::AnimSeq_LinkBones(const AnimSeqMain &anim_main, const AnimSeqCold &anim_cold, Span<const Bone> bones,
+                            Span<int> out_bone_indices) {
     for (int i = 0; i < int(bones.size()); i++) {
         out_bone_indices[i] = -1;
-        for (int j = 0; j < int(bones_.size()); j++) {
-            if (strcmp(bones[i].name, bones_[j].name) == 0) {
+        for (int j = 0; j < int(anim_main.bones.size()); j++) {
+            if (bones[i].name == anim_main.bones[j].name) {
                 if (bones[i].parent_id != -1) {
-                    assert(strcmp(bones[bones[i].parent_id].name, bones_[j].parent_name) == 0);
+                    assert(bones[bones[i].parent_id].name == anim_main.bones[j].parent_name);
                 }
                 out_bone_indices[i] = j;
                 break;
@@ -108,11 +109,12 @@ void Ren::AnimSequence::LinkBones(Span<const Bone> bones, int *out_bone_indices)
     }
 }
 
-void Ren::AnimSequence::LinkShapes(Span<const ShapeKey> shapes, int *out_shape_indices) {
+void Ren::AnimSeq_LinkShapes(const AnimSeqMain &anim_main, const AnimSeqCold &anim_cold, Span<const ShapeKey> shapes,
+                             Span<int> out_shape_indices) {
     for (int i = 0; i < int(shapes.size()); i++) {
         out_shape_indices[i] = -1;
-        for (int j = 0; j < int(shapes_.size()); j++) {
-            if (strcmp(shapes[i].name, shapes_[j].name) == 0) {
+        for (int j = 0; j < int(anim_main.shapes.size()); j++) {
+            if (shapes[i].name == anim_main.shapes[j].name) {
                 out_shape_indices[i] = j;
                 break;
             }
@@ -120,44 +122,45 @@ void Ren::AnimSequence::LinkShapes(Span<const ShapeKey> shapes, int *out_shape_i
     }
 }
 
-void Ren::AnimSequence::Update(float time) {
-    if (len_ < 2) {
+void Ren::AnimSeq_Update(AnimSeqMain &anim_main, AnimSeqCold &anim_cold, float time) {
+    if (anim_main.len < 2) {
         return;
     }
 
-    while (time > anim_dur_) {
-        time -= anim_dur_;
+    while (time > anim_main.anim_dur) {
+        time -= anim_main.anim_dur;
     }
     while (time < 0) {
-        time += anim_dur_;
+        time += anim_main.anim_dur;
     }
 
-    const float frame = time * float(fps_);
+    const float frame = time * float(anim_main.fps);
     const float frame_fl = std::floor(frame);
-    const int fr_0 = int(frame) % len_;
-    const int fr_1 = int(std::ceil(frame)) % len_;
+    const int fr_0 = int(frame) % anim_main.len;
+    const int fr_1 = int(std::ceil(frame)) % anim_main.len;
     const float t = frame - frame_fl;
-    InterpolateFrames(fr_0, fr_1, t);
+    AnimSeq_InterpolateFrames(anim_main, anim_cold, fr_0, fr_1, t);
 }
 
-void Ren::AnimSequence::InterpolateFrames(const int fr_0, const int fr_1, const float t) {
-    for (AnimBone &bone : bones_) {
+void Ren::AnimSeq_InterpolateFrames(AnimSeqMain &anim_main, AnimSeqCold &anim_cold, const int fr_0, const int fr_1,
+                                    const float t) {
+    for (AnimBone &bone : anim_main.bones) {
         int offset = bone.offset;
         if (bone.flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) {
-            const Vec3f p1 = MakeVec3(&frames_[fr_0 * frame_size_ + offset]);
-            const Vec3f p2 = MakeVec3(&frames_[fr_1 * frame_size_ + offset]);
+            const Vec3f p1 = MakeVec3(&anim_main.frames[fr_0 * anim_main.frame_size + offset]);
+            const Vec3f p2 = MakeVec3(&anim_main.frames[fr_1 * anim_main.frame_size + offset]);
             bone.cur_pos = Mix(p1, p2, t);
             offset += 3;
         }
-        const Quatf q1 = MakeQuat(&frames_[fr_0 * frame_size_ + offset]);
-        const Quatf q2 = MakeQuat(&frames_[fr_1 * frame_size_ + offset]);
+        const Quatf q1 = MakeQuat(&anim_main.frames[fr_0 * anim_main.frame_size + offset]);
+        const Quatf q2 = MakeQuat(&anim_main.frames[fr_1 * anim_main.frame_size + offset]);
         bone.cur_rot = Mix(q1, q2, t);
     }
 
-    for (AnimShape &shape : shapes_) {
+    for (AnimShape &shape : anim_main.shapes) {
         const int offset = shape.offset;
-        const float w1 = frames_[fr_0 * frame_size_ + offset];
-        const float w2 = frames_[fr_1 * frame_size_ + offset];
+        const float w1 = anim_main.frames[fr_0 * anim_main.frame_size + offset];
+        const float w2 = anim_main.frames[fr_1 * anim_main.frame_size + offset];
         shape.cur_weight = Mix(w1, w2, t);
     }
 }
@@ -231,18 +234,20 @@ int Ren::Skeleton::UpdateShapes(uint16_t *out_shape_palette) {
     return active_shapes_count;
 }
 
-int Ren::Skeleton::AddAnimSequence(AnimSeqRef ref) {
+int Ren::Skeleton::AddAnimSequence(const AnimSeqHandle handle, const DualStorage<AnimSeqMain, AnimSeqCold> &storage) {
     for (int i = 0; i < int(anims.size()); i++) {
-        if (anims[i].anim == ref) {
+        if (anims[i].anim == handle) {
             return i;
         }
     }
+    const auto &[anim_main, anim_cold] = storage.Get(handle);
+
     AnimLink &a = anims.emplace_back();
-    a.anim = std::move(ref);
+    a.anim = handle;
     a.anim_bones.resize(bones.size());
-    a.anim->LinkBones(bones, &a.anim_bones[0]);
+    AnimSeq_LinkBones(anim_main, anim_cold, bones, a.anim_bones);
     a.anim_shapes.resize(bones.size());
-    a.anim->LinkShapes(shapes, &a.anim_shapes[0]);
+    AnimSeq_LinkShapes(anim_main, anim_cold, shapes, a.anim_shapes);
     return int(anims.size() - 1);
 }
 
@@ -254,18 +259,19 @@ void Ren::Skeleton::MarkChildren() {
     }
 }
 
-void Ren::Skeleton::ApplyAnim(const int id) {
+void Ren::Skeleton::ApplyAnim(const int id, const DualStorage<AnimSeqMain, AnimSeqCold> &storage) {
+    const auto &[anim_main, anim_cold] = storage.Get(anims[id].anim);
     for (int i = 0; i < int(bones.size()); i++) {
         const int ndx = anims[id].anim_bones[i];
         if (ndx != -1) {
-            const AnimBone *abone = anims[id].anim->bone(ndx);
+            const AnimBone &abone = anim_main.bones[ndx];
             Mat4f m = Mat4f{1};
-            if (abone->flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) {
-                m = Translate(m, abone->cur_pos);
+            if (abone.flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) {
+                m = Translate(m, abone.cur_pos);
             } else {
                 m = Translate(m, bones[i].head_pos);
             }
-            m *= ToMat4(abone->cur_rot);
+            m *= ToMat4(abone.cur_rot);
             bones[i].cur_matrix = m;
             bones[i].dirty = true;
         }
@@ -275,13 +281,16 @@ void Ren::Skeleton::ApplyAnim(const int id) {
     for (int i = 0; i < int(shapes.size()); i++) {
         const int ndx = anims[id].anim_shapes[i];
         if (ndx != -1) {
-            const AnimShape *ashape = anims[id].anim->shape(ndx);
-            shapes[i].cur_weight_packed = uint16_t(ashape->cur_weight * 65535);
+            const AnimShape &ashape = anim_main.shapes[ndx];
+            shapes[i].cur_weight_packed = uint16_t(ashape.cur_weight * 65535);
         }
     }
 }
 
-void Ren::Skeleton::ApplyAnim(const int anim_id1, const int anim_id2, const float t) {
+void Ren::Skeleton::ApplyAnim(const int anim_id1, const int anim_id2, const float t,
+                              const DualStorage<AnimSeqMain, AnimSeqCold> &storage) {
+    const auto &[anim1_main, anim1_cold] = storage.Get(anims[anim_id1].anim);
+    const auto &[anim2_main, anim2_cold] = storage.Get(anims[anim_id2].anim);
     for (int i = 0; i < int(bones.size()); i++) {
         if (anims[anim_id1].anim_bones[i] != -1 || anims[anim_id2].anim_bones[i] != -1) {
             const int ndx1 = anims[anim_id1].anim_bones[i];
@@ -291,20 +300,20 @@ void Ren::Skeleton::ApplyAnim(const int anim_id1, const int anim_id2, const floa
             Vec3f pos;
             Quatf orient;
             if (ndx1 != -1) {
-                const AnimBone *abone1 = anims[anim_id1].anim->bone(ndx1);
-                if (abone1->flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) {
-                    pos = abone1->cur_pos;
+                const AnimBone &abone1 = anim1_main.bones[ndx1];
+                if (abone1.flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) {
+                    pos = abone1.cur_pos;
                 } else {
                     pos = bones[i].head_pos;
                 }
-                orient = abone1->cur_rot;
+                orient = abone1.cur_rot;
             }
             if (ndx2 != -1) {
-                const AnimBone *abone2 = anims[anim_id2].anim->bone(anims[anim_id2].anim_bones[i]);
-                if (abone2->flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) {
-                    pos = Mix(pos, abone2->cur_pos, t);
+                const AnimBone &abone2 = anim2_main.bones[anims[anim_id2].anim_bones[i]];
+                if (abone2.flags & uint32_t(eAnimBoneFlags::AnimHasTranslate)) {
+                    pos = Mix(pos, abone2.cur_pos, t);
                 }
-                orient = Slerp(orient, abone2->cur_rot, t);
+                orient = Slerp(orient, abone2.cur_rot, t);
             }
             m = Translate(m, pos);
             m *= ToMat4(orient);
@@ -315,7 +324,10 @@ void Ren::Skeleton::ApplyAnim(const int anim_id1, const int anim_id2, const floa
     MarkChildren();
 }
 
-void Ren::Skeleton::UpdateAnim(const int anim_id, const float t) { anims[anim_id].anim->Update(t); }
+void Ren::Skeleton::UpdateAnim(const int anim_id, const float t, DualStorage<AnimSeqMain, AnimSeqCold> &storage) {
+    const auto &[anim_main, anim_cold] = storage.Get(anims[anim_id].anim);
+    AnimSeq_Update(anim_main, anim_cold, t);
+}
 
 #ifdef _MSC_VER
 #pragma warning(pop)

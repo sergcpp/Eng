@@ -42,7 +42,8 @@ using CommandBuffer = VkCommandBuffer;
 #else
 using CommandBuffer = void *;
 #endif
-class AnimSequence;
+struct AnimSeqMain;
+struct AnimSeqCold;
 struct ApiContext;
 struct BufferMain;
 struct BufferCold;
@@ -55,7 +56,8 @@ struct FramebufferCold;
 class ILog;
 struct MaterialMain;
 struct MaterialCold;
-class Mesh;
+struct MeshMain;
+struct MeshCold;
 struct PipelineMain;
 struct PipelineCold;
 struct ProgramMain;
@@ -75,9 +77,6 @@ class Texture2DAtlas;
 class ImageSplitter;
 struct VertexInputMain;
 struct VertexInputCold;
-
-using AnimSeqRef = StrongRef<AnimSequence, NamedStorage<AnimSequence>>;
-using MeshRef = StrongRef<Mesh, NamedStorage<Mesh>>;
 
 using AccStructRWHandle = Handle<AccStructMain, RWTag>;
 using AccStructROHandle = Handle<AccStructMain, ROTag>;
@@ -112,6 +111,12 @@ using SamplerHandle = SamplerRWHandle;
 using MaterialRWHandle = Handle<MaterialMain, RWTag>;
 using MaterialROHandle = Handle<MaterialMain, ROTag>;
 using MaterialHandle = MaterialRWHandle;
+using MeshRWHandle = Handle<MeshMain, RWTag>;
+using MeshROHandle = Handle<MeshMain, ROTag>;
+using MeshHandle = MeshRWHandle;
+using AnimSeqRWHandle = Handle<AnimSeqMain, RWTag>;
+using AnimSeqROHandle = Handle<AnimSeqMain, ROTag>;
+using AnimSeqHandle = AnimSeqRWHandle;
 
 struct StoragesRef {
     DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs;
@@ -125,6 +130,8 @@ struct StoragesRef {
     DualStorage<FramebufferMain, FramebufferCold> &framebuffers;
     DualStorage<AccStructMain, AccStructCold> &acc_structs;
     DualStorage<MaterialMain, MaterialCold> &materials;
+    DualStorage<MeshMain, MeshCold> &meshes;
+    DualStorage<AnimSeqMain, AnimSeqCold> &anims;
 };
 
 const char *Version();

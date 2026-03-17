@@ -214,183 +214,127 @@ void pack_vertex_delta(const vtx_delta_t &in_v, packed_vertex_delta_t &out_v) {
 
 } // namespace Ren
 
-Ren::Mesh::Mesh(std::string_view name, const float *positions, const int vtx_count, const uint32_t *indices,
-                const int ndx_count, const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
-                ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
-                eMeshLoadStatus *load_status, ILog *log) {
-    name_ = String{name};
-    Init(positions, vtx_count, indices, ndx_count, api, buffers, vertex_buf1, vertex_buf2, index_buf, load_status, log);
+bool Ren::Mesh_Init(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
+                    std::istream &data, const material_load_callback &on_mat_load,
+                    DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                    ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf,
+                    ResizableBuffer &delta_buf, ILog *log) {
+    char mesh_type_str[12];
+    std::streampos pos = data.tellg();
+    data.read(mesh_type_str, 12);
+    if (data.gcount() != 12) {
+        log->Error("Failed to read mesh header (%s)!", name.c_str());
+        return false;
+    }
+    data.seekg(pos, std::ios::beg);
+
+    if (strncmp(mesh_type_str, "STATIC_MESH", 11) == 0) {
+        return Mesh_InitSimple(api, mesh_main, mesh_cold, name, data, on_mat_load, buffers, vertex_buf1, vertex_buf2,
+                               index_buf, log);
+    } else if (strncmp(mesh_type_str, "COLORE_MESH", 11) == 0) {
+        return Mesh_InitColored(api, mesh_main, mesh_cold, name, data, on_mat_load, buffers, vertex_buf1, vertex_buf2,
+                                index_buf, log);
+    } else if (strncmp(mesh_type_str, "SKELET_MESH", 11) == 0 || strncmp(mesh_type_str, "SKECOL_MESH", 11) == 0) {
+        return Mesh_InitSkeletal(api, mesh_main, mesh_cold, name, data, on_mat_load, buffers, skin_vertex_buf,
+                                 delta_buf, index_buf, log);
+    }
+
+    log->Error("Invalid mesh (%s)!", name.c_str());
+    return false;
 }
 
-Ren::Mesh::Mesh(std::string_view name, std::istream *data, const material_load_callback &on_mat_load,
-                const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
-                ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf,
-                ResizableBuffer &delta_buf, eMeshLoadStatus *load_status, ILog *log) {
-    name_ = String{name};
-    Init(data, on_mat_load, api, buffers, vertex_buf1, vertex_buf2, index_buf, skin_vertex_buf, delta_buf, load_status,
-         log);
-}
-
-void Ren::Mesh::Init(const float *positions, const int vtx_count, const uint32_t *indices, const int ndx_count,
-                     const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
-                     ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, eMeshLoadStatus *load_status,
-                     ILog *log) {
-
-    if (!positions) {
-        (*load_status) = eMeshLoadStatus::Error;
-        return;
-    }
-
-    const uint32_t attribs_buf1_size = vtx_count * sizeof(packed_vertex_data1_t);
-    const uint32_t attribs_buf2_size = vtx_count * sizeof(packed_vertex_data2_t);
-    const uint32_t indices_buf_size = ndx_count * sizeof(uint32_t);
-
-    const uint32_t total_mem_required = attribs_buf1_size + indices_buf_size;
-
-    Ren::BufferMain upload_buf_main = {};
-    Ren::BufferCold upload_buf_cold = {};
-    if (!Buffer_Init(api, upload_buf_main, upload_buf_cold, Ren::String{"Temp Upload Buf"}, eBufType::Upload,
-                     total_mem_required, log)) {
-        // TODO: Properly handle failure
-        assert(false);
-    }
-
-    auto *_vtx_data1 = reinterpret_cast<packed_vertex_data1_t *>(Buffer_Map(api, upload_buf_main, upload_buf_cold));
-
-    bbox_min_ =
-        Vec3f{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
-    bbox_max_ = Vec3f{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
-                      std::numeric_limits<float>::lowest()};
-
-    for (int i = 0; i < vtx_count; i++) {
-        bbox_min_[0] = std::min(bbox_min_[0], positions[i * 3 + 0]);
-        bbox_min_[1] = std::min(bbox_min_[1], positions[i * 3 + 1]);
-        bbox_min_[2] = std::min(bbox_min_[2], positions[i * 3 + 2]);
-
-        bbox_max_[0] = std::max(bbox_max_[0], positions[i * 3 + 0]);
-        bbox_max_[1] = std::max(bbox_max_[1], positions[i * 3 + 1]);
-        bbox_max_[2] = std::max(bbox_max_[2], positions[i * 3 + 2]);
-
-        memcpy(&_vtx_data1[i].p[0], &positions[i * 3], 3 * sizeof(float));
-        _vtx_data1[i].t0[0] = 0;
-        _vtx_data1[i].t0[1] = 0;
-    }
-
-    auto *_ndx_data = reinterpret_cast<uint32_t *>(_vtx_data1 + vtx_count);
-    assert(uintptr_t(_ndx_data) % alignof(uint32_t) == 0);
-    memcpy(_ndx_data, indices, indices_buf_size);
-
-    Buffer_Unmap(api, upload_buf_main, upload_buf_cold);
-
-    type_ = eMeshType::Simple;
-    flags_ = {};
-    ready_ = true;
-
-    { // Copy buffer data
-        CommandBuffer cmd_buf = api.BegSingleTimeCommands();
-
-        attribs_buf1_.sub = vertex_buf1.AllocSubRegion(attribs_buf1_size, 16, {}, log, &upload_buf_main, cmd_buf);
-        attribs_buf1_.buf = vertex_buf1.handle();
-
-        // allocate empty data in buffer 2 (for index matching)
-        attribs_buf2_.sub = vertex_buf2.AllocSubRegion(attribs_buf2_size, 16, {}, log);
-        attribs_buf2_.buf = vertex_buf2.handle();
-
-        assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
-
-        indices_buf_.sub = index_buf.AllocSubRegion(indices_buf_size, 4, {}, log, &upload_buf_main, cmd_buf);
-        indices_buf_.buf = index_buf.handle();
-
-        api.EndSingleTimeCommands(cmd_buf);
-    }
-
-    Buffer_DestroyImmediately(api, upload_buf_main, upload_buf_cold);
-
-    (*load_status) = eMeshLoadStatus::CreatedFromData;
-}
-
-void Ren::Mesh::Init(std::istream *data, const material_load_callback &on_mat_load, const ApiContext &api,
-                     DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
-                     ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf,
-                     ResizableBuffer &delta_buf, eMeshLoadStatus *load_status, ILog *log) {
-
-    if (data) {
-        char mesh_type_str[12];
-        std::streampos pos = data->tellg();
-        data->read(mesh_type_str, 12);
-        data->seekg(pos, std::ios::beg);
-
-        if (strcmp(mesh_type_str, "STATIC_MESH\0") == 0) {
-            InitMeshSimple(*data, on_mat_load, api, buffers, vertex_buf1, vertex_buf2, index_buf, log);
-        } else if (strcmp(mesh_type_str, "COLORE_MESH\0") == 0) {
-            InitMeshColored(*data, on_mat_load, api, buffers, vertex_buf1, vertex_buf2, index_buf, log);
-        } else if (strcmp(mesh_type_str, "SKELET_MESH\0") == 0 || strcmp(mesh_type_str, "SKECOL_MESH\0") == 0) {
-            InitMeshSkeletal(*data, on_mat_load, api, buffers, skin_vertex_buf, delta_buf, index_buf, log);
-        }
-
-        (*load_status) = eMeshLoadStatus::CreatedFromData;
-    } else {
-        (*load_status) = eMeshLoadStatus::Error;
-    }
-}
-
-void Ren::Mesh::InitMeshSimple(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                               DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
-                               ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
+bool Ren::Mesh_InitSimple(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
+                          std::istream &data, const material_load_callback &on_mat_load,
+                          DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                          ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
-    assert(strcmp(mesh_type_str, "STATIC_MESH\0") == 0);
+    if (data.gcount() != 12 || strncmp(mesh_type_str, "STATIC_MESH", 11) != 0) {
+        log->Error("Failed to read mesh header (%s)!", name.c_str());
+        return false;
+    }
 
-    type_ = eMeshType::Simple;
+    mesh_main.type = eMeshType::Simple;
+    mesh_cold.name = name;
 
     struct Header {
         int num_chunks;
         mesh_chunk_pos_t p[5];
     } file_header = {};
     data.read((char *)&file_header, sizeof(file_header));
+    if (data.gcount() != sizeof(file_header)) {
+        log->Error("Failed to read mesh header (%s)!", name.c_str());
+        return false;
+    }
 
     // Skip name, cant remember why i put it there
     data.seekg(32, std::ios::cur);
 
     float temp_f[3];
     data.read((char *)&temp_f[0], sizeof(float) * 3);
-    bbox_min_ = MakeVec3(temp_f);
+    if (data.gcount() != 3 * sizeof(float)) {
+        log->Error("Error reading mesh data (%s)!", name.c_str());
+        return false;
+    }
+    mesh_cold.bbox_min = MakeVec3(temp_f);
     data.read((char *)&temp_f[0], sizeof(float) * 3);
-    bbox_max_ = MakeVec3(temp_f);
+    if (data.gcount() != 3 * sizeof(float)) {
+        log->Error("Error reading mesh data (%s)!", name.c_str());
+        return false;
+    }
+    mesh_cold.bbox_max = MakeVec3(temp_f);
 
     const auto attribs_size = uint32_t(file_header.p[int(eMeshFileChunk::VtxAttributes)].length);
 
-    attribs_.resize(attribs_size / sizeof(float));
-    data.read((char *)attribs_.data(), attribs_size);
+    mesh_cold.attribs.resize(attribs_size / sizeof(float));
+    data.read((char *)mesh_cold.attribs.data(), attribs_size);
+    if (data.gcount() != attribs_size) {
+        log->Error("Error reading mesh data (%s)!", name.c_str());
+        return false;
+    }
 
     const auto index_data_size = uint32_t(file_header.p[int(eMeshFileChunk::TriIndices)].length);
-    indices_.resize(index_data_size / sizeof(uint32_t));
-    data.read((char *)indices_.data(), index_data_size);
+    mesh_cold.indices.resize(index_data_size / sizeof(uint32_t));
+    data.read((char *)mesh_cold.indices.data(), index_data_size);
+    if (data.gcount() != index_data_size) {
+        log->Error("Error reading mesh data (%s)!", name.c_str());
+        return false;
+    }
 
     const int materials_count = file_header.p[int(eMeshFileChunk::Materials)].length / 64;
     SmallVector<std::array<char, 64>, 8> material_names;
     for (int i = 0; i < materials_count; i++) {
-        auto &name = material_names.emplace_back();
-        data.read(name.data(), 64);
+        auto &mat_name = material_names.emplace_back();
+        data.read(mat_name.data(), 64);
+        if (data.gcount() != 64) {
+            log->Error("Error reading mesh data (%s)!", name.c_str());
+            return false;
+        }
     }
 
-    flags_ = {};
+    mesh_main.flags = {};
 
     const int tri_groups_count = file_header.p[int(eMeshFileChunk::TriGroups)].length / 12;
     assert(tri_groups_count == materials_count);
     for (int i = 0; i < tri_groups_count; i++) {
-        int index, num_indices, alpha;
-        data.read((char *)&index, 4);
-        data.read((char *)&num_indices, 4);
-        data.read((char *)&alpha, 4);
+        int grp_data[3];
+        data.read((char *)&grp_data[0], sizeof(grp_data));
+        if (data.gcount() != sizeof(grp_data)) {
+            log->Error("Error reading mesh data (%s)!", name.c_str());
+            return false;
+        }
 
-        auto &grp = groups_.emplace_back();
-        grp.byte_offset = int(index * sizeof(uint32_t));
-        grp.num_indices = num_indices;
+        const int index_offset = grp_data[0];
+        const int index_count = grp_data[1];
+        const int alpha = grp_data[2];
+
+        auto &grp = mesh_cold.groups.emplace_back();
+        grp.byte_offset = int(index_offset * sizeof(uint32_t));
+        grp.num_indices = index_count;
 
         if (alpha) {
             grp.flags |= eMeshFlags::HasAlpha;
-            flags_ |= eMeshFlags::HasAlpha;
+            mesh_main.flags |= eMeshFlags::HasAlpha;
         }
 
         std::array<MaterialHandle, 3> mats = on_mat_load(&material_names[i][0]);
@@ -399,52 +343,75 @@ void Ren::Mesh::InitMeshSimple(std::istream &data, const material_load_callback 
         grp.vol_mat = mats[2];
     }
 
-    InitBufferData(api, buffers, vertex_buf1, vertex_buf2, index_buf, log);
-
-    ready_ = true;
+    return Mesh_InitBufferData(api, mesh_main, mesh_cold, buffers, vertex_buf1, vertex_buf2, index_buf, log);
 }
 
-void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                                DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
-                                ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
+bool Ren::Mesh_InitColored(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
+                           std::istream &data, const material_load_callback &on_mat_load,
+                           DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                           ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
-    assert(strcmp(mesh_type_str, "COLORE_MESH\0") == 0);
+    if (data.gcount() != 12 || strncmp(mesh_type_str, "COLORE_MESH", 11) != 0) {
+        log->Error("Failed to read mesh header (%s)!", name.c_str());
+        return false;
+    }
 
-    type_ = eMeshType::Colored;
+    mesh_main.type = eMeshType::Colored;
+    mesh_cold.name = name;
 
     struct Header {
         int num_chunks;
         mesh_chunk_pos_t p[5];
     } file_header = {};
     data.read((char *)&file_header, sizeof(file_header));
+    if (data.gcount() != sizeof(file_header)) {
+        log->Error("Failed to read mesh header (%s)!", name.c_str());
+        return false;
+    }
 
     // Skip name, cant remember why i put it there
     data.seekg(32, std::ios::cur);
 
     float temp_f[3];
     data.read((char *)&temp_f[0], sizeof(float) * 3);
-    bbox_min_ = MakeVec3(temp_f);
+    if (data.gcount() != 3 * sizeof(float)) {
+        log->Error("Error reading mesh data (%s)!", name.c_str());
+        return false;
+    }
+    mesh_cold.bbox_min = MakeVec3(temp_f);
     data.read((char *)&temp_f[0], sizeof(float) * 3);
-    bbox_max_ = MakeVec3(temp_f);
+    if (data.gcount() != 3 * sizeof(float)) {
+        log->Error("Error reading mesh data (%s)!", name.c_str());
+        return false;
+    }
+    mesh_cold.bbox_max = MakeVec3(temp_f);
 
     const auto attribs_size = uint32_t(file_header.p[int(eMeshFileChunk::VtxAttributes)].length);
 
-    attribs_.resize(attribs_size / sizeof(float));
-    data.read((char *)attribs_.data(), attribs_size);
+    mesh_cold.attribs.resize(attribs_size / sizeof(float));
+    data.read((char *)mesh_cold.attribs.data(), attribs_size);
+    if (data.gcount() != attribs_size) {
+        log->Error("Error reading mesh data (%s)!", name.c_str());
+        return false;
+    }
 
     const auto index_data_size = uint32_t(file_header.p[int(eMeshFileChunk::TriIndices)].length);
-    indices_.resize(index_data_size / sizeof(uint32_t));
-    data.read((char *)indices_.data(), index_data_size);
+    mesh_cold.indices.resize(index_data_size / sizeof(uint32_t));
+    data.read((char *)mesh_cold.indices.data(), index_data_size);
+    if (data.gcount() != index_data_size) {
+        log->Error("Error reading mesh data (%s)!", name.c_str());
+        return false;
+    }
 
     const int materials_count = file_header.p[int(eMeshFileChunk::Materials)].length / 64;
     SmallVector<std::array<char, 64>, 8> material_names;
     for (int i = 0; i < materials_count; i++) {
-        auto &name = material_names.emplace_back();
-        data.read(name.data(), 64);
+        auto &mat_name = material_names.emplace_back();
+        data.read(mat_name.data(), 64);
     }
 
-    flags_ = {};
+    mesh_main.flags = {};
 
     const int tri_strips_count = file_header.p[int(eMeshFileChunk::TriGroups)].length / 12;
     assert(tri_strips_count == materials_count);
@@ -454,13 +421,13 @@ void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback
         data.read((char *)&num_indices, 4);
         data.read((char *)&alpha, 4);
 
-        auto &grp = groups_.emplace_back();
+        auto &grp = mesh_cold.groups.emplace_back();
         grp.byte_offset = int(index * sizeof(uint32_t));
         grp.num_indices = num_indices;
 
         if (alpha) {
             grp.flags |= eMeshFlags::HasAlpha;
-            flags_ |= eMeshFlags::HasAlpha;
+            mesh_main.flags |= eMeshFlags::HasAlpha;
         }
 
         std::array<MaterialHandle, 3> mats = on_mat_load(&material_names[i][0]);
@@ -482,8 +449,7 @@ void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback
     Ren::BufferCold upload_buf_cold = {};
     if (!Buffer_Init(api, upload_buf_main, upload_buf_cold, Ren::String{"Temp Upload Buf"}, eBufType::Upload,
                      total_mem_required, log)) {
-        // TODO: Properly handle failure
-        assert(false);
+        return false;
     }
 
     { // Update staging buffer
@@ -494,13 +460,13 @@ void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback
         auto *index_data = reinterpret_cast<uint32_t *>(vertices_data2 + vertex_count);
         assert(uintptr_t(index_data) % alignof(uint32_t) == 0);
 
-        const auto *orig_vertices = reinterpret_cast<const orig_vertex_colored_t *>(attribs_.data());
+        const auto *orig_vertices = reinterpret_cast<const orig_vertex_colored_t *>(mesh_cold.attribs.data());
 
         for (uint32_t i = 0; i < vertex_count; i++) {
             pack_vertex_data1(orig_vertices[i], vertices_data1[i]);
             pack_vertex_data2(orig_vertices[i], vertices_data2[i]);
         }
-        memcpy(index_data, indices_.data(), indices_buf_size);
+        memcpy(index_data, mesh_cold.indices.data(), indices_buf_size);
 
         Buffer_Unmap(api, upload_buf_main, upload_buf_cold);
     }
@@ -508,37 +474,42 @@ void Ren::Mesh::InitMeshColored(std::istream &data, const material_load_callback
     { // Copy buffer data
         CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-        attribs_buf1_.sub =
-            vertex_buf1.AllocSubRegion(attribs_buf1_size, 16, name_, log, &upload_buf_main, cmd_buf, 0 /* offset */);
-        attribs_buf1_.buf = vertex_buf1.handle();
+        mesh_main.attribs_buf1.sub = vertex_buf1.AllocSubRegion(attribs_buf1_size, 16, mesh_cold.name, log,
+                                                                &upload_buf_main, cmd_buf, 0 /* offset */);
+        mesh_main.attribs_buf1.buf = vertex_buf1.handle();
 
-        attribs_buf2_.sub =
-            vertex_buf2.AllocSubRegion(attribs_buf2_size, 16, name_, log, &upload_buf_main, cmd_buf, attribs_buf1_size);
-        attribs_buf2_.buf = vertex_buf2.handle();
+        mesh_main.attribs_buf2.sub = vertex_buf2.AllocSubRegion(attribs_buf2_size, 16, mesh_cold.name, log,
+                                                                &upload_buf_main, cmd_buf, attribs_buf1_size);
+        mesh_main.attribs_buf2.buf = vertex_buf2.handle();
 
-        indices_buf_.sub = index_buf.AllocSubRegion(indices_buf_size, 4, name_, log, &upload_buf_main, cmd_buf,
-                                                    attribs_buf1_size + attribs_buf2_size);
-        indices_buf_.buf = index_buf.handle();
-        assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
+        mesh_main.indices_buf.sub = index_buf.AllocSubRegion(indices_buf_size, 4, mesh_cold.name, log, &upload_buf_main,
+                                                             cmd_buf, attribs_buf1_size + attribs_buf2_size);
+        mesh_main.indices_buf.buf = index_buf.handle();
+        assert(mesh_main.attribs_buf1.sub.offset == mesh_main.attribs_buf2.sub.offset && "Offsets do not match!");
 
         api.EndSingleTimeCommands(cmd_buf);
     }
 
     Buffer_DestroyImmediately(api, upload_buf_main, upload_buf_cold);
 
-    ready_ = true;
+    return true;
 }
 
-void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callback &on_mat_load, const ApiContext &api,
-                                 DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &skin_vertex_buf,
-                                 ResizableBuffer &delta_buf, ResizableBuffer &index_buf, ILog *log) {
+bool Ren::Mesh_InitSkeletal(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
+                            std::istream &data, const material_load_callback &on_mat_load,
+                            DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &skin_vertex_buf,
+                            ResizableBuffer &delta_buf, ResizableBuffer &index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
-    assert(strcmp(mesh_type_str, "SKELET_MESH\0") == 0 || strcmp(mesh_type_str, "SKECOL_MESH\0") == 0);
+    if (strncmp(mesh_type_str, "SKELET_MESH", 11) != 0 && strncmp(mesh_type_str, "SKECOL_MESH", 11) != 0) {
+        log->Error("Failed to read mesh header (%s)!", name.c_str());
+        return false;
+    }
 
     const bool vtx_color_present = strcmp(mesh_type_str, "SKECOL_MESH\0") == 0;
 
-    type_ = eMeshType::Skeletal;
+    mesh_main.type = eMeshType::Skeletal;
+    mesh_cold.name = name;
 
     struct Header {
         int num_chunks;
@@ -553,27 +524,27 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
     { // Read bounding box
         float temp_f[3];
         data.read((char *)&temp_f[0], sizeof(float) * 3);
-        bbox_min_ = MakeVec3(temp_f);
+        mesh_cold.bbox_min = MakeVec3(temp_f);
         data.read((char *)&temp_f[0], sizeof(float) * 3);
-        bbox_max_ = MakeVec3(temp_f);
+        mesh_cold.bbox_max = MakeVec3(temp_f);
     }
 
     const uint32_t sk_attribs_size = uint32_t(file_header.p[int(eMeshFileChunk::VtxAttributes)].length);
-    attribs_.resize(sk_attribs_size / sizeof(float));
-    data.read((char *)attribs_.data(), sk_attribs_size);
+    mesh_cold.attribs.resize(sk_attribs_size / sizeof(float));
+    data.read((char *)mesh_cold.attribs.data(), sk_attribs_size);
 
     const uint32_t indices_buf_size = uint32_t(file_header.p[int(eMeshFileChunk::TriIndices)].length);
-    indices_.resize(indices_buf_size / sizeof(uint32_t));
-    data.read((char *)indices_.data(), indices_buf_size);
+    mesh_cold.indices.resize(indices_buf_size / sizeof(uint32_t));
+    data.read((char *)mesh_cold.indices.data(), indices_buf_size);
 
     const int materials_count = file_header.p[int(eMeshFileChunk::Materials)].length / 64;
     SmallVector<std::array<char, 64>, 8> material_names;
     for (int i = 0; i < materials_count; i++) {
-        auto &name = material_names.emplace_back();
-        data.read(name.data(), 64);
+        auto &mat_name = material_names.emplace_back();
+        data.read(mat_name.data(), 64);
     }
 
-    flags_ = {};
+    mesh_main.flags = {};
 
     const int tri_groups_count = file_header.p[int(eMeshFileChunk::TriGroups)].length / 12;
     assert(tri_groups_count == materials_count);
@@ -583,13 +554,13 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
         data.read((char *)&num_indices, 4);
         data.read((char *)&alpha, 4);
 
-        auto &grp = groups_.emplace_back();
+        auto &grp = mesh_cold.groups.emplace_back();
         grp.byte_offset = int(index * sizeof(uint32_t));
         grp.num_indices = num_indices;
 
         if (alpha) {
             grp.flags |= eMeshFlags::HasAlpha;
-            flags_ |= eMeshFlags::HasAlpha;
+            mesh_main.flags |= eMeshFlags::HasAlpha;
         }
 
         std::array<MaterialHandle, 3> mats = on_mat_load(&material_names[i][0]);
@@ -599,35 +570,39 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
     }
 
     const int bones_count = file_header.p[int(eMeshFileChunk::Bones)].length / (64 + 8 + 12 + 16);
-    skel_.bones.resize(bones_count);
+    mesh_cold.skel.bones.resize(bones_count);
 
-    for (int i = 0; i < int(skel_.bones.size()); i++) {
+    for (int i = 0; i < int(mesh_cold.skel.bones.size()); i++) {
         float temp_f[4];
         Vec3f temp_v;
         Quatf temp_q;
-        data.read(skel_.bones[i].name, 64);
-        data.read((char *)&skel_.bones[i].id, sizeof(int));
-        data.read((char *)&skel_.bones[i].parent_id, sizeof(int));
+        char temp_name[64];
+        data.read(temp_name, 64);
+        mesh_cold.skel.bones[i].name = String{temp_name};
+        data.read((char *)&mesh_cold.skel.bones[i].id, sizeof(int));
+        data.read((char *)&mesh_cold.skel.bones[i].parent_id, sizeof(int));
 
         data.read((char *)&temp_f[0], sizeof(float) * 3);
         temp_v = MakeVec3(&temp_f[0]);
-        skel_.bones[i].bind_matrix = Translate(skel_.bones[i].bind_matrix, temp_v);
+        mesh_cold.skel.bones[i].bind_matrix = Translate(mesh_cold.skel.bones[i].bind_matrix, temp_v);
         data.read((char *)&temp_f[0], sizeof(float) * 4);
         temp_q = MakeQuat(&temp_f[0]);
-        skel_.bones[i].bind_matrix *= ToMat4(temp_q);
-        skel_.bones[i].inv_bind_matrix = Inverse(skel_.bones[i].bind_matrix);
+        mesh_cold.skel.bones[i].bind_matrix *= ToMat4(temp_q);
+        mesh_cold.skel.bones[i].inv_bind_matrix = Inverse(mesh_cold.skel.bones[i].bind_matrix);
 
-        if (skel_.bones[i].parent_id != -1) {
-            skel_.bones[i].cur_matrix =
-                skel_.bones[skel_.bones[i].parent_id].inv_bind_matrix * skel_.bones[i].bind_matrix;
-            const Vec4f pos = skel_.bones[skel_.bones[i].parent_id].inv_bind_matrix * skel_.bones[i].bind_matrix[3];
-            skel_.bones[i].head_pos = MakeVec3(&pos[0]);
+        if (mesh_cold.skel.bones[i].parent_id != -1) {
+            mesh_cold.skel.bones[i].cur_matrix =
+                mesh_cold.skel.bones[mesh_cold.skel.bones[i].parent_id].inv_bind_matrix *
+                mesh_cold.skel.bones[i].bind_matrix;
+            const Vec4f pos = mesh_cold.skel.bones[mesh_cold.skel.bones[i].parent_id].inv_bind_matrix *
+                              mesh_cold.skel.bones[i].bind_matrix[3];
+            mesh_cold.skel.bones[i].head_pos = MakeVec3(&pos[0]);
         } else {
-            skel_.bones[i].cur_matrix = skel_.bones[i].bind_matrix;
-            skel_.bones[i].head_pos = MakeVec3(&skel_.bones[i].bind_matrix[3][0]);
+            mesh_cold.skel.bones[i].cur_matrix = mesh_cold.skel.bones[i].bind_matrix;
+            mesh_cold.skel.bones[i].head_pos = MakeVec3(&mesh_cold.skel.bones[i].bind_matrix[3][0]);
         }
-        skel_.bones[i].cur_comb_matrix = skel_.bones[i].cur_matrix;
-        skel_.bones[i].dirty = true;
+        mesh_cold.skel.bones[i].cur_comb_matrix = mesh_cold.skel.bones[i].cur_matrix;
+        mesh_cold.skel.bones[i].dirty = true;
     }
 
     const uint32_t vertex_count =
@@ -644,8 +619,7 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
     Ren::BufferCold upload_buf_cold = {};
     if (!Buffer_Init(api, upload_buf_main, upload_buf_cold, Ren::String{"Temp Upload Buf"}, eBufType::Upload,
                      total_mem_required, log)) {
-        // TODO: Properly handle failure
-        assert(false);
+        return false;
     }
 
     uint8_t *stage_buf_ptr = Buffer_Map(api, upload_buf_main, upload_buf_cold);
@@ -664,18 +638,21 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
             int(file_header.p[int(eMeshFileChunk::ShapeKeys)].length - 2 * sizeof(uint32_t)) /
             (64 + shape_keyed_vertices_count * (3 * sizeof(float) + 3 * sizeof(float) + 3 * sizeof(float)));
 
-        deltas_.resize(shapes_count * shape_keyed_vertices_count);
-        skel_.shapes.resize(shapes_count);
+        mesh_cold.deltas.resize(shapes_count * shape_keyed_vertices_count);
+        mesh_cold.skel.shapes.resize(shapes_count);
 
         for (int i = 0; i < shapes_count; i++) {
-            ShapeKey &sh_key = skel_.shapes[i];
+            ShapeKey &sh_key = mesh_cold.skel.shapes[i];
 
-            data.read(sh_key.name, 64);
+            char temp_name[64];
+            data.read(temp_name, 64);
+            sh_key.name = String{temp_name};
             sh_key.delta_offset = shape_keyed_vertices_count * i;
             sh_key.delta_count = shape_keyed_vertices_count;
             sh_key.cur_weight_packed = 0;
 
-            data.read((char *)&deltas_[sh_key.delta_offset], std::streamsize(sh_key.delta_count * sizeof(vtx_delta_t)));
+            data.read((char *)&mesh_cold.deltas[sh_key.delta_offset],
+                      std::streamsize(sh_key.delta_count * sizeof(vtx_delta_t)));
         }
 
         sk_deltas_buf_size = uint32_t(shapes_count * shape_keyed_vertices_count * sizeof(packed_vertex_delta_t));
@@ -686,7 +663,7 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
         stage_buf_off += sk_deltas_buf_size;
 
         for (uint32_t i = 0; i < shapes_count * shape_keyed_vertices_count; i++) {
-            pack_vertex_delta(deltas_[i], packed_deltas[i]);
+            pack_vertex_delta(mesh_cold.deltas[i], packed_deltas[i]);
         }
     }
 
@@ -696,12 +673,12 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
     stage_buf_off += sk_attribs_buf_size;
 
     if (vtx_color_present) {
-        const auto *orig_vertices = reinterpret_cast<const orig_vertex_skinned_colored_t *>(attribs_.data());
+        const auto *orig_vertices = reinterpret_cast<const orig_vertex_skinned_colored_t *>(mesh_cold.attribs.data());
         for (uint32_t i = 0; i < vertex_count; i++) {
             pack_vertex(orig_vertices[i], vertices[i]);
         }
     } else {
-        const auto *orig_vertices = reinterpret_cast<const orig_vertex_skinned_t *>(attribs_.data());
+        const auto *orig_vertices = reinterpret_cast<const orig_vertex_skinned_t *>(mesh_cold.attribs.data());
         for (uint32_t i = 0; i < vertex_count; i++) {
             pack_vertex(orig_vertices[i], vertices[i]);
         }
@@ -711,7 +688,7 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
     auto *index_data = reinterpret_cast<uint32_t *>(stage_buf_ptr + stage_buf_off);
     const uint32_t indices_off = stage_buf_off;
     stage_buf_off += indices_buf_size;
-    memcpy(index_data, indices_.data(), indices_buf_size);
+    memcpy(index_data, mesh_cold.indices.data(), indices_buf_size);
 
     Buffer_Unmap(api, upload_buf_main, upload_buf_cold);
 
@@ -719,36 +696,36 @@ void Ren::Mesh::InitMeshSkeletal(std::istream &data, const material_load_callbac
         CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
         if (shape_data_present) {
-            sk_deltas_buf_.sub =
-                delta_buf.AllocSubRegion(sk_deltas_buf_size, 16, name_, log, &upload_buf_main, cmd_buf, delta_buf_off);
-            sk_deltas_buf_.buf = delta_buf.handle();
+            mesh_main.sk_deltas_buf.sub = delta_buf.AllocSubRegion(sk_deltas_buf_size, 16, mesh_cold.name, log,
+                                                                   &upload_buf_main, cmd_buf, delta_buf_off);
+            mesh_main.sk_deltas_buf.buf = delta_buf.handle();
         }
 
         // allocate untransformed vertices
-        sk_attribs_buf_.sub = skin_vertex_buf.AllocSubRegion(sk_attribs_buf_size, 16, name_, log, &upload_buf_main,
-                                                             cmd_buf, vertices_off);
-        sk_attribs_buf_.buf = skin_vertex_buf.handle();
+        mesh_main.sk_attribs_buf.sub = skin_vertex_buf.AllocSubRegion(sk_attribs_buf_size, 16, mesh_cold.name, log,
+                                                                      &upload_buf_main, cmd_buf, vertices_off);
+        mesh_main.sk_attribs_buf.buf = skin_vertex_buf.handle();
 
-        indices_buf_.sub =
-            index_buf.AllocSubRegion(indices_buf_size, 4, name_, log, &upload_buf_main, cmd_buf, indices_off);
-        indices_buf_.buf = index_buf.handle();
+        mesh_main.indices_buf.sub =
+            index_buf.AllocSubRegion(indices_buf_size, 4, mesh_cold.name, log, &upload_buf_main, cmd_buf, indices_off);
+        mesh_main.indices_buf.buf = index_buf.handle();
 
         api.EndSingleTimeCommands(cmd_buf);
     }
 
     Buffer_DestroyImmediately(api, upload_buf_main, upload_buf_cold);
 
-    ready_ = true;
+    return true;
 }
 
-void Ren::Mesh::InitBufferData(const ApiContext &api, DualStorage<BufferMain, BufferCold> &buffers,
-                               ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
-                               ILog *log) {
-    const uint32_t vertex_count = uint32_t(attribs_.size() * sizeof(float)) / sizeof(orig_vertex_t);
+bool Ren::Mesh_InitBufferData(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold,
+                              DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                              ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
+    const uint32_t vertex_count = uint32_t(mesh_cold.attribs.size() * sizeof(float)) / sizeof(orig_vertex_t);
 
     const uint32_t attribs_buf1_size = vertex_count * sizeof(packed_vertex_data1_t);
     const uint32_t attribs_buf2_size = vertex_count * sizeof(packed_vertex_data2_t);
-    const uint32_t indices_buf_size = uint32_t(indices_.size() * sizeof(uint32_t));
+    const uint32_t indices_buf_size = uint32_t(mesh_cold.indices.size() * sizeof(uint32_t));
 
     const uint32_t total_mem_required = attribs_buf1_size + attribs_buf2_size + indices_buf_size;
 
@@ -756,8 +733,7 @@ void Ren::Mesh::InitBufferData(const ApiContext &api, DualStorage<BufferMain, Bu
     BufferCold upload_buf_cold = {};
     if (!Buffer_Init(api, upload_buf_main, upload_buf_cold, String{"Temp Upload Buf"}, eBufType::Upload,
                      total_mem_required, log)) {
-        // TODO: Properly handle failure
-        assert(false);
+        return false;
     }
 
     { // Update staging buffer
@@ -768,12 +744,12 @@ void Ren::Mesh::InitBufferData(const ApiContext &api, DualStorage<BufferMain, Bu
         auto *index_data = reinterpret_cast<uint32_t *>(vertices_data2 + vertex_count);
         assert(uintptr_t(index_data) % alignof(uint32_t) == 0);
 
-        const auto *orig_vertices = reinterpret_cast<const orig_vertex_t *>(attribs_.data());
+        const auto *orig_vertices = reinterpret_cast<const orig_vertex_t *>(mesh_cold.attribs.data());
         for (uint32_t i = 0; i < vertex_count; i++) {
             pack_vertex_data1(orig_vertices[i], vertices_data1[i]);
             pack_vertex_data2(orig_vertices[i], vertices_data2[i]);
         }
-        memcpy(index_data, indices_.data(), indices_buf_size);
+        memcpy(index_data, mesh_cold.indices.data(), indices_buf_size);
 
         Buffer_Unmap(api, upload_buf_main, upload_buf_cold);
     }
@@ -781,29 +757,25 @@ void Ren::Mesh::InitBufferData(const ApiContext &api, DualStorage<BufferMain, Bu
     { // Copy buffer data
         CommandBuffer cmd_buf = api.BegSingleTimeCommands();
 
-        attribs_buf1_.sub =
-            vertex_buf1.AllocSubRegion(attribs_buf1_size, 16, name_, log, &upload_buf_main, cmd_buf, 0 /* offset */);
-        attribs_buf1_.buf = vertex_buf1.handle();
+        mesh_main.attribs_buf1.sub = vertex_buf1.AllocSubRegion(attribs_buf1_size, 16, mesh_cold.name, log,
+                                                                &upload_buf_main, cmd_buf, 0 /* offset */);
+        mesh_main.attribs_buf1.buf = vertex_buf1.handle();
 
-        attribs_buf2_.sub =
-            vertex_buf2.AllocSubRegion(attribs_buf2_size, 16, name_, log, &upload_buf_main, cmd_buf, attribs_buf1_size);
-        attribs_buf2_.buf = vertex_buf2.handle();
+        mesh_main.attribs_buf2.sub = vertex_buf2.AllocSubRegion(attribs_buf2_size, 16, mesh_cold.name, log,
+                                                                &upload_buf_main, cmd_buf, attribs_buf1_size);
+        mesh_main.attribs_buf2.buf = vertex_buf2.handle();
 
-        indices_buf_.sub = index_buf.AllocSubRegion(indices_buf_size, 4, name_, log, &upload_buf_main, cmd_buf,
-                                                    attribs_buf1_size + attribs_buf2_size);
-        indices_buf_.buf = index_buf.handle();
-        assert(attribs_buf1_.sub.offset == attribs_buf2_.sub.offset && "Offsets do not match!");
+        mesh_main.indices_buf.sub = index_buf.AllocSubRegion(indices_buf_size, 4, mesh_cold.name, log, &upload_buf_main,
+                                                             cmd_buf, attribs_buf1_size + attribs_buf2_size);
+        mesh_main.indices_buf.buf = index_buf.handle();
+        assert(mesh_main.attribs_buf1.sub.offset == mesh_main.attribs_buf2.sub.offset && "Offsets do not match!");
 
         api.EndSingleTimeCommands(cmd_buf);
     }
 
     Buffer_DestroyImmediately(api, upload_buf_main, upload_buf_cold);
-}
 
-void Ren::Mesh::ReleaseBufferData() {
-    attribs_buf1_ = {};
-    attribs_buf2_ = {};
-    indices_buf_ = {};
+    return true;
 }
 
 #ifdef _MSC_VER
