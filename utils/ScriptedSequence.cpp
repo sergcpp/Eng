@@ -223,7 +223,7 @@ bool Eng::ScriptedSequence::Load(const std::string_view lookup_name, const Sys::
 
                         action.sound_ref = snd_ctx_.LoadBuffer(name, {&samples[0], size}, params, &status);
                         assert(status == Snd::eBufLoadStatus::Found || status == Snd::eBufLoadStatus::CreatedFromData);
-                        action.sound_wave_tex = RenderSoundWave(name, &samples[0], samples_count, params);
+                        //action.sound_wave_tex = RenderSoundWave(name, &samples[0], samples_count, params);
                     }
                 }
 
@@ -655,7 +655,7 @@ void Eng::ScriptedSequence::UpdateAction(const uint32_t target_actor, SeqAction 
     }
 }
 
-Ren::ImageRegionRef Eng::ScriptedSequence::RenderSoundWave(std::string_view name, const void *samples_data,
+/*Ren::ImageRegionRef Eng::ScriptedSequence::RenderSoundWave(std::string_view name, const void *samples_data,
                                                            int samples_count, const Snd::BufParams &params) {
     { // check if sound-wave picture was already loaded
         Ren::eImgLoadStatus status;
@@ -719,9 +719,9 @@ Ren::ImageRegionRef Eng::ScriptedSequence::RenderSoundWave(std::string_view name
     p.h = tex_h;
     p.format = Ren::eFormat::RGBA8;
 
-    Ren::eImgLoadStatus status;
-    Ren::ImageRegionRef ret = ren_ctx_.LoadImageRegion(name, tex_data, p, ren_ctx_.current_cmd_buf(), &status);
-    assert(status == Ren::eImgLoadStatus::CreatedFromData);
+    //Ren::eImgLoadStatus status;
+    //Ren::ImageRegionRef ret = ren_ctx_.LoadImageRegion(name, tex_data, p, ren_ctx_.current_cmd_buf(), &status);
+    //assert(status == Ren::eImgLoadStatus::CreatedFromData);
 
     return ret;
-}
+}*/

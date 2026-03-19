@@ -1,24 +1,20 @@
 #pragma once
 
 #include "../SamplingParams.h"
-#include "../utils/Storage.h"
+#include "../utils/SparseStorage.h"
 #include "VK.h"
 
 namespace Ren {
 struct ApiContext;
 
-struct SamplerMain {
+struct Sampler {
     VkSampler handle = {};
     SamplingParams params;
 
-    bool operator<(const SamplerMain &rhs) const { return params < rhs.params; }
+    bool operator<(const Sampler &rhs) const { return params < rhs.params; }
 };
 
-struct SamplerCold {
-    // TODO:
-};
-
-bool Sampler_Init(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold, SamplingParams params);
-void Sampler_Destroy(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold);
-void Sampler_DestroyImmediately(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold);
+bool Sampler_Init(const ApiContext &api, Sampler &sampler, SamplingParams params);
+void Sampler_Destroy(const ApiContext &api, Sampler &sampler);
+void Sampler_DestroyImmediately(const ApiContext &api, Sampler &sampler);
 } // namespace Ren

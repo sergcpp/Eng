@@ -95,7 +95,7 @@ Ren::ImageAtlas::ImageAtlas(ApiContext *api, const int w, const int h, const int
     SamplingParams params;
     params.filter = filter;
 
-    Sampler_Init(*api_, sampler_.first, sampler_.second, params);
+    Sampler_Init(*api_, sampler_, params);
 }
 
 Ren::ImageAtlas::~ImageAtlas() {
@@ -106,7 +106,7 @@ Ren::ImageAtlas::~ImageAtlas() {
             api_->mem_to_free[api_->backend_frame].push_back(mem_[i]);
         }
     }
-    Sampler_Destroy(*api_, sampler_.first, sampler_.second);
+    Sampler_Destroy(*api_, sampler_);
 }
 
 Ren::ImageAtlas::ImageAtlas(ImageAtlas &&rhs) noexcept
@@ -362,7 +362,7 @@ Ren::ImageAtlasArray::ImageAtlasArray(ApiContext *api, const std::string_view na
     SamplingParams params;
     params.filter = filter;
 
-    Sampler_Init(*api_, sampler_.first, sampler_.second, params);
+    Sampler_Init(*api_, sampler_, params);
 
     splitters_.resize(layer_count, ImageSplitter{w, h});
 }
@@ -399,7 +399,7 @@ void Ren::ImageAtlasArray::Free() {
         api_->mem_to_free[api_->backend_frame].push_back(mem_);
         img_ = VK_NULL_HANDLE;
     }
-    Sampler_Destroy(*api_, sampler_.first, sampler_.second);
+    Sampler_Destroy(*api_, sampler_);
 }
 
 void Ren::ImageAtlasArray::FreeImmediate() {

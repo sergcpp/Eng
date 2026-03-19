@@ -37,7 +37,7 @@ set(SOURCE_FILES main.cpp
                  test_small_vector.cpp
                  test_span.cpp
                  test_sparse_array.cpp
-                 test_storage.cpp
+                 test_sparse_storage.cpp
                  test_string.cpp
                  test_utils.cpp)
 

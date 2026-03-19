@@ -9,7 +9,7 @@
 #include "../Fwd.h"
 #include "../Shader.h"
 #include "../utils/SmallVector.h"
-#include "../utils/Storage.h"
+#include "../utils/SparseStorage.h"
 #include "../utils/String.h"
 
 #ifdef _MSC_VER
@@ -69,11 +69,11 @@ struct ProgramCold {
     }
 };
 
-bool Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders, ProgramMain &prog_main,
-                  ProgramCold &prog_cold, ShaderROHandle vs, ShaderROHandle fs, ShaderROHandle tcs, ShaderROHandle tes,
-                  ShaderROHandle gs, ILog *log);
-bool Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders, ProgramMain &prog_main,
-                  ProgramCold &prog_cold, ShaderROHandle cs, ILog *log);
+bool Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
+                  ProgramMain &prog_main, ProgramCold &prog_cold, ShaderROHandle vs, ShaderROHandle fs,
+                  ShaderROHandle tcs, ShaderROHandle tes, ShaderROHandle gs, ILog *log);
+bool Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
+                  ProgramMain &prog_main, ProgramCold &prog_cold, ShaderROHandle cs, ILog *log);
 void Program_Destroy(const ApiContext &api, ProgramMain &prog_main, ProgramCold &prog_cold);
 } // namespace Ren
 

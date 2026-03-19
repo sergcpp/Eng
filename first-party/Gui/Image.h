@@ -8,15 +8,21 @@
 namespace Gui {
 class Image : public BaseElement {
   protected:
-    Ren::ImageRegionRef tex_;
+    const Ren::SparseDualStorage<Ren::ImageRegionMain, Ren::ImageRegionCold> *storage_ = nullptr;
+    Ren::ImageRegionHandle tex_;
     Vec2f uvs_px_[2];
 
   public:
-    Image(const Ren::ImageRegionRef &tex, const Vec2f &pos, const Vec2f &size, const BaseElement *parent);
+    Image(const Ren::SparseDualStorage<Ren::ImageRegionMain, Ren::ImageRegionCold> *storage, Ren::ImageRegionHandle tex,
+          const Vec2f &pos, const Vec2f &size, const BaseElement *parent);
     Image(Ren::Context &ctx, std::string_view tex_name, const Vec2f &pos, const Vec2f &size, const BaseElement *parent);
 
-    [[nodiscard]] Ren::ImageRegionRef &tex() { return tex_; }
-    [[nodiscard]] const Ren::ImageRegionRef &tex() const { return tex_; }
+    [[nodiscard]] const Ren::SparseDualStorage<Ren::ImageRegionMain, Ren::ImageRegionCold> *storage() const {
+        return storage_;
+    }
+
+    [[nodiscard]] Ren::ImageRegionHandle tex() { return tex_; }
+    [[nodiscard]] const Ren::ImageRegionHandle tex() const { return tex_; }
 
     [[nodiscard]] const Vec2f *uvs_px() const { return uvs_px_; }
 

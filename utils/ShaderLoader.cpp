@@ -46,11 +46,11 @@ Ren::eShaderType ShaderTypeFromName(std::string_view name) {
 
 Eng::ShaderLoader::ShaderLoader(Ren::Context &ctx) : ctx_(ctx) {
     // prevent reallocation
-    ctx.vtx_inputs().reserve(32);
-    ctx.render_passes().reserve(128);
-    ctx.shaders().reserve(2048);
-    ctx.programs().reserve(1024);
-    ctx.pipelines().reserve(2048);
+    ctx.vtx_inputs().Reserve(32);
+    ctx.render_passes().Reserve(128);
+    ctx.shaders().Reserve(2048);
+    ctx.programs().Reserve(1024);
+    ctx.pipelines().Reserve(2048);
 }
 
 Eng::ShaderLoader::~ShaderLoader() {
@@ -135,10 +135,10 @@ Ren::VertexInputHandle Eng::ShaderLoader::FindOrCreateVertexInput(Ren::Span<cons
     const auto it = lower_bound(
         std::begin(vtx_inputs_), std::end(vtx_inputs_), attribs,
         [this](const Ren::VertexInputHandle lhs_handle, Ren::Span<const Ren::VtxAttribDesc> attribs) {
-            return Ren::Span<const Ren::VtxAttribDesc>(ctx_.vtx_inputs().Get(lhs_handle).first.attribs) < attribs;
+            return Ren::Span<const Ren::VtxAttribDesc>(ctx_.vtx_inputs().Get(lhs_handle).attribs) < attribs;
         });
     if (it != std::end(vtx_inputs_) &&
-        Ren::Span<const Ren::VtxAttribDesc>(ctx_.vtx_inputs().Get(*it).first.attribs) == attribs) {
+        Ren::Span<const Ren::VtxAttribDesc>(ctx_.vtx_inputs().Get(*it).attribs) == attribs) {
         return *it;
     }
     const Ren::VertexInputHandle ret = ctx_.CreateVertexInput(attribs);
@@ -152,9 +152,9 @@ Ren::RenderPassHandle Eng::ShaderLoader::FindOrCreateRenderPass(const Ren::Rende
 
     const auto it =
         partition_point(std::begin(render_passes_), std::end(render_passes_), [&](const Ren::RenderPassHandle lhs) {
-            return ctx_.render_passes().Get(lhs).first.LessThan(depth_rt, color_rts);
+            return ctx_.render_passes().Get(lhs).LessThan(depth_rt, color_rts);
         });
-    if (it != std::end(render_passes_) && ctx_.render_passes().Get(*it).first.Equals(depth_rt, color_rts)) {
+    if (it != std::end(render_passes_) && ctx_.render_passes().Get(*it).Equals(depth_rt, color_rts)) {
         return *it;
     }
 

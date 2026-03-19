@@ -33,10 +33,9 @@ void CaptureMaterialTextureChange(Ren::Context &ctx, Eng::SceneData &scene_data,
                 const auto it = lower_bound(std::begin(scene_data.samplers), std::end(scene_data.samplers),
                                             img_cold.params.sampling,
                                             [&ctx](const Ren::SamplerHandle lhs_handle, const Ren::SamplingParams s) {
-                                                return ctx.samplers().Get(lhs_handle).first.params < s;
+                                                return ctx.samplers().Get(lhs_handle).params < s;
                                             });
-                if (it == std::end(scene_data.samplers) ||
-                    ctx.samplers().Get(*it).first.params != img_cold.params.sampling) {
+                if (it == std::end(scene_data.samplers) || ctx.samplers().Get(*it).params != img_cold.params.sampling) {
                     mat_main.samplers[i] = ctx.CreateSampler(img_cold.params.sampling);
                     scene_data.samplers.insert(it, mat_main.samplers[i]);
                 } else {

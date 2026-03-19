@@ -141,9 +141,9 @@ class FgContext {
 
     mutable Ren::RastState rast_state_;
 
-    Ren::DualStorage<FgAllocBufMain, FgAllocBufCold> buffers_;
+    Ren::SparseDualStorage<FgAllocBufMain, FgAllocBufCold> buffers_;
     Ren::HashMap32<Ren::String, uint32_t> name_to_buffer_;
-    Ren::DualStorage<FgAllocImgMain, FgAllocImgCold> images_;
+    Ren::SparseDualStorage<FgAllocImgMain, FgAllocImgCold> images_;
     Ren::HashMap32<Ren::String, uint32_t> name_to_image_;
 
     std::unique_ptr<FramebufferPool> framebuffers_;
@@ -259,9 +259,9 @@ class FgBuilder : public FgContext {
     void GetResourceFrameLifetime(const FgAllocBufCold &b, uint16_t out_lifetime[2][2]) const;
     void GetResourceFrameLifetime(const FgAllocImgCold &i, uint16_t out_lifetime[2][2]) const;
 
-    const Ren::DualStorage<FgAllocBufMain, FgAllocBufCold> &buffers() const { return buffers_; }
+    const Ren::SparseDualStorage<FgAllocBufMain, FgAllocBufCold> &buffers() const { return buffers_; }
     const Ren::HashMap32<Ren::String, uint32_t> &name_to_buffer() const { return name_to_buffer_; }
-    const Ren::DualStorage<FgAllocImgMain, FgAllocImgCold> &images() const { return images_; }
+    const Ren::SparseDualStorage<FgAllocImgMain, FgAllocImgCold> &images() const { return images_; }
     const Ren::HashMap32<Ren::String, uint32_t> &name_to_image() const { return name_to_image_; }
 
     template <typename T, class... Args> T *AllocTempData(Args &&...args) {

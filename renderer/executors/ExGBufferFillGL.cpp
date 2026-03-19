@@ -34,7 +34,7 @@ uint32_t _draw_range_ext2(const Eng::FgContext &fg, const Ren::ImageMain &white_
             for (; j < int(mat.textures.size()); ++j) {
                 ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j,
                                            storages.images.Get(mat.textures[j]).first.img);
-                glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers.Get(mat.samplers[j]).first.id);
+                glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers.Get(mat.samplers[j]).id);
             }
             for (; j < Eng::MAX_TEX_PER_MATERIAL; ++j) {
                 ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j, white_tex.img);
@@ -175,7 +175,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
     { // Simple meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SIMPLE");
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 
@@ -298,7 +298,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
         const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines.Get(pi_vegetation_[0]).first;
         const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines.Get(pi_vegetation_[1]).first;
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_vegetation0_main.prog).first.id);
 
@@ -410,7 +410,7 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
     { // Skinned meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKINNED");
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 

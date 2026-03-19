@@ -38,18 +38,18 @@ static_assert(VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT == 4);
 static_assert(VkSampleCountFlagBits::VK_SAMPLE_COUNT_8_BIT == 8);
 } // namespace Ren
 
-bool Ren::RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const RenderTargetInfo &depth_rt,
+bool Ren::RenderPass_Init(const ApiContext &api, RenderPass &rp, const RenderTargetInfo &depth_rt,
                           Span<const RenderTargetInfo> color_rts, ILog *log) {
     SmallVector<VkAttachmentDescription, 4> pass_attachments;
     SmallVector<VkAttachmentReference, 4> color_attachment_refs(uint32_t(color_rts.size()),
                                                                 {VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED});
     VkAttachmentReference depth_attachment_ref = {VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED};
 
-    assert(rp_main.handle == VK_NULL_HANDLE);
-    assert(!rp_main.depth_rt);
-    assert(rp_main.color_rts.empty());
+    assert(rp.handle == VK_NULL_HANDLE);
+    assert(!rp.depth_rt);
+    assert(rp.color_rts.empty());
 
-    rp_main.color_rts.resize(uint32_t(color_rts.size()));
+    rp.color_rts.resize(uint32_t(color_rts.size()));
 
     if (depth_rt) {
         const uint32_t att_index = pass_attachments.size();
@@ -79,7 +79,7 @@ bool Ren::RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const 
         depth_attachment_ref.attachment = att_index;
         depth_attachment_ref.layout = att_desc.initialLayout;
 
-        rp_main.depth_rt = depth_rt;
+        rp.depth_rt = depth_rt;
     }
 
     for (int i = 0; i < color_rts.size(); ++i) {
@@ -120,7 +120,7 @@ bool Ren::RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const 
         color_attachment_refs[i].attachment = att_index;
         color_attachment_refs[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        rp_main.color_rts[i] = color_rts[i];
+        rp.color_rts[i] = color_rts[i];
     }
 
     VkSubpassDescription subpass = {};
@@ -137,29 +137,29 @@ bool Ren::RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const 
     render_pass_create_info.subpassCount = 1;
     render_pass_create_info.pSubpasses = &subpass;
 
-    const VkResult res = api.vkCreateRenderPass(api.device, &render_pass_create_info, nullptr, &rp_main.handle);
+    const VkResult res = api.vkCreateRenderPass(api.device, &render_pass_create_info, nullptr, &rp.handle);
     if (res != VK_SUCCESS) {
         log->Error("Failed to create render pass!");
         return false;
     }
 #ifdef VERBOSE_LOGGING
-    log->Info("RenderPass %p created", rp_main.handle);
+    log->Info("RenderPass %p created", rp.handle);
 #endif
     return true;
 }
 
-void Ren::RenderPass_Destroy(const ApiContext &api, RenderPassMain &rp_main) {
-    if (rp_main.handle != VK_NULL_HANDLE) {
-        api.render_passes_to_destroy[api.backend_frame].push_back(rp_main.handle);
+void Ren::RenderPass_Destroy(const ApiContext &api, RenderPass &rp) {
+    if (rp.handle != VK_NULL_HANDLE) {
+        api.render_passes_to_destroy[api.backend_frame].push_back(rp.handle);
     }
-    rp_main = {};
+    rp = {};
 }
 
-void Ren::RenderPass_DestroyImmediately(const ApiContext &api, RenderPassMain &rp_main) {
-    if (rp_main.handle != VK_NULL_HANDLE) {
-        api.vkDestroyRenderPass(api.device, rp_main.handle, nullptr);
+void Ren::RenderPass_DestroyImmediately(const ApiContext &api, RenderPass &rp) {
+    if (rp.handle != VK_NULL_HANDLE) {
+        api.vkDestroyRenderPass(api.device, rp.handle, nullptr);
     }
-    rp_main = {};
+    rp = {};
 }
 
 #undef VERBOSE_LOGGING

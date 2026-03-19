@@ -85,14 +85,14 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
         const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
         const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
 
-        const Ren::RenderPassMain &rp_main = storages.render_passes.Get(pi_simple0_main.render_pass).first;
+        const Ren::RenderPass &rp = storages.render_passes.Get(pi_simple0_main.render_pass);
 
         const Ren::ImageRWHandle color_targets[] = {albedo_tex, normal_tex, spec_tex};
         const Ren::FramebufferHandle fb =
             fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth_tex, depth_tex, color_targets);
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = rp_main.handle;
+        rp_begin_info.renderPass = rp.handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         const VkClearValue clear_values[4] = {{}, {}, {}, {}};
@@ -103,8 +103,8 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
         { // Simple meshes
             Ren::DebugMarker _m(api, cmd_buf, "SIMPLE");
 
-            const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
-            VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+            VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 
             { // solid one-sided
@@ -201,8 +201,8 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
             const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines.Get(pi_vegetation_[0]).first;
             const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines.Get(pi_vegetation_[1]).first;
 
-            const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input).first;
-            VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input);
+            VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 
             { // vegetation solid one-sided
@@ -288,8 +288,8 @@ void Eng::ExGBufferFill::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandl
         { // Skinned meshes
             Ren::DebugMarker _m(api, cmd_buf, "SKINNED");
 
-            const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
-            VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+            VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 
             { // skinned solid one-sided

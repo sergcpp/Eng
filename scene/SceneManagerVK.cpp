@@ -49,7 +49,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
 
     auto &pers_data = *scene_data_.persistent_data;
 
-    const uint32_t max_mat_count = storages.materials.Capacity();
+    const uint32_t max_mat_count = storages.materials.capacity();
     const uint32_t req_mat_buf_size = std::max(1u, max_mat_count) * sizeof(material_data_t);
 
     const auto &[mat_buf_main, mat_buf_cold] = storages.buffers.Get(pers_data.materials_buf);
@@ -185,10 +185,10 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
             assert(_res == VK_SUCCESS);
         }
 
-        const auto &[sampler_main, sampler_cold] = ren_ctx_.samplers().Get(pers_data.trilinear_sampler);
+        const Ren::Sampler &sampler = ren_ctx_.samplers().Get(pers_data.trilinear_sampler);
 
         VkDescriptorImageInfo sampler_info = {};
-        sampler_info.sampler = sampler_main.handle;
+        sampler_info.sampler = sampler.handle;
 
         VkWriteDescriptorSet descr_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         descr_write.dstBinding = BIND_SCENE_SAMPLERS;
@@ -258,13 +258,12 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
     img_transitions.emplace_back(white_tex_, Ren::eResState::ShaderResource);
     img_transitions.emplace_back(error_tex_, Ren::eResState::ShaderResource);
 
-    const auto &is_occupied = storages.materials.is_occupied();
     for (uint32_t i = update_range.first; i < update_range.second; ++i) {
         const uint32_t rel_i = i - update_range.first;
 
         // const uint32_t set_index = i / materials_per_descriptor;
         const uint32_t arr_offset = i % materials_per_descriptor;
-        if (is_occupied[i]) {
+        if (storages.materials.IsOccupied(i)) {
             const auto &[mat_main, mat_cold] = storages.materials.GetUnsafe(i);
 
             int j = 0;
@@ -277,7 +276,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
                 }
 
                 auto &img_info = img_infos.emplace_back();
-                img_info.sampler = storages.samplers.Get(mat_main.samplers[j]).first.handle;
+                img_info.sampler = storages.samplers.Get(mat_main.samplers[j]).handle;
                 img_info.imageView = img_main.views[0];
                 img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             }

@@ -112,13 +112,13 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
 
     const uint32_t materials_per_descriptor = api.max_combined_image_samplers / MAX_TEX_PER_MATERIAL;
 
-    const Ren::RenderPassMain &rp_main = storages.render_passes.Get(pi_solid_main[0]->render_pass).first;
+    const Ren::RenderPass &rp = storages.render_passes.Get(pi_solid_main[0]->render_pass);
 
     const Ren::FramebufferHandle fb_main =
         fg.FindOrCreateFramebuffer(pi_solid_main[0]->render_pass, shadow_depth, {}, {});
 
     VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    rp_begin_info.renderPass = rp_main.handle;
+    rp_begin_info.renderPass = rp.handle;
     rp_begin_info.framebuffer = storages.framebuffers.Get(fb_main).first.handle;
     rp_begin_info.renderArea = {{0, 0}, {uint32_t(w_), uint32_t(h_)}};
     api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
@@ -131,7 +131,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_solid_main[0]->layout, 0, 1,
                                     simple_descr_sets, 0, nullptr);
 
-        const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input).first;
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -228,7 +228,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
         api.vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pi_alpha_main[0]->layout, 0, 2,
                                     simple_descr_sets, 0, nullptr);
 
-        const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input).first;
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 

@@ -733,7 +733,8 @@ void Eng::DebugFrameUI::DrawConnectionCurves(Gui::Renderer *r, const int pass_in
 
 void Eng::DebugFrameUI::DrawLine(Gui::Renderer *r, const Gui::Vec2f &_p0, const Gui::Vec2f &_p1,
                                  const Gui::Vec2f &width, const uint8_t color[4]) const {
-    const Ren::ImageRegionRef &line_tex = line_.tex();
+    const auto *storage = line_.storage();
+    const Ren::ImageRegionHandle line_tex = line_.tex();
     const Gui::Vec2f *_uvs = line_.uvs_px();
 
     const auto p0 = Gui::Vec4f{dims_[0][0] + 0.5f * (_p0[0] + 1) * dims_[1][0],
@@ -742,14 +743,16 @@ void Eng::DebugFrameUI::DrawLine(Gui::Renderer *r, const Gui::Vec2f &_p0, const 
                                dims_[0][1] + 0.5f * (_p1[1] + 1) * dims_[1][1], _uvs[1][0] - 2, _uvs[1][1] - 0.5f};
     const auto dp = Normalize(Gui::Vec2f{p1 - p0});
 
-    r->PushLine(Gui::eDrawMode::Passthrough, line_tex->pos(2), color, p0, p1, dp, dp,
+    const auto &[reg_main, reg_cold] = storage->Get(line_tex);
+    r->PushLine(Gui::eDrawMode::Passthrough, reg_main.pos[2], color, p0, p1, dp, dp,
                 Gui::Vec4f{width[0], width[1], 2, 0});
 }
 
 void Eng::DebugFrameUI::DrawCurve(Gui::Renderer *r, const Gui::Vec2f &_p0, const Gui::Vec2f &_p1, const Gui::Vec2f &_p2,
                                   const Gui::Vec2f &_p3, const Gui::Vec2f &width, const uint8_t color[4],
                                   const bool backward) const {
-    const Ren::ImageRegionRef &line_tex = line_.tex();
+    const auto *storage = line_.storage();
+    const Ren::ImageRegionHandle &line_tex = line_.tex();
     const Gui::Vec2f *_uvs = line_.uvs_px();
 
     auto p0 = Gui::Vec4f{dims_[0][0] + 0.5f * (_p0[0] + 1) * dims_[1][0],
@@ -766,6 +769,7 @@ void Eng::DebugFrameUI::DrawCurve(Gui::Renderer *r, const Gui::Vec2f &_p0, const
         std::swap(p1[3], p3[3]);
     }
 
-    r->PushCurve(Gui::eDrawMode::Passthrough, line_tex->pos(2), color, p0, p1, p2, p3,
+    const auto &[reg_main, reg_cold] = storage->Get(line_tex);
+    r->PushCurve(Gui::eDrawMode::Passthrough, reg_main.pos[2], color, p0, p1, p2, p3,
                  Gui::Vec4f{width[0], width[1], 2, 0});
 }

@@ -1,25 +1,21 @@
 #pragma once
 
 #include "../SamplingParams.h"
-#include "../utils/Storage.h"
+#include "../utils/SparseStorage.h"
 
 namespace Ren {
 struct ApiContext;
 
-struct SamplerMain {
+struct alignas(8) Sampler {
     uint32_t id = 0;
     SamplingParams params;
 
-    bool operator<(const SamplerMain &rhs) const { return params < rhs.params; }
+    bool operator<(const Sampler &rhs) const { return params < rhs.params; }
 };
 
-struct SamplerCold {
-    // TODO:
-};
-
-bool Sampler_Init(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold, SamplingParams params);
-void Sampler_Destroy(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold);
-void Sampler_DestroyImmediately(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold);
+bool Sampler_Init(const ApiContext &api, Sampler &sampler, SamplingParams params);
+void Sampler_Destroy(const ApiContext &api, Sampler &sampler);
+void Sampler_DestroyImmediately(const ApiContext &api, Sampler &sampler);
 
 void GLUnbindSamplers(int start, int count);
 } // namespace Ren

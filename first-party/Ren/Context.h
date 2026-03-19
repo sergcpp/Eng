@@ -65,21 +65,22 @@ class Context {
     int validation_level_ = 0;
     ILog *log_ = nullptr;
 
-    ImageRegionStorage image_regions_;
+    SparseStorage<VertexInput> vtx_inputs_;
+    SparseDualStorage<ShaderMain, ShaderCold> shaders_;
+    SparseDualStorage<ProgramMain, ProgramCold> programs_;
+    SparseDualStorage<PipelineMain, PipelineCold> pipelines_;
+    SparseStorage<RenderPass> render_passes_;
+    SparseDualStorage<BufferMain, BufferCold> buffers_;
+    SparseDualStorage<ImageMain, ImageCold> images_;
+    SparseStorage<Sampler> samplers_;
+    SparseDualStorage<FramebufferMain, FramebufferCold> framebuffers_;
+    SparseDualStorage<AccStructMain, AccStructCold> acc_structs_;
+    SparseDualStorage<MaterialMain, MaterialCold> materials_;
+    SparseDualStorage<MeshMain, MeshCold> meshes_;
+    SparseDualStorage<AnimSeqMain, AnimSeqCold> anims_;
 
-    DualStorage<VertexInputMain, VertexInputCold> vtx_inputs_;
-    DualStorage<ShaderMain, ShaderCold> shaders_;
-    DualStorage<ProgramMain, ProgramCold> programs_;
-    DualStorage<PipelineMain, PipelineCold> pipelines_;
-    DualStorage<RenderPassMain, RenderPassCold> render_passes_;
-    DualStorage<BufferMain, BufferCold> buffers_;
-    DualStorage<ImageMain, ImageCold> images_;
-    DualStorage<SamplerMain, SamplerCold> samplers_;
-    DualStorage<FramebufferMain, FramebufferCold> framebuffers_;
-    DualStorage<AccStructMain, AccStructCold> acc_structs_;
-    DualStorage<MaterialMain, MaterialCold> materials_;
-    DualStorage<MeshMain, MeshCold> meshes_;
-    DualStorage<AnimSeqMain, AnimSeqCold> anims_;
+    // TODO: Move this to GUI
+    SparseDualStorage<ImageRegionMain, ImageRegionCold> image_regions_;
 
     StoragesRef storages_ = {vtx_inputs_, shaders_,      programs_,    pipelines_, render_passes_, buffers_, images_,
                              samplers_,   framebuffers_, acc_structs_, materials_, meshes_,        anims_};
@@ -119,33 +120,35 @@ class Context {
 
     ILog *log() const { return log_; }
 
-    DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() { return vtx_inputs_; }
-    DualStorage<ShaderMain, ShaderCold> &shaders() { return shaders_; }
-    DualStorage<ProgramMain, ProgramCold> &programs() { return programs_; }
-    DualStorage<PipelineMain, PipelineCold> &pipelines() { return pipelines_; }
-    DualStorage<RenderPassMain, RenderPassCold> &render_passes() { return render_passes_; }
-    DualStorage<BufferMain, BufferCold> &buffers() { return buffers_; }
-    DualStorage<ImageMain, ImageCold> &images() { return images_; }
-    DualStorage<SamplerMain, SamplerCold> &samplers() { return samplers_; }
-    DualStorage<FramebufferMain, FramebufferCold> &framebuffers() { return framebuffers_; }
-    DualStorage<AccStructMain, AccStructCold> &acc_structs() { return acc_structs_; }
-    DualStorage<MaterialMain, MaterialCold> &materials() { return materials_; }
-    DualStorage<MeshMain, MeshCold> &meshes() { return meshes_; }
-    DualStorage<AnimSeqMain, AnimSeqCold> &anims() { return anims_; }
+    SparseStorage<VertexInput> &vtx_inputs() { return vtx_inputs_; }
+    SparseDualStorage<ShaderMain, ShaderCold> &shaders() { return shaders_; }
+    SparseDualStorage<ProgramMain, ProgramCold> &programs() { return programs_; }
+    SparseDualStorage<PipelineMain, PipelineCold> &pipelines() { return pipelines_; }
+    SparseStorage<RenderPass> &render_passes() { return render_passes_; }
+    SparseDualStorage<BufferMain, BufferCold> &buffers() { return buffers_; }
+    SparseDualStorage<ImageMain, ImageCold> &images() { return images_; }
+    SparseStorage<Sampler, 8> &samplers() { return samplers_; }
+    SparseDualStorage<FramebufferMain, FramebufferCold> &framebuffers() { return framebuffers_; }
+    SparseDualStorage<AccStructMain, AccStructCold> &acc_structs() { return acc_structs_; }
+    SparseDualStorage<MaterialMain, MaterialCold> &materials() { return materials_; }
+    SparseDualStorage<MeshMain, MeshCold> &meshes() { return meshes_; }
+    SparseDualStorage<AnimSeqMain, AnimSeqCold> &anims() { return anims_; }
+    SparseDualStorage<ImageRegionMain, ImageRegionCold> &image_regions() { return image_regions_; }
 
-    const DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs() const { return vtx_inputs_; }
-    const DualStorage<ShaderMain, ShaderCold> &shaders() const { return shaders_; }
-    const DualStorage<ProgramMain, ProgramCold> &programs() const { return programs_; }
-    const DualStorage<PipelineMain, PipelineCold> &pipelines() const { return pipelines_; }
-    const DualStorage<RenderPassMain, RenderPassCold> &render_passes() const { return render_passes_; }
-    const DualStorage<BufferMain, BufferCold> &buffers() const { return buffers_; }
-    const DualStorage<ImageMain, ImageCold> &images() const { return images_; }
-    const DualStorage<SamplerMain, SamplerCold> &samplers() const { return samplers_; }
-    const DualStorage<FramebufferMain, FramebufferCold> &framebuffers() const { return framebuffers_; }
-    const DualStorage<AccStructMain, AccStructCold> &acc_structs() const { return acc_structs_; }
-    const DualStorage<MaterialMain, MaterialCold> &materials() const { return materials_; }
-    const DualStorage<MeshMain, MeshCold> &meshes() const { return meshes_; }
-    const DualStorage<AnimSeqMain, AnimSeqCold> &anims() const { return anims_; }
+    const SparseStorage<VertexInput> &vtx_inputs() const { return vtx_inputs_; }
+    const SparseDualStorage<ShaderMain, ShaderCold> &shaders() const { return shaders_; }
+    const SparseDualStorage<ProgramMain, ProgramCold> &programs() const { return programs_; }
+    const SparseDualStorage<PipelineMain, PipelineCold> &pipelines() const { return pipelines_; }
+    const SparseStorage<RenderPass> &render_passes() const { return render_passes_; }
+    const SparseDualStorage<BufferMain, BufferCold> &buffers() const { return buffers_; }
+    const SparseDualStorage<ImageMain, ImageCold> &images() const { return images_; }
+    const SparseStorage<Sampler> &samplers() const { return samplers_; }
+    const SparseDualStorage<FramebufferMain, FramebufferCold> &framebuffers() const { return framebuffers_; }
+    const SparseDualStorage<AccStructMain, AccStructCold> &acc_structs() const { return acc_structs_; }
+    const SparseDualStorage<MaterialMain, MaterialCold> &materials() const { return materials_; }
+    const SparseDualStorage<MeshMain, MeshCold> &meshes() const { return meshes_; }
+    const SparseDualStorage<AnimSeqMain, AnimSeqCold> &anims() const { return anims_; }
+    const SparseDualStorage<ImageRegionMain, ImageRegionCold> &image_regions() const { return image_regions_; }
 
     const StoragesRef &storages() const { return storages_; }
 
@@ -196,6 +199,7 @@ class Context {
 #endif
     ShaderHandle CreateShader(const Ren::String &name, Span<const uint8_t> spirv_data, eShaderType type);
     void ReleaseShader(ShaderHandle handle);
+    void ReleaseShaders();
 
     ProgramHandle CreateProgram(ShaderROHandle vs, ShaderROHandle fs, ShaderROHandle tcs, ShaderROHandle tes,
                                 ShaderROHandle gs);
@@ -225,6 +229,7 @@ class Context {
                                   RenderPassROHandle render_pass, uint32_t subpass_index);
     PipelineHandle CreatePipeline(PipelineMain &&pi_main, PipelineCold &&pi_cold);
     void ReleasePipeline(PipelineHandle handle, bool immediately = false);
+    void ReleasePipelines();
 
     // Image
     ImageHandle CreateImage(const String &name, Span<const uint8_t> data, const ImgParams &p,
@@ -250,18 +255,19 @@ class Context {
                                         const FramebufferAttachment &stencil,
                                         Span<const FramebufferAttachment> color_attachments);
     void ReleaseFramebuffer(FramebufferHandle handle, bool immediately = false);
+    void ReleaseFramebuffers();
 
     AccStructHandle CreateAccStruct();
     void ReleaseAccStruct(AccStructHandle handle, bool immediately = false);
     void ReleaseAccStructs();
 
-    /** Image regions (placed on default atlas) **/
-    ImageRegionRef LoadImageRegion(std::string_view name, Span<const uint8_t> data, const ImgParams &p,
-                                   CommandBuffer cmd_buf, eImgLoadStatus *load_status);
-    ImageRegionRef LoadImageRegion(std::string_view name, const BufferMain &sbuf, int data_off, int data_len,
-                                   const ImgParams &p, CommandBuffer cmd_buf, eImgLoadStatus *load_status);
-
-    void ReleaseTextureRegions();
+    // Image regions (placed on default atlas)
+    ImageRegionHandle CreateImageRegion(String name, Span<const uint8_t> data, const ImgParams &p,
+                                        CommandBuffer cmd_buf);
+    ImageRegionHandle CreateImageRegion(String name, const BufferMain &sbuf, int data_off, int data_len,
+                                        const ImgParams &p, CommandBuffer cmd_buf);
+    void ReleaseImageRegion(ImageRegionHandle handle);
+    void ReleaseImageRegions();
 
     // Samplers
     SamplerHandle CreateSampler(SamplingParams params);

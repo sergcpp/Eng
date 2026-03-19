@@ -75,7 +75,7 @@ Ren::Context::~Context() {
     std::lock_guard<std::mutex> _(g_device_mtx);
 
     for (const ImageHandle img : api_->present_image_handles) {
-        images_.Free(img);
+        images_.Erase(img);
     }
     api_->present_image_handles.clear();
     ReleaseAll();
@@ -329,7 +329,7 @@ void Ren::Context::Resize(const int w, const int h) {
     api_->vkDeviceWaitIdle(api_->device);
 
     for (const ImageHandle img : api_->present_image_handles) {
-        images_.Free(img);
+        images_.Erase(img);
     }
     api_->present_image_handles.clear();
 

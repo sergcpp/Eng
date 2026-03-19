@@ -26,7 +26,7 @@ struct TraceRaysIndirectCommand {
     uint32_t depth;
 };
 
-struct PipelineMain {
+struct alignas(8) PipelineMain {
 #if defined(REN_VK_BACKEND)
     VkPipelineLayout layout = {};
     VkPipeline pipeline = {};
@@ -85,10 +85,10 @@ struct PipelineCold {
 #endif
 };
 
-bool Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                   const DualStorage<ProgramMain, ProgramCold> &programs, DualStorage<BufferMain, BufferCold> &buffers,
-                   PipelineMain &pipeline_main, PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log,
-                   int subgroup_size = -1);
+bool Pipeline_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
+                   const SparseDualStorage<ProgramMain, ProgramCold> &programs,
+                   SparseDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
+                   PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log, int subgroup_size = -1);
 bool Pipeline_Init(const ApiContext &api, const StoragesRef &storages, PipelineMain &pipeline_main,
                    PipelineCold &pipeline_cold, const RastState &rast_state, ProgramROHandle prog,
                    VertexInputROHandle vtx_input, RenderPassROHandle render_pass, uint32_t subpass_index, ILog *log);

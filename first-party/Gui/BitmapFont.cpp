@@ -111,8 +111,8 @@ bool Gui::BitmapFont::Load(std::string_view name, std::istream &data, Ren::Conte
             p.sampling.filter = draw_mode_ == eDrawMode::Passthrough ? Ren::eFilter::Nearest : Ren::eFilter::Bilinear;
             p.sampling.wrap = Ren::eWrap::ClampToBorder;
 
-            Ren::eImgLoadStatus status;
-            tex_ = ctx.LoadImageRegion(name, stage_buf_main, 0, img_data_size, p, cmd_buf, &status);
+            tex_ = ctx.CreateImageRegion(Ren::String{name}, stage_buf_main, 0, img_data_size, p, cmd_buf);
+            storage_ = &ctx.image_regions();
 
             ctx.EndTempSingleTimeCommands(cmd_buf);
 
@@ -188,8 +188,9 @@ float Gui::BitmapFont::DrawText(Renderer *r, std::string_view text, const Vec2f 
     const Vec2f p = parent->pos() + 0.5f * (pos + Vec2f(1, 1)) * parent->size(),
                 m = scale * parent->size() / (Vec2f)parent->size_px();
 
-    const uint16_t uvs_offset[2] = {(uint16_t)tex_->pos(0), (uint16_t)tex_->pos(1)},
-                   tex_layer = f32_to_u16((1.0f / 16.0f) * float(tex_->pos(2)));
+    const auto &[reg_main, reg_cold] = storage_->Get(tex_);
+    const uint16_t uvs_offset[2] = {(uint16_t)reg_main.pos[0], (uint16_t)reg_main.pos[1]},
+                   tex_layer = f32_to_u16((1.0f / 16.0f) * float(reg_main.pos[2]));
 
     uint16_t u16_draw_mode = 0;
     if (draw_mode_ == eDrawMode::DistanceField) {

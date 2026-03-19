@@ -36,37 +36,34 @@ inline bool operator<(const VtxAttribDesc &lhs, const VtxAttribDesc &rhs) {
            std::tie(rhs.buf, rhs.loc, rhs.size, rhs.type, rhs.stride, rhs.base_offset, rhs.rel_offset);
 }
 
-struct VertexInputMain {
+struct VertexInput {
     SmallVector<VtxAttribDesc, 4> attribs;
 #if defined(REN_GL_BACKEND)
     uint32_t gl_vao = 0;
 #endif
 
-    bool operator==(const VertexInputMain &rhs) const { return attribs == rhs.attribs; }
-    bool operator!=(const VertexInputMain &rhs) const { return attribs != rhs.attribs; }
-    bool operator<(const VertexInputMain &rhs) const { return attribs < rhs.attribs; }
+    bool operator==(const VertexInput &rhs) const { return attribs == rhs.attribs; }
+    bool operator!=(const VertexInput &rhs) const { return attribs != rhs.attribs; }
+    bool operator<(const VertexInput &rhs) const { return attribs < rhs.attribs; }
 };
 
-struct VertexInputCold {
-    // TODO:
-};
-
-bool VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> attribs);
-void VertexInput_Destroy(VertexInputMain &vtx_input);
+bool VertexInput_Init(VertexInput &vtx_input, Span<const VtxAttribDesc> attribs);
+void VertexInput_Destroy(VertexInput &vtx_input);
 
 #if defined(REN_VK_BACKEND)
-void VertexInput_BindBuffers(const ApiContext &api, const VertexInputMain &vtx_input,
-                             const DualStorage<BufferMain, BufferCold> &buffers, Span<const BufferROHandle> attrib_bufs,
-                             BufferROHandle elem_buf, VkCommandBuffer cmd_buf, uint32_t index_offset, int index_type);
+void VertexInput_BindBuffers(const ApiContext &api, const VertexInput &vtx_input,
+                             const SparseDualStorage<BufferMain, BufferCold> &buffers,
+                             Span<const BufferROHandle> attrib_bufs, BufferROHandle elem_buf, VkCommandBuffer cmd_buf,
+                             uint32_t index_offset, int index_type);
 void VertexInput_FillVKDescriptions(
-    const VertexInputMain &vtx_input,
+    const VertexInput &vtx_input,
     SmallVectorImpl<VkVertexInputBindingDescription, aligned_allocator<VkVertexInputBindingDescription, 4>>
         &out_bindings,
     SmallVectorImpl<VkVertexInputAttributeDescription, aligned_allocator<VkVertexInputAttributeDescription, 4>>
         &out_attribs);
 #elif defined(REN_GL_BACKEND)
-void VertexInput_BindBuffers(const ApiContext &api, const VertexInputMain &vtx_input,
-                             const DualStorage<BufferMain, BufferCold> &buffers, Span<const BufferROHandle> attrib_bufs,
-                             BufferROHandle elem_buf);
+void VertexInput_BindBuffers(const ApiContext &api, const VertexInput &vtx_input,
+                             const SparseDualStorage<BufferMain, BufferCold> &buffers,
+                             Span<const BufferROHandle> attrib_bufs, BufferROHandle elem_buf);
 #endif
 } // namespace Ren

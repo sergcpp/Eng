@@ -5,7 +5,7 @@
 #include "../Shader.h"
 #include "../utils/SmallVector.h"
 #include "../utils/Span.h"
-#include "../utils/Storage.h"
+#include "../utils/SparseStorage.h"
 
 namespace Ren {
 class ILog;

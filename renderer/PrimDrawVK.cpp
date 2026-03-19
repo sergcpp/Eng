@@ -182,7 +182,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
     const Ren::PipelineMain &pi_main = storages.pipelines.Get(pipeline).first;
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    render_pass_begin_info.renderPass = storages.render_passes.Get(rp).first.handle;
+    render_pass_begin_info.renderPass = storages.render_passes.Get(rp).handle;
     render_pass_begin_info.framebuffer = fb_main.handle;
     render_pass_begin_info.renderArea = {{0, 0}, {uint32_t(fb_main.w), uint32_t(fb_main.h)}};
 
@@ -222,7 +222,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, const ePrim prim, const
                                                   ctx.default_vertex_buf2().handle()};
     const Ren::BufferROHandle indices_buf = ctx.default_indices_buf().handle();
 
-    const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_main.vtx_input).first;
+    const Ren::VertexInput &vtx_input_main = storages.vtx_inputs.Get(pi_main.vtx_input);
     if (prim == ePrim::Quad) {
         VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_buffers, indices_buf, cmd_buf,
                                 quad_ndx_.offset, VK_INDEX_TYPE_UINT16);
@@ -255,7 +255,7 @@ void Eng::PrimDraw::ClearTarget(Ren::CommandBuffer cmd_buf, const Ren::RenderTar
     const Ren::FramebufferMain &fb_main = ctx.framebuffers().Get(fb).first;
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    render_pass_begin_info.renderPass = ctx.render_passes().Get(rp).first.handle;
+    render_pass_begin_info.renderPass = ctx.render_passes().Get(rp).handle;
     render_pass_begin_info.framebuffer = fb_main.handle;
     render_pass_begin_info.renderArea = {{0, 0}, {uint32_t(fb_main.w), uint32_t(fb_main.h)}};
 

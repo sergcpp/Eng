@@ -15,7 +15,7 @@ namespace SceneManagerConstants {} // namespace SceneManagerConstants
 namespace SceneManagerInternal {} // namespace SceneManagerInternal
 
 bool Eng::SceneManager::UpdateMaterialsBuffer() {
-    const uint32_t max_mat_count = ren_ctx_.materials().Capacity();
+    const uint32_t max_mat_count = ren_ctx_.materials().capacity();
     const uint32_t req_mat_buf_size = std::max(1u, max_mat_count) * sizeof(material_data_t);
 
     const uint32_t max_tex_count = std::max(1u, MAX_TEX_PER_MATERIAL * max_mat_count);
@@ -98,12 +98,11 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
         }
     }
 
-    const auto &[sampler_main, sampler_cold] = storages.samplers.Get(scene_data_.persistent_data->trilinear_sampler);
+    const Ren::Sampler &sampler = storages.samplers.Get(scene_data_.persistent_data->trilinear_sampler);
 
-    const auto &is_occupied = storages.materials.is_occupied();
     for (uint32_t i = update_range.first; i < update_range.second; ++i) {
         const uint32_t rel_i = i - update_range.first;
-        if (is_occupied[i]) {
+        if (storages.materials.IsOccupied(i)) {
             const auto &[mat_main, mat_cold] = storages.materials.GetUnsafe(i);
 
             int j = 0;
@@ -111,7 +110,7 @@ bool Eng::SceneManager::UpdateMaterialsBuffer() {
                 material_data[rel_i].texture_indices[j] = i * MAX_TEX_PER_MATERIAL + j;
                 if (texture_data) {
                     const GLuint64 handle = glGetTextureSamplerHandleARB(
-                        storages.images.Get(mat_main.textures[j]).first.img, sampler_main.id);
+                        storages.images.Get(mat_main.textures[j]).first.img, sampler.id);
                     if (!glIsTextureHandleResidentARB(handle)) {
                         glMakeTextureHandleResidentARB(handle);
                     }

@@ -30,8 +30,7 @@ extern const uint32_t g_compare_func_gl[] = {
 extern const float AnisotropyLevel = 4;
 } // namespace Ren
 
-bool Ren::Sampler_Init(const ApiContext &, SamplerMain &sampler_main, SamplerCold &sampler_cold,
-                       const SamplingParams params) {
+bool Ren::Sampler_Init(const ApiContext &, Sampler &sampler, const SamplingParams params) {
     GLuint new_sampler;
     glGenSamplers(1, &new_sampler);
 
@@ -58,24 +57,21 @@ bool Ren::Sampler_Init(const ApiContext &, SamplerMain &sampler_main, SamplerCol
 
     glSamplerParameterf(new_sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, AnisotropyLevel);
 
-    sampler_main.id = uint32_t(new_sampler);
-    sampler_main.params = params;
+    sampler.id = uint32_t(new_sampler);
+    sampler.params = params;
 
     return true;
 }
 
-void Ren::Sampler_Destroy(const ApiContext &, SamplerMain &sampler_main, SamplerCold &sampler_cold) {
-    if (sampler_main.id) {
-        GLuint id = GLuint(sampler_main.id);
+void Ren::Sampler_Destroy(const ApiContext &, Sampler &sampler) {
+    if (sampler.id) {
+        GLuint id = GLuint(sampler.id);
         glDeleteSamplers(1, &id);
     }
-    sampler_main = {};
-    sampler_cold = {};
+    sampler = {};
 }
 
-void Ren::Sampler_DestroyImmediately(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold) {
-    Sampler_Destroy(api, sampler_main, sampler_cold);
-}
+void Ren::Sampler_DestroyImmediately(const ApiContext &api, Sampler &sampler) { Sampler_Destroy(api, sampler); }
 
 void Ren::GLUnbindSamplers(const int start, const int count) {
     for (int i = start; i < start + count; i++) {

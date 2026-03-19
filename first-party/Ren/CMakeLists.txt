@@ -119,7 +119,7 @@ set(UTILS_SOURCE_FILES utils/AlignedAlloc.h
                        utils/SmallVector.h
                        utils/Span.h
                        utils/SparseArray.h
-                       utils/Storage.h
+                       utils/SparseStorage.h
                        utils/String.h
                        utils/Utils.h
                        utils/Utils.cpp

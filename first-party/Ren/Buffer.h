@@ -9,7 +9,7 @@
 #include "Resource.h"
 #include "utils/Bitmask.h"
 #include "utils/SmallVector.h"
-#include "utils/Storage.h"
+#include "utils/SparseStorage.h"
 #include "utils/String.h"
 
 namespace Ren {

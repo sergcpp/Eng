@@ -112,7 +112,7 @@ void Eng::ExEmissive::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle c
     { // Simple meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SIMPLE");
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 
@@ -228,7 +228,7 @@ void Eng::ExEmissive::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle c
         const Ren::PipelineMain &pi_vegetation0_main = storages.pipelines.Get(pi_vegetation_[0]).first;
         const Ren::PipelineMain &pi_vegetation1_main = storages.pipelines.Get(pi_vegetation_[1]).first;
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_vegetation0_main.vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_vegetation0_main.prog).first.id);
 
@@ -334,7 +334,7 @@ void Eng::ExEmissive::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle c
     { // Skinned meshes
         Ren::DebugMarker _m(api, fg.cmd_buf(), "SKINNED");
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 

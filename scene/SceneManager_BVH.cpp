@@ -616,7 +616,7 @@ Ren::AccStructHandle Eng::SceneManager::Build_SWRT_BLAS(const AccStructure &acc)
         scene_data_.persistent_data->swrt.rt_blas_buf->AddView(Ren::eFormat::RGBA32F);
     }
 
-    const uint32_t mesh_index = scene_data_.persistent_data->swrt.rt_meshes.emplace();
+    const uint32_t mesh_index = scene_data_.persistent_data->swrt.rt_meshes.Emplace();
 
     //
     // Gather geometries

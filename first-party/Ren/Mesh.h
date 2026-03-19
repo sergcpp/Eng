@@ -71,27 +71,22 @@ struct MeshCold {
 };
 
 bool Mesh_Init(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name, std::istream &data,
-               const material_load_callback &on_mat_load, DualStorage<BufferMain, BufferCold> &buffers,
-               ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
-               ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf, ILog *log);
+               const material_load_callback &on_mat_load, ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2,
+               ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf, ILog *log);
 
 // simple static mesh
 bool Mesh_InitSimple(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
-                     std::istream &data, const material_load_callback &on_mat_load,
-                     DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                     std::istream &data, const material_load_callback &on_mat_load, ResizableBuffer &vertex_buf1,
                      ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log);
 // simple mesh with 4 per-vertex colors
 bool Mesh_InitColored(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
-                      std::istream &data, const material_load_callback &on_mat_load,
-                      DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                      std::istream &data, const material_load_callback &on_mat_load, ResizableBuffer &vertex_buf1,
                       ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log);
 // mesh with 4 bone weights per vertex
 bool Mesh_InitSkeletal(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
-                       std::istream &data, const material_load_callback &on_mat_load,
-                       DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &skin_vertex_buf,
+                       std::istream &data, const material_load_callback &on_mat_load, ResizableBuffer &skin_vertex_buf,
                        ResizableBuffer &delta_buf, ResizableBuffer &index_buf, ILog *log);
 
-bool Mesh_InitBufferData(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold,
-                         DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+bool Mesh_InitBufferData(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, ResizableBuffer &vertex_buf1,
                          ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log);
 } // namespace Ren

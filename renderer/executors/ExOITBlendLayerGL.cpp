@@ -180,7 +180,7 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::Image
         const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
         const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_simple0_main.prog).first.id);
 

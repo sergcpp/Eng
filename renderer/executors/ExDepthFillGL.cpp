@@ -14,12 +14,12 @@ namespace ExSharedInternal {
 void _bind_texture0_and_sampler0(const Ren::StoragesRef &storages, const Ren::MaterialMain &mat) {
     assert(mat.textures.size() >= 1 && mat.samplers.size() >= 1);
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0, storages.images.Get(mat.textures[0]).first.img);
-    glBindSampler(Eng::BIND_MAT_TEX0, storages.samplers.Get(mat.samplers[0]).first.id);
+    glBindSampler(Eng::BIND_MAT_TEX0, storages.samplers.Get(mat.samplers[0]).id);
 }
 void _bind_texture4_and_sampler4(const Ren::StoragesRef &storages, const Ren::MaterialMain &mat) {
     assert(mat.textures.size() >= 1 && mat.samplers.size() >= 1);
     ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX4, storages.images.Get(mat.textures[4]).first.img);
-    glBindSampler(Eng::BIND_MAT_TEX4, storages.samplers.Get(mat.samplers[4]).first.id);
+    glBindSampler(Eng::BIND_MAT_TEX4, storages.samplers.Get(mat.samplers[4]).id);
 }
 uint32_t _draw_range(Ren::Span<const uint32_t> zfill_batch_indices,
                      Ren::Span<const Eng::basic_draw_batch_t> zfill_batches, uint32_t i, uint64_t mask,
@@ -178,7 +178,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                                                             &storages.pipelines.Get(pi_static_solid_[1]).first,
                                                             &storages.pipelines.Get(pi_static_solid_[2]).first};
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_static_solid_main[0]->vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_static_solid_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_static_solid_main[0]->prog).first.id);
 
@@ -265,7 +265,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
 
             glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(depth_vel_fb).first.id);
 
-            const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_static_transp_main[0]->vtx_input).first;
+            const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_static_transp_main[0]->vtx_input);
             VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
             glUseProgram(storages.programs.Get(pi_static_transp_main[0]->prog).first.id);
 
@@ -343,7 +343,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
 
         glBindFramebuffer(GL_FRAMEBUFFER, storages.framebuffers.Get(depth_vel_fb).first.id);
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_vege_static_solid_main[0]->vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_vege_static_solid_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_vege_static_solid_main[0]->prog).first.id);
 
@@ -419,7 +419,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 &storages.pipelines.Get(pi_vege_static_transp_[0]).first,
                 &storages.pipelines.Get(pi_vege_static_transp_[1]).first};
 
-            const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_vege_static_transp_main[0]->vtx_input).first;
+            const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_vege_static_transp_main[0]->vtx_input);
             VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
             glUseProgram(storages.programs.Get(pi_vege_static_transp_main[0]->prog).first.id);
 
@@ -494,7 +494,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
             &storages.pipelines.Get(pi_skin_static_solid_[0]).first,
             &storages.pipelines.Get(pi_skin_static_solid_[1]).first};
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_skin_static_solid_main[0]->vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_skin_static_solid_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
         glUseProgram(storages.programs.Get(pi_skin_static_solid_main[0]->prog).first.id);
 
@@ -570,7 +570,7 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
                 &storages.pipelines.Get(pi_skin_static_transp_[0]).first,
                 &storages.pipelines.Get(pi_skin_static_transp_[1]).first};
 
-            const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_skin_static_transp_main[0]->vtx_input).first;
+            const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_skin_static_transp_main[0]->vtx_input);
             VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
             glUseProgram(storages.programs.Get(pi_skin_static_transp_main[0]->prog).first.id);
 

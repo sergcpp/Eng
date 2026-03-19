@@ -1913,7 +1913,7 @@ void Eng::Renderer::InitBackendInfo() {
 
     if (settings.debug_frame == eDebugFrame::Full) {
         const auto &fg_buffers = fg_builder_.buffers();
-        Ren::SmallVector<int, 256> indices(fg_buffers.Capacity(), -1);
+        Ren::SmallVector<int, 256> indices(fg_buffers.capacity(), -1);
         uint32_t heap_size = 0; // dummy for the case when memory heaps are not available
         for (auto it = std::cbegin(fg_builder_.name_to_buffer()); it != std::cend(fg_builder_.name_to_buffer()); ++it) {
             const auto &[fgbuf_main, fgbuf_cold] = fg_buffers.GetUnsafe(it->val);
@@ -1973,7 +1973,7 @@ void Eng::Renderer::InitBackendInfo() {
 
         const auto &fg_images = fg_builder_.images();
         indices.clear();
-        indices.resize(fg_images.Capacity(), -1);
+        indices.resize(fg_images.capacity(), -1);
         for (auto it = std::cbegin(fg_builder_.name_to_image()); it != std::cend(fg_builder_.name_to_image()); ++it) {
             const auto &[fgimg_main, fgimg_cold] = fg_images.GetUnsafe(it->val);
             if (fgimg_cold.external || !fgimg_main.handle_to_own || fgimg_cold.alias_of != -1 ||

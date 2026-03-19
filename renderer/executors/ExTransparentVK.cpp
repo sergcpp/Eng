@@ -283,12 +283,12 @@ void Eng::ExTransparent::DrawTransparent_Simple(
             fg.FindOrCreateFramebuffer(rp_transparent_, depth_tex, depth_tex, color_targets);
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_transparent_).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_transparent_).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(draw_pass_vi_).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(draw_pass_vi_);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         for (int j = int((*p_list_)->custom_batch_indices.size()) - 1; j >= (*p_list_)->alpha_blend_start_index; j--) {

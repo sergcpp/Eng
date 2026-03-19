@@ -119,7 +119,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
     //
     const Ren::PipelineMain &pi_main = ctx_.pipelines().Get(pipeline_).first;
     const Ren::ProgramMain &pr_main = ctx_.programs().Get(pi_main.prog).first;
-    const Ren::VertexInputMain &vi = ctx_.vtx_inputs().Get(pi_main.vtx_input).first;
+    const Ren::VertexInput &vi = ctx_.vtx_inputs().Get(pi_main.vtx_input);
 
     pi_main.rast_state.viewport[2] = w;
     pi_main.rast_state.viewport[3] = h;

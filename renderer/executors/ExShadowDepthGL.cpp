@@ -112,7 +112,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
     { // draw opaque objects
         Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-SOLID");
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_solid_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
         static const uint64_t BitFlags[] = {0, BDB::BitBackSided, BDB::BitTwoSided};
@@ -193,7 +193,7 @@ void Eng::ExShadowDepth::DrawShadowMaps(const FgContext &fg, const Ren::ImageRWH
     { // draw transparent (alpha-tested) objects
         Ren::DebugMarker _(api, fg.cmd_buf(), "STATIC-ALPHA");
 
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(pi_alpha_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
         static const uint64_t BitFlags[] = {BDB::BitAlphaTest, BDB::BitAlphaTest | BDB::BitBackSided,

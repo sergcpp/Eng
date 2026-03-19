@@ -16,7 +16,7 @@ void _bind_textures_and_samplers(const Ren::StoragesRef &storages, const Ren::Ma
     for (int j = 0; j < int(mat.textures.size()); ++j) {
         ren_glBindTextureUnit_Comp(GL_TEXTURE_2D, Eng::BIND_MAT_TEX0 + j,
                                    storages.images.Get(mat.textures[j]).first.img);
-        glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers.Get(mat.samplers[j]).first.id);
+        glBindSampler(Eng::BIND_MAT_TEX0 + j, storages.samplers.Get(mat.samplers[j]).id);
     }
 }
 uint32_t _draw_list_range_full(const Eng::FgContext &fg, Ren::Span<const Eng::custom_draw_batch_t> main_batches,
@@ -204,7 +204,7 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
         //}
     }
 
-    const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(draw_pass_vi_).first;
+    const Ren::VertexInput &vi = storages.vtx_inputs.Get(draw_pass_vi_);
     VertexInput_BindBuffers(api, vi, storages.buffers, attrib_bufs, ndx_buf);
 
     const Ren::BufferMain &materials_buf_main = storages.buffers.Get(materials_buf).first;

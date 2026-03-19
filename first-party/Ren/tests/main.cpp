@@ -10,8 +10,7 @@ void test_hashmap();
 void test_hashset();
 void test_math();
 void test_mesh();
-void test_storage();
-void test_storage_new();
+void test_sparse_storage();
 void test_small_vector();
 void test_span();
 void test_sparse_array();
@@ -29,11 +28,10 @@ int main() {
     test_hashmap();
     test_math();
     test_mesh();
-    test_storage();
-    test_storage_new();
+    test_sparse_array();
+    test_sparse_storage();
     test_small_vector();
     test_span();
-    test_sparse_array();
     test_string();
     test_utils();
 }

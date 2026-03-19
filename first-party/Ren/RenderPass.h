@@ -93,16 +93,16 @@ inline bool operator!=(const RenderTargetInfo &lhs, const eFormat rhs) { return 
 inline bool operator<(const eFormat lhs, const RenderTargetInfo &rhs) { return lhs < rhs.format; }
 inline bool operator<(const RenderTargetInfo &lhs, const eFormat rhs) { return lhs.format < rhs; }
 
-struct RenderPassMain {
+struct RenderPass {
 #if defined(REN_VK_BACKEND)
     VkRenderPass handle = {};
 #endif
     RenderTargetInfo depth_rt;
     SmallVector<RenderTargetInfo, 4> color_rts;
 
-    bool operator==(const RenderPassMain &rhs) const { return Equals(rhs.depth_rt, rhs.color_rts); }
-    bool operator!=(const RenderPassMain &rhs) const { return depth_rt != rhs.depth_rt || color_rts != rhs.color_rts; }
-    bool operator<(const RenderPassMain &rhs) const { return LessThan(rhs.depth_rt, rhs.color_rts); }
+    bool operator==(const RenderPass &rhs) const { return Equals(rhs.depth_rt, rhs.color_rts); }
+    bool operator!=(const RenderPass &rhs) const { return depth_rt != rhs.depth_rt || color_rts != rhs.color_rts; }
+    bool operator<(const RenderPass &rhs) const { return LessThan(rhs.depth_rt, rhs.color_rts); }
 
     bool Equals(const RenderTargetInfo &_depth_rt, Span<const RenderTargetInfo> _color_rts) const {
         return depth_rt == _depth_rt && Span<const RenderTargetInfo>(color_rts) == _color_rts;
@@ -118,12 +118,8 @@ struct RenderPassMain {
     }
 };
 
-struct RenderPassCold {
-    // TODO:
-};
-
-bool RenderPass_Init(const ApiContext &api, RenderPassMain &rp_main, const RenderTargetInfo &depth_rt,
+bool RenderPass_Init(const ApiContext &api, RenderPass &rp, const RenderTargetInfo &depth_rt,
                      Span<const RenderTargetInfo> color_rts, ILog *log);
-void RenderPass_Destroy(const ApiContext &api, RenderPassMain &rp_main);
-void RenderPass_DestroyImmediately(const ApiContext &api, RenderPassMain &rp_main);
+void RenderPass_Destroy(const ApiContext &api, RenderPass &rp);
+void RenderPass_DestroyImmediately(const ApiContext &api, RenderPass &rp);
 } // namespace Ren

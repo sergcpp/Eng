@@ -12,7 +12,7 @@ namespace Ren {
 extern const VkShaderStageFlagBits g_shader_stages_vk[];
 
 bool InitDescrSetLayouts(const ApiContext &api, ProgramMain &prog_main,
-                         const DualStorage<ShaderMain, ShaderCold> &shaders, ILog *log) {
+                         const SparseDualStorage<ShaderMain, ShaderCold> &shaders, ILog *log) {
     SmallVector<VkDescriptorSetLayoutBinding, 16> layout_bindings[4];
 
     for (int i = 0; i < int(eShaderType::_Count); ++i) {
@@ -81,7 +81,7 @@ bool InitDescrSetLayouts(const ApiContext &api, ProgramMain &prog_main,
 }
 
 void InitBindings(const ApiContext &api, ProgramMain &prog_main, ProgramCold &prog_cold,
-                  const DualStorage<ShaderMain, ShaderCold> &shaders, ILog *log) {
+                  const SparseDualStorage<ShaderMain, ShaderCold> &shaders, ILog *log) {
     for (int i = 0; i < int(eShaderType::_Count); ++i) {
         const ShaderROHandle sh_handle = prog_main.shaders[i];
         if (!sh_handle) {
@@ -128,7 +128,7 @@ void InitBindings(const ApiContext &api, ProgramMain &prog_main, ProgramCold &pr
 }
 } // namespace Ren
 
-bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+bool Ren::Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
                        ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle vs, const ShaderROHandle fs,
                        const ShaderROHandle tcs, const ShaderROHandle tes, const ShaderROHandle gs, ILog *log) {
     // store shaders
@@ -147,7 +147,7 @@ bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, Shad
     return true;
 }
 
-bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+bool Ren::Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
                        ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle cs, ILog *log) {
     // store shader
     prog_main.shaders[int(eShaderType::Compute)] = cs;
@@ -161,7 +161,7 @@ bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, Shad
     return true;
 }
 
-bool Ren::Program_Init2(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+bool Ren::Program_Init2(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
                         ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle rgs,
                         const ShaderROHandle chs, const ShaderROHandle ahs, const ShaderROHandle ms,
                         const ShaderROHandle is, ILog *log) {

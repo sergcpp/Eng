@@ -388,12 +388,12 @@ void Eng::ExOpaque::DrawOpaque(const FgContext &fg, const Ren::ImageRWHandle col
         const Ren::FramebufferHandle fb = fg.FindOrCreateFramebuffer(rp_opaque_, depth_tex, depth_tex, color_targets);
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_opaque_).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_opaque_).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vi_main = storages.vtx_inputs.Get(draw_pass_vi_).first;
+        const Ren::VertexInput &vi_main = storages.vtx_inputs.Get(draw_pass_vi_);
         VertexInput_BindBuffers(api, vi_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0, VK_INDEX_TYPE_UINT32);
 
         { // one-sided1

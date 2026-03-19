@@ -38,7 +38,7 @@ Ren::Context::Context() {
 
 Ren::Context::~Context() {
     for (const ImageHandle h : api_->present_image_handles) {
-        images_.Free(h);
+        images_.Erase(h);
     }
     api_->present_image_handles.clear();
     for (int i = 0; i < MaxFramesInFlight; i++) {

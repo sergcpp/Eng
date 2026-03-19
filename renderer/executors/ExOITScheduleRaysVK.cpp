@@ -85,7 +85,7 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
             fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth_tex, depth_tex, {});
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(pi_simple0_main.render_pass).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(pi_simple0_main.render_pass).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         const VkClearValue clear_values[4] = {{}, {}, {}, {}};
@@ -96,8 +96,8 @@ void Eng::ExOITScheduleRays::DrawTransparent(const FgContext &fg, const Ren::Ima
         { // Simple meshes
             Ren::DebugMarker _m(api, cmd_buf, "SIMPLE");
 
-            const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
-            VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+            const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
+            VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 
             { // solid one-sided

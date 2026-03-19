@@ -45,7 +45,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
                                        texture_id);
 
             if (b.handle.sampler) {
-                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
+                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).id);
             } else {
                 ren_glBindSampler(GLuint(b.loc + b.offset), 0);
             }
@@ -76,7 +76,7 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
                                GL_FALSE, 0, GL_READ_WRITE,
                                GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == Ren::eBindTarget::Sampler) {
-            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
+            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).id);
         } else if (b.trg == Ren::eBindTarget::ImageRO || b.trg == Ren::eBindTarget::ImageRW) {
             const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
             auto texture_id = GLuint(img_main.img);
@@ -125,13 +125,13 @@ void Eng::PrimDraw::DrawPrim(Ren::CommandBuffer cmd_buf, ePrim prim, const Ren::
     const Ren::BufferROHandle indices_buf = ctx.default_indices_buf().handle();
 
     if (prim == ePrim::Quad) {
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(fs_quad_vtx_input_).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(fs_quad_vtx_input_);
 
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_buffers, indices_buf);
         glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, (const GLvoid *)uintptr_t(quad_ndx_.offset),
                                 instance_count);
     } else if (prim == ePrim::Sphere) {
-        const Ren::VertexInputMain &vi = storages.vtx_inputs.Get(sphere_vtx_input_).first;
+        const Ren::VertexInput &vi = storages.vtx_inputs.Get(sphere_vtx_input_);
 
         VertexInput_BindBuffers(api, vi, storages.buffers, attrib_buffers, indices_buf);
         glDrawElementsInstanced(GL_TRIANGLES, GLsizei(SphereIndicesCount), GL_UNSIGNED_SHORT,

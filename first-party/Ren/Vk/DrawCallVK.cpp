@@ -29,7 +29,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
             if (b.trg == eBindTarget::TexSampled) {
                 if (b.handle.sampler) {
-                    info.sampler = storages.samplers.Get(b.handle.sampler).first.handle;
+                    info.sampler = storages.samplers.Get(b.handle.sampler).handle;
                 } else {
                     info.sampler = img_main.sampler;
                 }
@@ -137,7 +137,7 @@ VkDescriptorSet Ren::PrepareDescriptorSet(const ApiContext &api, const StoragesR
             used_bindings |= (1ull << (b.loc + b.offset));
         } else if (b.trg == eBindTarget::Sampler) {
             auto &info = sampler_infos[descr_sizes.sampler_count++];
-            info.sampler = storages.samplers.Get(b.handle.sampler).first.handle;
+            info.sampler = storages.samplers.Get(b.handle.sampler).handle;
 
             auto &new_write = descr_writes.emplace_back();
             new_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};

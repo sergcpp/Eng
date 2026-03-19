@@ -3,7 +3,7 @@
 #include "../Common.h"
 #include "../Fence.h"
 #include "../utils/SmallVector.h"
-#include "../utils/Storage.h"
+#include "../utils/SparseStorage.h"
 
 namespace Ren {
 struct ImageMain;

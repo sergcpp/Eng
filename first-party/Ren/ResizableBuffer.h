@@ -8,13 +8,13 @@ class ResizableBuffer {
     String name_;
     eBufType type_ = eBufType::_Count;
     uint32_t size_alignment_ = 0;
-    DualStorage<BufferMain, BufferCold> &storage_;
+    SparseDualStorage<BufferMain, BufferCold> &storage_;
     BufferHandle handle_;
     SmallVector<eFormat, 4> views_;
 
   public:
     ResizableBuffer(const ApiContext &api, std::string_view name, const eBufType type, uint32_t size_alignment,
-                    DualStorage<BufferMain, BufferCold> &storage)
+                    SparseDualStorage<BufferMain, BufferCold> &storage)
         : api_(api), name_(name), type_(type), size_alignment_(size_alignment), storage_(storage) {}
     ~ResizableBuffer();
 

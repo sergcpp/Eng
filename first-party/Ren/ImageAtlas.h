@@ -28,7 +28,7 @@ class ImageAtlas {
     VkDescriptorImageInfo vk_desc_image_info(const int view_index = 0,
                                              VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const {
         VkDescriptorImageInfo ret;
-        ret.sampler = sampler_.first.handle;
+        ret.sampler = sampler_.handle;
         ret.imageView = img_view_[view_index];
         ret.imageLayout = layout;
         return ret;
@@ -64,7 +64,7 @@ class ImageAtlas {
                                           VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};
     VkImageView img_view_[MaxImageCount] = {VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE,
                                             VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};
-    std::pair<SamplerMain, SamplerCold> sampler_ = {};
+    Sampler sampler_ = {};
 #elif defined(REN_GL_BACKEND)
     uint32_t tex_ids_[MaxImageCount] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
                                         0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
@@ -98,7 +98,7 @@ class ImageAtlasArray {
 #if defined(REN_VK_BACKEND)
     VkImage img() const { return img_; }
     VkImageView img_view() const { return img_view_; }
-    const std::pair<SamplerMain, SamplerCold> &sampler() const { return sampler_; }
+    const Sampler &sampler() const { return sampler_; }
 #elif defined(REN_GL_BACKEND)
     uint32_t id() const { return tex_id_; }
 #endif
@@ -127,7 +127,7 @@ class ImageAtlasArray {
     VkImage img_ = VK_NULL_HANDLE;
     VkDeviceMemory mem_ = VK_NULL_HANDLE;
     VkImageView img_view_ = VK_NULL_HANDLE;
-    std::pair<SamplerMain, SamplerCold> sampler_ = {};
+    Sampler sampler_ = {};
 #elif defined(REN_GL_BACKEND)
     uint32_t tex_id_ = 0xffffffff;
 #endif

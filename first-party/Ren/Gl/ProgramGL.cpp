@@ -11,7 +11,7 @@
 
 namespace Ren {
 void InitBindings(const ProgramMain &prog_main, ProgramCold &prog_cold,
-                  const DualStorage<ShaderMain, ShaderCold> &shaders) {
+                  const SparseDualStorage<ShaderMain, ShaderCold> &shaders) {
     for (const ShaderROHandle sh_handle : prog_main.shaders) {
         if (!sh_handle) {
             continue;
@@ -63,7 +63,7 @@ void InitBindings(const ProgramMain &prog_main, ProgramCold &prog_cold,
 }
 } // namespace Ren
 
-bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+bool Ren::Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
                        ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle vs, const ShaderROHandle fs,
                        const ShaderROHandle tcs, const ShaderROHandle tes, const ShaderROHandle gs, ILog *log) {
     assert(prog_main.id == 0);
@@ -131,7 +131,7 @@ bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, Shad
     return true;
 }
 
-bool Ren::Program_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
+bool Ren::Program_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
                        ProgramMain &prog_main, ProgramCold &prog_cold, const ShaderROHandle cs, ILog *log) {
     assert(prog_main.id == 0);
 

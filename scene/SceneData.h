@@ -9,7 +9,7 @@
 #include <Ren/Pipeline.h>
 #include <Ren/math/Mat.h>
 #include <Ren/utils/HashMap32.h>
-#include <Ren/utils/Storage.h>
+#include <Ren/utils/SparseStorage.h>
 
 #include "Atmosphere.h"
 #include "components/AccStructure.h"

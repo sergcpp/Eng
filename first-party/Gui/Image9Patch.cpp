@@ -4,24 +4,25 @@
 
 #include "Renderer.h"
 
-Gui::Image9Patch::Image9Patch(const Ren::ImageRegionRef &tex, const Vec2f &offset_px, float frame_scale,
-                              const Vec2f &pos, const Vec2f &size, const BaseElement *parent)
-    : Image(tex, pos, size, parent), offset_px_(offset_px), frame_scale_(frame_scale) {}
+Gui::Image9Patch::Image9Patch(Ren::SparseDualStorage<Ren::ImageRegionMain, Ren::ImageRegionCold> *storage,
+                              Ren::ImageRegionHandle tex, const Vec2f &offset_px, float frame_scale, const Vec2f &pos,
+                              const Vec2f &size, const BaseElement *parent)
+    : Image(storage, tex, pos, size, parent), offset_px_(offset_px), frame_scale_(frame_scale) {}
 
 Gui::Image9Patch::Image9Patch(Ren::Context &ctx, std::string_view tex_name, const Vec2f &offset_px, float frame_scale,
                               const Vec2f &pos, const Vec2f &size, const BaseElement *parent)
     : Image(ctx, tex_name, pos, size, parent), offset_px_(offset_px), frame_scale_(frame_scale) {}
 
 void Gui::Image9Patch::Draw(Renderer *r) {
-    const Ren::ImgParams &p = tex_->params;
-    const int tex_layer = tex_->pos(2);
+    const auto &[reg_main, reg_cold] = storage_->Get(tex_);
+    const int tex_layer = reg_main.pos[2];
 
     const Vec2f offset_norm = offset_px_ * dims_[1] / Vec2f{dims_px_[1]};
 
     const Vec2f pos[4] = {dims_[0], dims_[0] + dims_[1], dims_[0] + offset_norm, dims_[0] + dims_[1] - offset_norm};
 
-    Vec2f uvs[4] = {Vec2f{float(tex_->pos(0)), float(tex_->pos(1))},
-                    Vec2f{float(tex_->pos(0) + p.w), float(tex_->pos(1) + p.h)}};
+    Vec2f uvs[4] = {Vec2f{float(reg_main.pos[0]), float(reg_main.pos[1])},
+                    Vec2f{float(reg_main.pos[0] + reg_cold.params.w), float(reg_main.pos[1] + reg_cold.params.h)}};
     uvs[2] = uvs[0] + offset_px_;
     uvs[3] = uvs[1] - offset_px_;
 

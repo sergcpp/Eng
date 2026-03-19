@@ -265,7 +265,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
     VkDescriptorImageInfo img_info = {};
     img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     img_info.imageView = ctx_.image_atlas().img_view();
-    img_info.sampler = ctx_.image_atlas().sampler().first.handle;
+    img_info.sampler = ctx_.image_atlas().sampler().handle;
 
     VkWriteDescriptorSet descr_write;
     descr_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -289,7 +289,7 @@ void Gui::Renderer::Draw(const int w, const int h) {
     assert(ndx_main.resource_state == Ren::eResState::IndexBuffer);
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    render_pass_begin_info.renderPass = ctx_.render_passes().Get(render_pass_).first.handle;
+    render_pass_begin_info.renderPass = ctx_.render_passes().Get(render_pass_).handle;
     render_pass_begin_info.framebuffer = ctx_.framebuffers().Get(framebuffers_[api.active_present_image]).first.handle;
     render_pass_begin_info.renderArea = {{0, 0}, {uint32_t(w), uint32_t(h)}};
 

@@ -1,8 +1,8 @@
 #include "../Pipeline.h"
 
-bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                        const DualStorage<ProgramMain, ProgramCold> &programs,
-                        DualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
+bool Ren::Pipeline_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
+                        const SparseDualStorage<ProgramMain, ProgramCold> &programs,
+                        SparseDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
                         PipelineCold &pipeline_cold, const ProgramROHandle prog, ILog *log, const int) {
     pipeline_main.prog = prog;
     pipeline_cold.type = ePipelineType::Compute;

@@ -51,9 +51,9 @@ uint32_t align_up(const uint32_t size, const uint32_t alignment) { return (size 
 static_assert(sizeof(TraceRaysIndirectCommand) == sizeof(VkTraceRaysIndirectCommandKHR));
 } // namespace Ren
 
-bool Ren::Pipeline_Init(const ApiContext &api, const DualStorage<ShaderMain, ShaderCold> &shaders,
-                        const DualStorage<ProgramMain, ProgramCold> &programs,
-                        DualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
+bool Ren::Pipeline_Init(const ApiContext &api, const SparseDualStorage<ShaderMain, ShaderCold> &shaders,
+                        const SparseDualStorage<ProgramMain, ProgramCold> &programs,
+                        SparseDualStorage<BufferMain, BufferCold> &buffers, PipelineMain &pipeline_main,
                         PipelineCold &pipeline_cold, ProgramROHandle prog, ILog *log, int subgroup_size) {
     const ProgramMain &prog_main = programs.Get(prog).first;
 
@@ -375,7 +375,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
     { // create graphics pipeline
         SmallVector<VkVertexInputBindingDescription, 8> bindings;
         SmallVector<VkVertexInputAttributeDescription, 8> attribs;
-        VertexInput_FillVKDescriptions(storages.vtx_inputs.Get(vtx_input).first, bindings, attribs);
+        VertexInput_FillVKDescriptions(storages.vtx_inputs.Get(vtx_input), bindings, attribs);
 
         VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = {
             VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
@@ -452,10 +452,10 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
         depth_state_ci.minDepthBounds = 0;
         depth_state_ci.maxDepthBounds = 1;
 
-        const auto &[rp_main, rp_cold] = storages.render_passes.Get(render_pass);
+        const RenderPass &rp = storages.render_passes.Get(render_pass);
 
         SmallVector<VkPipelineColorBlendAttachmentState, 4> color_blend_attachment_states;
-        for (int i = 0; i < int(rp_main.color_rts.size()); ++i) {
+        for (int i = 0; i < int(rp.color_rts.size()); ++i) {
             auto &new_state = color_blend_attachment_states.emplace_back();
             new_state.blendEnable = rast_state.blend.enabled ? VK_TRUE : VK_FALSE;
             new_state.colorBlendOp = g_blend_op_vk[int(rast_state.blend.color_op)];
@@ -471,7 +471,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
             VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
         color_blend_state_ci.logicOpEnable = VK_FALSE;
         color_blend_state_ci.logicOp = VK_LOGIC_OP_CLEAR;
-        color_blend_state_ci.attachmentCount = rp_main.color_rts.size();
+        color_blend_state_ci.attachmentCount = rp.color_rts.size();
         color_blend_state_ci.pAttachments = color_blend_attachment_states.data();
         color_blend_state_ci.blendConstants[0] = 0;
         color_blend_state_ci.blendConstants[1] = 0;
@@ -502,7 +502,7 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
         pipeline_create_info.pColorBlendState = &color_blend_state_ci;
         pipeline_create_info.pDynamicState = &dynamic_state_ci;
         pipeline_create_info.layout = pipeline_main.layout;
-        pipeline_create_info.renderPass = rp_main.handle;
+        pipeline_create_info.renderPass = rp.handle;
         pipeline_create_info.subpass = subpass_index;
         pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
         pipeline_create_info.basePipelineIndex = 0;
@@ -512,15 +512,15 @@ bool Ren::Pipeline_Init(const ApiContext &api, const StoragesRef &storages, Pipe
 
         SmallVector<VkFormat, 4> color_attachment_formats;
         if (!render_pass) {
-            for (const auto &att : rp_main.color_rts) {
+            for (const auto &att : rp.color_rts) {
                 color_attachment_formats.push_back(VKFormatFromFormat(att.format));
             }
 
             pipeline_rendering_create_info.colorAttachmentCount = color_attachment_formats.size();
             pipeline_rendering_create_info.pColorAttachmentFormats = color_attachment_formats.data();
-            pipeline_rendering_create_info.depthAttachmentFormat = VKFormatFromFormat(rp_main.depth_rt.format);
+            pipeline_rendering_create_info.depthAttachmentFormat = VKFormatFromFormat(rp.depth_rt.format);
             pipeline_rendering_create_info.stencilAttachmentFormat =
-                rast_state.stencil.enabled ? VKFormatFromFormat(rp_main.depth_rt.format) : VK_FORMAT_UNDEFINED;
+                rast_state.stencil.enabled ? VKFormatFromFormat(rp.depth_rt.format) : VK_FORMAT_UNDEFINED;
 
             pipeline_create_info.pNext = &pipeline_rendering_create_info;
         }

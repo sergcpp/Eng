@@ -1,23 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-  <Type Name="Ren::StrongRef&lt;*&gt;">
-    <DisplayString Condition="storage_ != nullptr">{{ [{storage_->data_[index_].ctrl_->strong_refs} strong refs], [{storage_->data_[index_].ctrl_->weak_refs} weak refs] }}</DisplayString>
-	<DisplayString Condition="storage_ == nullptr">empty</DisplayString>
-    <Expand>
-      <Item Name="[storage]" ExcludeView="simple">storage_</Item>
-      <Item Name="[index]" ExcludeView="simple">index_</Item>
-      <Item Name="[ptr]" ExcludeView="simple">&amp;storage_->data_[index_]</Item>
-    </Expand>
-  </Type>
-  <Type Name="Ren::WeakRef&lt;*&gt;">
-    <DisplayString Condition="storage_ != nullptr">{{ [{storage_->data_[index_].ctrl_->strong_refs} strong refs], [{storage_->data_[index_].ctrl_->weak_refs} weak refs] }}</DisplayString>
-	<DisplayString Condition="storage_ == nullptr">empty</DisplayString>
-    <Expand>
-      <Item Name="[storage]" ExcludeView="simple">storage_</Item>
-      <Item Name="[index]" ExcludeView="simple">index_</Item>
-      <Item Name="[ptr]" ExcludeView="simple">&amp;storage_->data_[index_]</Item>
-    </Expand>
-  </Type>
   <Type Name="Ren::BasicString&lt;*&gt;" Priority="MediumLow">
     <DisplayString>{{ str={str_,na}, len={len_} }}</DisplayString>
   </Type>
@@ -28,10 +10,9 @@
       <Item Name="[capacity]" ExcludeView="simple">capacity_</Item>
       <CustomListItems ExcludeView="simple">
         <Variable Name="i" InitialValue="0" />
-        <!--<Size>capacity_</Size>-->
         <Loop>
           <Break Condition="i == capacity_" />
-          <If Condition="(ctrl_[i / 8] &amp; (1u &lt;&lt; (i % 8))) != 0">
+          <If Condition="(ctrl_[i / 64] &amp; (1ull &lt;&lt; (i % 64))) != 0">
             <Item Name="[{i}]">data_[i],na</Item>
           </If>
           <Exec>i += 1</Exec>
@@ -41,16 +22,50 @@
   </Type>
   <Type Name="Ren::SparseArray&lt;*&gt;::SparseArrayIterator">
     <DisplayString>{{ {container_->data_[index_]} }}</DisplayString>
-	<Expand>
+	  <Expand>
       <Item Name="[index]" ExcludeView="simple">index_</Item>
       <Item Name="[ptr]" ExcludeView="simple">&amp;container_->data_[index_]</Item>
     </Expand>
   </Type>
   <Type Name="Ren::SparseArray&lt;*&gt;::SparseArrayConstIterator">
     <DisplayString>{{ {container_->data_[index_]} }}</DisplayString>
-	<Expand>
+	  <Expand>
       <Item Name="[index]" ExcludeView="simple">index_</Item>
       <Item Name="[ptr]" ExcludeView="simple">&amp;container_->data_[index_]</Item>
+    </Expand>
+  </Type>
+  <Type Name="Ren::SparseStorage&lt;*&gt;">
+    <DisplayString>{{ size={size_}, capacity={capacity_} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">size_</Item>
+      <Item Name="[capacity]" ExcludeView="simple">capacity_</Item>
+      <CustomListItems ExcludeView="simple">
+        <Variable Name="i" InitialValue="0" />
+        <Loop>
+          <Break Condition="i == capacity_" />
+          <If Condition="(ctrl_[i / 64] &amp; (1ull &lt;&lt; (i % 64))) != 0">
+            <Item Name="[{i}]">data_[i],na</Item>
+          </If>
+          <Exec>i += 1</Exec>
+        </Loop>
+      </CustomListItems>
+    </Expand>
+  </Type>
+  <Type Name="Ren::SparseDualStorage&lt;*&gt;">
+    <DisplayString>{{ size={size_}, capacity={capacity_} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">size_</Item>
+      <Item Name="[capacity]" ExcludeView="simple">capacity_</Item>
+      <CustomListItems ExcludeView="simple">
+        <Variable Name="i" InitialValue="0" />
+        <Loop>
+          <Break Condition="i == capacity_" />
+          <If Condition="(ctrl_[i / 64] &amp; (1ull &lt;&lt; (i % 64))) != 0">
+            <Item Name="[{i}]">data_main_[i], data_cold_[i],na</Item>
+          </If>
+          <Exec>i += 1</Exec>
+        </Loop>
+      </CustomListItems>
     </Expand>
   </Type>
   <Type Name="Ren::RingBuffer&lt;*&gt;">

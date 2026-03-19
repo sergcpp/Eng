@@ -215,8 +215,7 @@ void pack_vertex_delta(const vtx_delta_t &in_v, packed_vertex_delta_t &out_v) {
 } // namespace Ren
 
 bool Ren::Mesh_Init(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
-                    std::istream &data, const material_load_callback &on_mat_load,
-                    DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                    std::istream &data, const material_load_callback &on_mat_load, ResizableBuffer &vertex_buf1,
                     ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ResizableBuffer &skin_vertex_buf,
                     ResizableBuffer &delta_buf, ILog *log) {
     char mesh_type_str[12];
@@ -229,14 +228,14 @@ bool Ren::Mesh_Init(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_c
     data.seekg(pos, std::ios::beg);
 
     if (strncmp(mesh_type_str, "STATIC_MESH", 11) == 0) {
-        return Mesh_InitSimple(api, mesh_main, mesh_cold, name, data, on_mat_load, buffers, vertex_buf1, vertex_buf2,
-                               index_buf, log);
+        return Mesh_InitSimple(api, mesh_main, mesh_cold, name, data, on_mat_load, vertex_buf1, vertex_buf2, index_buf,
+                               log);
     } else if (strncmp(mesh_type_str, "COLORE_MESH", 11) == 0) {
-        return Mesh_InitColored(api, mesh_main, mesh_cold, name, data, on_mat_load, buffers, vertex_buf1, vertex_buf2,
-                                index_buf, log);
+        return Mesh_InitColored(api, mesh_main, mesh_cold, name, data, on_mat_load, vertex_buf1, vertex_buf2, index_buf,
+                                log);
     } else if (strncmp(mesh_type_str, "SKELET_MESH", 11) == 0 || strncmp(mesh_type_str, "SKECOL_MESH", 11) == 0) {
-        return Mesh_InitSkeletal(api, mesh_main, mesh_cold, name, data, on_mat_load, buffers, skin_vertex_buf,
-                                 delta_buf, index_buf, log);
+        return Mesh_InitSkeletal(api, mesh_main, mesh_cold, name, data, on_mat_load, skin_vertex_buf, delta_buf,
+                                 index_buf, log);
     }
 
     log->Error("Invalid mesh (%s)!", name.c_str());
@@ -244,8 +243,7 @@ bool Ren::Mesh_Init(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_c
 }
 
 bool Ren::Mesh_InitSimple(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
-                          std::istream &data, const material_load_callback &on_mat_load,
-                          DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                          std::istream &data, const material_load_callback &on_mat_load, ResizableBuffer &vertex_buf1,
                           ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
@@ -343,12 +341,11 @@ bool Ren::Mesh_InitSimple(const ApiContext &api, MeshMain &mesh_main, MeshCold &
         grp.vol_mat = mats[2];
     }
 
-    return Mesh_InitBufferData(api, mesh_main, mesh_cold, buffers, vertex_buf1, vertex_buf2, index_buf, log);
+    return Mesh_InitBufferData(api, mesh_main, mesh_cold, vertex_buf1, vertex_buf2, index_buf, log);
 }
 
 bool Ren::Mesh_InitColored(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
-                           std::istream &data, const material_load_callback &on_mat_load,
-                           DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
+                           std::istream &data, const material_load_callback &on_mat_load, ResizableBuffer &vertex_buf1,
                            ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
@@ -497,8 +494,8 @@ bool Ren::Mesh_InitColored(const ApiContext &api, MeshMain &mesh_main, MeshCold 
 
 bool Ren::Mesh_InitSkeletal(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold, Ren::String name,
                             std::istream &data, const material_load_callback &on_mat_load,
-                            DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &skin_vertex_buf,
-                            ResizableBuffer &delta_buf, ResizableBuffer &index_buf, ILog *log) {
+                            ResizableBuffer &skin_vertex_buf, ResizableBuffer &delta_buf, ResizableBuffer &index_buf,
+                            ILog *log) {
     char mesh_type_str[12];
     data.read(mesh_type_str, 12);
     if (strncmp(mesh_type_str, "SKELET_MESH", 11) != 0 && strncmp(mesh_type_str, "SKECOL_MESH", 11) != 0) {
@@ -719,8 +716,8 @@ bool Ren::Mesh_InitSkeletal(const ApiContext &api, MeshMain &mesh_main, MeshCold
 }
 
 bool Ren::Mesh_InitBufferData(const ApiContext &api, MeshMain &mesh_main, MeshCold &mesh_cold,
-                              DualStorage<BufferMain, BufferCold> &buffers, ResizableBuffer &vertex_buf1,
-                              ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf, ILog *log) {
+                              ResizableBuffer &vertex_buf1, ResizableBuffer &vertex_buf2, ResizableBuffer &index_buf,
+                              ILog *log) {
     const uint32_t vertex_count = uint32_t(mesh_cold.attribs.size() * sizeof(float)) / sizeof(orig_vertex_t);
 
     const uint32_t attribs_buf1_size = vertex_count * sizeof(packed_vertex_data1_t);

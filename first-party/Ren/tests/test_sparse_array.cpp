@@ -24,29 +24,29 @@ void test_sparse_array() {
     { // reserve method
         SparseArray<int> s1;
         require(s1.size() == 0);
-        s1.reserve(128);
+        s1.Reserve(128);
         require(s1.size() == 0);
         require(s1.capacity() == 128);
 
         auto s1_copy = s1;
         require(s1_copy.size() == 0);
-        s1_copy.reserve(128);
+        s1_copy.Reserve(128);
         require(s1_copy.size() == 0);
         require(s1_copy.capacity() == 128);
 
         auto s1_stolen = std::move(s1);
         require(s1.empty());
         require(s1_stolen.size() == 0);
-        s1_stolen.reserve(128);
+        s1_stolen.Reserve(128);
         require(s1_stolen.size() == 0);
         require(s1_stolen.capacity() == 128);
     }
 
     { // pushing elements into array
         SparseArray<int> s1;
-        uint32_t i1 = s1.emplace(1);
-        uint32_t i2 = s1.push(12);
-        uint32_t i3 = s1.push(45);
+        uint32_t i1 = s1.Emplace(1);
+        uint32_t i2 = s1.Push(12);
+        uint32_t i3 = s1.Push(45);
 
         auto s1_copy = s1;
 
@@ -69,16 +69,16 @@ void test_sparse_array() {
         require(s1_stolen.at(1) == 12);
         require(s1_stolen[2] == 45);
 
-        s1.erase(1);
-        s1_stolen.erase(1);
+        s1.Erase(1);
+        s1_stolen.Erase(1);
 
         require(s1.at(0) == 1);
         require(s1[2] == 45);
         require(s1_stolen.at(0) == 1);
         require(s1_stolen[2] == 45);
 
-        uint32_t i4 = s1.push(32);
-        uint32_t i5 = s1.push(78);
+        uint32_t i4 = s1.Push(32);
+        uint32_t i5 = s1.Push(78);
 
         require(i4 == 1);
         require(i5 == 3);
@@ -111,7 +111,7 @@ void test_sparse_array() {
         std::vector<int> data = GenTestData(1000);
         SparseArray<int> s1;
         for (int v : data) {
-            s1.push(v);
+            s1.Push(v);
         }
 
         auto it = s1.begin();
@@ -129,7 +129,7 @@ void test_sparse_array() {
         std::shuffle(to_delete.begin(), to_delete.end(), std::default_random_engine(0));
 
         for (uint32_t i : to_delete) {
-            s1.erase(i);
+            s1.Erase(i);
         }
 
         it = s1.begin();
@@ -141,7 +141,7 @@ void test_sparse_array() {
         // fill the gaps and make it reallocate
         for (int v : data) {
             for (int i = 0; i < 100; i++) {
-                s1.push(v);
+                s1.Push(v);
             }
         }
 

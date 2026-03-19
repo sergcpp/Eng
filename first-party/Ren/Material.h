@@ -11,7 +11,6 @@
 #include "Sampler.h"
 #include "math/Vec.h"
 #include "utils/SmallVector.h"
-#include "utils/Storage.h"
 #include "utils/String.h"
 
 namespace Ren {

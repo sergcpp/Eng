@@ -10,7 +10,6 @@
 #include "math/Mat.h"
 #include "math/Quat.h"
 #include "utils/Span.h"
-#include "utils/Storage.h"
 #include "utils/String.h"
 
 namespace Ren {
@@ -104,12 +103,12 @@ struct Skeleton {
     void bone_matrix(std::string_view name, Mat4f &mat) const;
     void bone_matrix(int i, Mat4f &mat) const;
 
-    int AddAnimSequence(AnimSeqHandle handle, const DualStorage<AnimSeqMain, AnimSeqCold> &storage);
+    int AddAnimSequence(AnimSeqHandle handle, const SparseDualStorage<AnimSeqMain, AnimSeqCold> &storage);
 
     void MarkChildren();
-    void ApplyAnim(int id, const DualStorage<AnimSeqMain, AnimSeqCold> &storage);
-    void ApplyAnim(int anim_id1, int anim_id2, float t, const DualStorage<AnimSeqMain, AnimSeqCold> &storage);
-    void UpdateAnim(int anim_id, float t, DualStorage<AnimSeqMain, AnimSeqCold> &storage);
+    void ApplyAnim(int id, const SparseDualStorage<AnimSeqMain, AnimSeqCold> &storage);
+    void ApplyAnim(int anim_id1, int anim_id2, float t, const SparseDualStorage<AnimSeqMain, AnimSeqCold> &storage);
+    void UpdateAnim(int anim_id, float t, SparseDualStorage<AnimSeqMain, AnimSeqCold> &storage);
     void UpdateBones(Mat4f *matr_palette);
     int UpdateShapes(uint16_t *out_shape_palette);
 };

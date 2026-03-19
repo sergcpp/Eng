@@ -47,7 +47,7 @@ void Ren::ResizableBuffer::Release(const bool immediately) {
         } else {
             Buffer_Destroy(api_, buf_main, buf_cold);
         }
-        storage_.Free(handle_);
+        storage_.Erase(handle_);
     }
     handle_ = {};
 }

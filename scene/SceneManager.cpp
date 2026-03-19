@@ -57,8 +57,8 @@ template <typename T> class DefaultCompStorage : public Eng::CompStorage {
   public:
     [[nodiscard]] std::string_view name() const override { return T::name(); }
 
-    uint32_t Create() override { return data_.emplace(); }
-    void Delete(const uint32_t i) override { data_.erase(i); }
+    uint32_t Create() override { return data_.Emplace(); }
+    void Delete(const uint32_t i) override { data_.Erase(i); }
 
     [[nodiscard]] const void *Get(uint32_t i) const override { return data_.GetOrNull(i); }
     [[nodiscard]] void *Get(uint32_t i) override { return data_.GetOrNull(i); }
@@ -307,7 +307,7 @@ void Eng::SceneManager::LoadScene(const Sys::JsObjectP &js_scene, const Ren::Bit
             std::make_unique<Ren::MemAllocators>("Scene Mem Allocs", &api, 16 * 1024 * 1024 /* initial_block_size */,
                                                  1.5f /* growth_factor */, 128 * 1024 * 1024 /* max_pool_size */);
         // Temp. solution (prevent reallocation)
-        ren_ctx_.images().reserve(16384);
+        ren_ctx_.images().Reserve(16384);
         if (load_flags & eSceneLoadFlags::Textures) {
             StartTextureLoaderThread();
         }
@@ -989,17 +989,17 @@ void Eng::SceneManager::LoadMeshBuffers() {
             Eng::Drawable &dr = drawables[obj.components[Eng::CompDrawable]];
             const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(dr.mesh);
             assert(mesh_main.type == Ren::eMeshType::Simple);
-            Mesh_InitBufferData(ren_ctx_.api(), mesh_main, mesh_cold, ren_ctx_.buffers(),
-                                *scene_data_.persistent_data->vertex_buf1, *scene_data_.persistent_data->vertex_buf2,
-                                *scene_data_.persistent_data->indices_buf, ren_ctx_.log());
+            Mesh_InitBufferData(ren_ctx_.api(), mesh_main, mesh_cold, *scene_data_.persistent_data->vertex_buf1,
+                                *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
+                                ren_ctx_.log());
         }
         if (bool(obj.comp_mask & Eng::CompAccStructureBit)) {
             Eng::AccStructure &acc = acc_structs[obj.components[Eng::CompAccStructure]];
             const auto &[mesh_main, mesh_cold] = ren_ctx_.meshes().Get(acc.mesh);
             assert(mesh_main.type == Ren::eMeshType::Simple);
-            Mesh_InitBufferData(ren_ctx_.api(), mesh_main, mesh_cold, ren_ctx_.buffers(),
-                                *scene_data_.persistent_data->vertex_buf1, *scene_data_.persistent_data->vertex_buf2,
-                                *scene_data_.persistent_data->indices_buf, ren_ctx_.log());
+            Mesh_InitBufferData(ren_ctx_.api(), mesh_main, mesh_cold, *scene_data_.persistent_data->vertex_buf1,
+                                *scene_data_.persistent_data->vertex_buf2, *scene_data_.persistent_data->indices_buf,
+                                ren_ctx_.log());
             if (ren_ctx_.capabilities.hwrt) {
                 mesh_cold.blas = Build_HWRT_BLAS(acc);
             } else {
@@ -1827,9 +1827,9 @@ Ren::ImageHandle Eng::SceneManager::OnLoadTexture(const std::string_view name, c
 Ren::SamplerHandle Eng::SceneManager::OnLoadSampler(const Ren::SamplingParams params) {
     const auto it = lower_bound(std::begin(scene_data_.samplers), std::end(scene_data_.samplers), params,
                                 [this](const Ren::SamplerHandle lhs_handle, const Ren::SamplingParams s) {
-                                    return ren_ctx_.samplers().Get(lhs_handle).first.params < s;
+                                    return ren_ctx_.samplers().Get(lhs_handle).params < s;
                                 });
-    if (it != std::end(scene_data_.samplers) && ren_ctx_.samplers().Get(*it).first.params == params) {
+    if (it != std::end(scene_data_.samplers) && ren_ctx_.samplers().Get(*it).params == params) {
         return *it;
     }
     const Ren::SamplerHandle ret = ren_ctx_.CreateSampler(params);

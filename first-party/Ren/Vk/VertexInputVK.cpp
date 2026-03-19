@@ -23,15 +23,15 @@ static_assert(std::size(g_attrib_formats_vk) == int(eType::_Count));
 extern const int g_type_sizes[];
 } // namespace Ren
 
-bool Ren::VertexInput_Init(VertexInputMain &vtx_input, Span<const VtxAttribDesc> _attribs) {
+bool Ren::VertexInput_Init(VertexInput &vtx_input, Span<const VtxAttribDesc> _attribs) {
     vtx_input.attribs.assign(_attribs.begin(), _attribs.end());
     return true;
 }
 
-void Ren::VertexInput_Destroy(VertexInputMain &vtx_input) { vtx_input = {}; }
+void Ren::VertexInput_Destroy(VertexInput &vtx_input) { vtx_input = {}; }
 
-void Ren::VertexInput_BindBuffers(const ApiContext &api, const VertexInputMain &vtx_input,
-                                  const DualStorage<BufferMain, BufferCold> &buffers,
+void Ren::VertexInput_BindBuffers(const ApiContext &api, const VertexInput &vtx_input,
+                                  const SparseDualStorage<BufferMain, BufferCold> &buffers,
                                   Span<const BufferROHandle> attrib_bufs, const BufferROHandle elem_buf,
                                   VkCommandBuffer cmd_buf, uint32_t index_offset, int index_type) {
     SmallVector<VkBuffer, 8> buffers_to_bind;
@@ -58,7 +58,7 @@ void Ren::VertexInput_BindBuffers(const ApiContext &api, const VertexInputMain &
 }
 
 void Ren::VertexInput_FillVKDescriptions(
-    const VertexInputMain &vtx_input,
+    const VertexInput &vtx_input,
     SmallVectorImpl<VkVertexInputBindingDescription, aligned_allocator<VkVertexInputBindingDescription, 4>>
         &out_bindings,
     SmallVectorImpl<VkVertexInputAttributeDescription, aligned_allocator<VkVertexInputAttributeDescription, 4>>

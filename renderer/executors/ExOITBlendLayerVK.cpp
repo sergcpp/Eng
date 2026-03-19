@@ -138,14 +138,14 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::Image
         const Ren::PipelineMain &pi_simple1_main = storages.pipelines.Get(pi_simple_[1]).first;
         const Ren::PipelineMain &pi_simple2_main = storages.pipelines.Get(pi_simple_[2]).first;
 
-        const Ren::RenderPassMain &rp_simple0_main = storages.render_passes.Get(pi_simple0_main.render_pass).first;
+        const Ren::RenderPass &rp_simple0 = storages.render_passes.Get(pi_simple0_main.render_pass);
 
         const Ren::ImageRWHandle color_targets[] = {color_tex};
         const Ren::FramebufferHandle fb =
             fg.FindOrCreateFramebuffer(pi_simple0_main.render_pass, depth_tex, depth_tex, color_targets);
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = rp_simple0_main.handle;
+        rp_begin_info.renderPass = rp_simple0.handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         const VkClearValue clear_values[4] = {{}, {}, {}, {}};
@@ -156,7 +156,7 @@ void Eng::ExOITBlendLayer::DrawTransparent(const FgContext &fg, const Ren::Image
         { // Simple meshes
             Ren::DebugMarker _m(api, cmd_buf, "SIMPLE");
 
-            const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_simple0_main.vtx_input).first;
+            const Ren::VertexInput &vtx_input_main = storages.vtx_inputs.Get(pi_simple0_main.vtx_input);
             VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                     VK_INDEX_TYPE_UINT32);
 

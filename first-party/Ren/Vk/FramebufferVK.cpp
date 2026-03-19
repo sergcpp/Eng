@@ -56,7 +56,7 @@ bool Ren::Framebuffer_Init(const ApiContext &api, FramebufferMain &fb_main, Fram
     fb_main.h = uint16_t(h);
 
     VkFramebufferCreateInfo framebuf_create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-    framebuf_create_info.renderPass = storages.render_passes.Get(render_pass).first.handle;
+    framebuf_create_info.renderPass = storages.render_passes.Get(render_pass).handle;
     framebuf_create_info.attachmentCount = image_views.size();
     framebuf_create_info.pAttachments = image_views.data();
     framebuf_create_info.width = w;

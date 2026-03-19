@@ -646,11 +646,11 @@ void Eng::FgBuilder::Reset() {
                 ctx_.ReleaseBuffer(fgbuf_main.handle);
             }
         }
-        buffers_.FreeUnsafe(it->val);
+        buffers_.EraseUnsafe(it->val);
         it = name_to_buffer_.erase(it);
     }
-    assert(buffers_.Empty());
-    buffers_.Clear(); // reset generation counters
+    assert(buffers_.empty());
+    buffers_ = {}; // reset generation counters
 
     for (auto it = std::begin(name_to_image_); it != std::end(name_to_image_);) {
         const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->val);
@@ -659,11 +659,11 @@ void Eng::FgBuilder::Reset() {
                 ctx_.ReleaseImage(fgimg_main.handle_to_own);
             }
         }
-        images_.FreeUnsafe(it->val);
+        images_.EraseUnsafe(it->val);
         it = name_to_image_.erase(it);
     }
-    assert(images_.Empty());
-    images_.Clear(); // reset generation counters
+    assert(images_.empty());
+    images_ = {}; // reset generation counters
 
     framebuffers_->Clear(ctx_);
 
@@ -897,7 +897,7 @@ void Eng::FgBuilder::PrepareResourceLifetimes() {
     buf_alias_chains_.resize(name_to_buffer_.capacity());
 
     { // Images
-        std::vector<int> img_aliases(images_.Capacity(), -1);
+        std::vector<int> img_aliases(images_.capacity(), -1);
         for (auto it1 = std::begin(name_to_image_); it1 != std::end(name_to_image_); ++it1) {
             const auto &[img1_main, img1_cold] = images_.GetUnsafe(it1->val);
             if (img1_cold.external || img1_cold.history_index != 0xffffffff || img1_cold.history_of != 0xffffffff) {
@@ -1018,7 +1018,7 @@ void Eng::FgBuilder::PrepareResourceLifetimes() {
 void Eng::FgBuilder::BuildResourceLinkedLists() {
     OPTICK_EVENT();
     std::vector<FgResource *> all_resources;
-    all_resources.reserve(buffers_.Size() + images_.Size());
+    all_resources.reserve(buffers_.size() + images_.size());
 
     auto resource_compare = [](const FgResource *lhs, const FgResource *rhs) {
         return FgResource::LessThanTypeAndIndex(*lhs, *rhs);
@@ -1351,7 +1351,7 @@ void Eng::FgBuilder::Compile(Ren::Span<const std::variant<FgBufRWHandle, FgImgRW
     ctx_.log()->Info("============================================================================");
     { // report buffers
         std::vector<uint32_t> not_handled_buffers;
-        not_handled_buffers.reserve(buffers_.Size());
+        not_handled_buffers.reserve(buffers_.size());
         for (auto it = std::begin(name_to_buffer_); it != std::end(name_to_buffer_); ++it) {
             const auto &[fgbuf_main, fgbuf_cold] = buffers_.GetUnsafe(it->val);
             if (fgbuf_cold.alias_of != -1) {
@@ -1385,7 +1385,7 @@ void Eng::FgBuilder::Compile(Ren::Span<const std::variant<FgBufRWHandle, FgImgRW
     ctx_.log()->Info("============================================================================");
     { // report images
         std::vector<uint32_t> not_handled_images;
-        not_handled_images.reserve(images_.Size());
+        not_handled_images.reserve(images_.size());
         for (auto it = std::begin(name_to_image_); it != std::end(name_to_image_); ++it) {
             const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->val);
             if (fgimg_cold.alias_of != -1) {

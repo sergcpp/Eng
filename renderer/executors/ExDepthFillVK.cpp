@@ -158,14 +158,14 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         clear_value.depthStencil.stencil = 0;
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_static_solid_main[0]->vtx_input).first;
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_static_solid_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -210,12 +210,12 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input = storages.vtx_inputs.Get(pi_moving_solid_main[0]->vtx_input).first;
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_moving_solid_main[0]->vtx_input);
         VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
@@ -260,15 +260,15 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         clear_value.depthStencil.stencil = 0;
 
         VkRenderPassBeginInfo rp_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_static_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_static_transp_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -318,13 +318,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main = storages.vtx_inputs.Get(pi_moving_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_moving_transp_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -371,14 +371,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_only_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main =
-            storages.vtx_inputs.Get(pi_vege_static_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vege_static_solid_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -420,14 +419,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main =
-            storages.vtx_inputs.Get(pi_vege_moving_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vege_moving_solid_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -470,14 +468,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main =
-            storages.vtx_inputs.Get(pi_vege_static_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vege_static_transp_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -522,14 +519,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main =
-            storages.vtx_inputs.Get(pi_vege_moving_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_vege_moving_transp_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -574,14 +570,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main =
-            storages.vtx_inputs.Get(pi_skin_static_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_skin_static_solid_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -623,14 +618,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main =
-            storages.vtx_inputs.Get(pi_skin_moving_solid_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_skin_moving_solid_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -673,14 +667,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main =
-            storages.vtx_inputs.Get(pi_skin_static_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_skin_static_transp_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided
@@ -725,14 +718,13 @@ void Eng::ExDepthFill::DrawDepth(const FgContext &fg, const Ren::ImageRWHandle d
         rp_begin_info.renderArea = {{0, 0}, {uint32_t(view_state_->ren_res[0]), uint32_t(view_state_->ren_res[1])}};
         rp_begin_info.pClearValues = &clear_value;
         rp_begin_info.clearValueCount = 1;
-        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).first.handle;
+        rp_begin_info.renderPass = storages.render_passes.Get(rp_depth_velocity_[rp_index]).handle;
         rp_begin_info.framebuffer = storages.framebuffers.Get(fb).first.handle;
 
         api.vkCmdBeginRenderPass(cmd_buf, &rp_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const Ren::VertexInputMain &vtx_input_main =
-            storages.vtx_inputs.Get(pi_skin_moving_transp_main[0]->vtx_input).first;
-        VertexInput_BindBuffers(api, vtx_input_main, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
+        const Ren::VertexInput &vtx_input = storages.vtx_inputs.Get(pi_skin_moving_transp_main[0]->vtx_input);
+        VertexInput_BindBuffers(api, vtx_input, storages.buffers, attrib_bufs, ndx_buf, cmd_buf, 0,
                                 VK_INDEX_TYPE_UINT32);
 
         { // one-sided

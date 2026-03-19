@@ -30,8 +30,7 @@ extern const VkCompareOp g_compare_ops_vk[] = {
 extern const float AnisotropyLevel = 4;
 } // namespace Ren
 
-bool Ren::Sampler_Init(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold,
-                       const SamplingParams params) {
+bool Ren::Sampler_Init(const ApiContext &api, Sampler &sampler, const SamplingParams params) {
     VkSamplerCreateInfo sampler_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     sampler_info.magFilter = g_min_mag_filter_vk[size_t(params.filter)];
     sampler_info.minFilter = g_min_mag_filter_vk[size_t(params.filter)];
@@ -49,24 +48,22 @@ bool Ren::Sampler_Init(const ApiContext &api, SamplerMain &sampler_main, Sampler
     sampler_info.minLod = 0.0f;
     sampler_info.maxLod = VK_LOD_CLAMP_NONE;
 
-    sampler_main.params = params;
+    sampler.params = params;
 
-    const VkResult res = api.vkCreateSampler(api.device, &sampler_info, nullptr, &sampler_main.handle);
+    const VkResult res = api.vkCreateSampler(api.device, &sampler_info, nullptr, &sampler.handle);
     return (res == VK_SUCCESS);
 }
 
-void Ren::Sampler_Destroy(const ApiContext &api, SamplerMain &sampler_main, SamplerCold &sampler_cold) {
-    if (sampler_main.handle) {
-        api.samplers_to_destroy[api.backend_frame].emplace_back(sampler_main.handle);
+void Ren::Sampler_Destroy(const ApiContext &api, Sampler &sampler) {
+    if (sampler.handle) {
+        api.samplers_to_destroy[api.backend_frame].emplace_back(sampler.handle);
     }
-    sampler_main = {};
-    sampler_cold = {};
+    sampler = {};
 }
 
-void Ren::Sampler_DestroyImmediately(const ApiContext& api, SamplerMain& sampler_main, SamplerCold& sampler_cold) {
-    if (sampler_main.handle) {
-        api.vkDestroySampler(api.device, sampler_main.handle, nullptr);
+void Ren::Sampler_DestroyImmediately(const ApiContext &api, Sampler &sampler) {
+    if (sampler.handle) {
+        api.vkDestroySampler(api.device, sampler.handle, nullptr);
     }
-    sampler_main = {};
-    sampler_cold = {};
+    sampler = {};
 }

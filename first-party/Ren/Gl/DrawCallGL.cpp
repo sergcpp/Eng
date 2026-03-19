@@ -64,7 +64,7 @@ void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, 
                                        texture_id);
 
             if (b.handle.sampler) {
-                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
+                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).id);
             } else {
                 ren_glBindSampler(GLuint(b.loc + b.offset), 0);
             }
@@ -99,7 +99,7 @@ void Ren::DispatchCompute(CommandBuffer cmd_buf, const PipelineHandle pipeline, 
                                GL_FALSE, 0, GL_READ_WRITE,
                                GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == eBindTarget::Sampler) {
-            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
+            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).id);
         } else if (b.trg == eBindTarget::ImageRO || b.trg == eBindTarget::ImageRW) {
             const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
 
@@ -183,7 +183,7 @@ void Ren::DispatchComputeIndirect(CommandBuffer, const PipelineHandle pipeline, 
                                        texture_id);
 
             if (b.handle.sampler) {
-                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
+                ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).id);
             } else {
                 ren_glBindSampler(GLuint(b.loc + b.offset), 0);
             }
@@ -218,7 +218,7 @@ void Ren::DispatchComputeIndirect(CommandBuffer, const PipelineHandle pipeline, 
                                GL_FALSE, 0, GL_READ_WRITE,
                                GLInternalFormatFromFormat(buf_main.views[b.handle.view_index].first));
         } else if (b.trg == eBindTarget::Sampler) {
-            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).first.id);
+            ren_glBindSampler(GLuint(b.loc + b.offset), storages.samplers.Get(b.handle.sampler).id);
         } else if (b.trg == eBindTarget::ImageRO || b.trg == eBindTarget::ImageRW) {
             const auto &[img_main, img_cold] = storages.images.Get(b.handle.img);
 

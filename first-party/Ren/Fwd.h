@@ -2,7 +2,7 @@
 
 #include "Log.h"
 #include "utils/Bitmask.h"
-#include "utils/Storage.h"
+#include "utils/SparseStorage.h"
 
 #if defined(REN_VK_BACKEND)
 typedef uint64_t VkDeviceAddress;
@@ -63,11 +63,9 @@ struct PipelineCold;
 struct ProgramMain;
 struct ProgramCold;
 struct RastState;
-struct RenderPassMain;
-struct RenderPassCold;
+struct RenderPass;
 class ResizableBuffer;
-struct SamplerMain;
-struct SamplerCold;
+struct Sampler;
 struct ShaderMain;
 struct ShaderCold;
 struct ImageMain;
@@ -75,8 +73,7 @@ struct ImageCold;
 class ImageAtlas;
 class Texture2DAtlas;
 class ImageSplitter;
-struct VertexInputMain;
-struct VertexInputCold;
+struct VertexInput;
 
 using AccStructRWHandle = Handle<AccStructMain, RWTag>;
 using AccStructROHandle = Handle<AccStructMain, ROTag>;
@@ -96,17 +93,17 @@ using ShaderHandle = ShaderRWHandle;
 using ProgramRWHandle = Handle<ProgramMain, RWTag>;
 using ProgramROHandle = Handle<ProgramMain, ROTag>;
 using ProgramHandle = ProgramRWHandle;
-using VertexInputRWHandle = Handle<VertexInputMain, RWTag>;
-using VertexInputROHandle = Handle<VertexInputMain, ROTag>;
+using VertexInputRWHandle = Handle<VertexInput, RWTag>;
+using VertexInputROHandle = Handle<VertexInput, ROTag>;
 using VertexInputHandle = VertexInputRWHandle;
 using PipelineRWHandle = Handle<PipelineMain, RWTag>;
 using PipelineROHandle = Handle<PipelineMain, ROTag>;
 using PipelineHandle = PipelineRWHandle;
-using RenderPassRWHandle = Handle<RenderPassMain, RWTag>;
-using RenderPassROHandle = Handle<RenderPassMain, ROTag>;
+using RenderPassRWHandle = Handle<RenderPass, RWTag>;
+using RenderPassROHandle = Handle<RenderPass, ROTag>;
 using RenderPassHandle = RenderPassRWHandle;
-using SamplerRWHandle = Handle<SamplerMain, RWTag>;
-using SamplerROHandle = Handle<SamplerMain, ROTag>;
+using SamplerRWHandle = Handle<Sampler, RWTag>;
+using SamplerROHandle = Handle<Sampler, ROTag>;
 using SamplerHandle = SamplerRWHandle;
 using MaterialRWHandle = Handle<MaterialMain, RWTag>;
 using MaterialROHandle = Handle<MaterialMain, ROTag>;
@@ -119,19 +116,19 @@ using AnimSeqROHandle = Handle<AnimSeqMain, ROTag>;
 using AnimSeqHandle = AnimSeqRWHandle;
 
 struct StoragesRef {
-    DualStorage<VertexInputMain, VertexInputCold> &vtx_inputs;
-    DualStorage<ShaderMain, ShaderCold> &shaders;
-    DualStorage<ProgramMain, ProgramCold> &programs;
-    DualStorage<PipelineMain, PipelineCold> &pipelines;
-    DualStorage<RenderPassMain, RenderPassCold> &render_passes;
-    DualStorage<BufferMain, BufferCold> &buffers;
-    DualStorage<ImageMain, ImageCold> &images;
-    DualStorage<SamplerMain, SamplerCold> &samplers;
-    DualStorage<FramebufferMain, FramebufferCold> &framebuffers;
-    DualStorage<AccStructMain, AccStructCold> &acc_structs;
-    DualStorage<MaterialMain, MaterialCold> &materials;
-    DualStorage<MeshMain, MeshCold> &meshes;
-    DualStorage<AnimSeqMain, AnimSeqCold> &anims;
+    SparseStorage<VertexInput, 8> &vtx_inputs;
+    SparseDualStorage<ShaderMain, ShaderCold, 8> &shaders;
+    SparseDualStorage<ProgramMain, ProgramCold, 8> &programs;
+    SparseDualStorage<PipelineMain, PipelineCold, 8> &pipelines;
+    SparseStorage<RenderPass, 8> &render_passes;
+    SparseDualStorage<BufferMain, BufferCold, 8> &buffers;
+    SparseDualStorage<ImageMain, ImageCold, 8> &images;
+    SparseStorage<Sampler, 8> &samplers;
+    SparseDualStorage<FramebufferMain, FramebufferCold, 8> &framebuffers;
+    SparseDualStorage<AccStructMain, AccStructCold, 8> &acc_structs;
+    SparseDualStorage<MaterialMain, MaterialCold, 8> &materials;
+    SparseDualStorage<MeshMain, MeshCold, 8> &meshes;
+    SparseDualStorage<AnimSeqMain, AnimSeqCold, 8> &anims;
 };
 
 const char *Version();

@@ -8,6 +8,7 @@
 #include <Ren/RenderPass.h>
 #include <Ren/Shader.h>
 #include <Ren/VertexInput.h>
+#include <Ren/utils/HashMap32.h>
 
 namespace Eng {
 class ShaderLoader {

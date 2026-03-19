@@ -12,10 +12,10 @@ class ButtonImage : public ButtonBase {
     std::unique_ptr<BaseElement> additional_element_;
 
   public:
-    ButtonImage(const Ren::ImageRegionRef &tex_normal, const Vec2f uvs_normal[2],
-                const Ren::ImageRegionRef &tex_focused, const Vec2f uvs_focused[2],
-                const Ren::ImageRegionRef &tex_pressed, const Vec2f uvs_pressed[2], const Vec2f &pos,
-                const Vec2f &size, const BaseElement *parent);
+    ButtonImage(const Ren::SparseDualStorage<Ren::ImageRegionMain, Ren::ImageRegionCold> *storage,
+                Ren::ImageRegionHandle tex_normal, const Vec2f uvs_normal[2], Ren::ImageRegionHandle tex_focused,
+                const Vec2f uvs_focused[2], Ren::ImageRegionHandle tex_pressed, const Vec2f uvs_pressed[2],
+                const Vec2f &pos, const Vec2f &size, const BaseElement *parent);
 
     [[nodiscard]] BaseElement *element() const { return additional_element_.get(); }
 
