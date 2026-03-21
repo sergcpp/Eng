@@ -42,9 +42,9 @@ bool Ren::VertexInput_Init(VertexInput &vtx_input, Span<const VtxAttribDesc> _at
                                  IsNormalizedType(a.type) ? GL_TRUE : GL_FALSE, GLuint(a.rel_offset));
         }
         int bound_index = -1;
-        for (int i = 0; i < int(bound_buffers.size()); ++i) {
-            if (bound_buffers[i].first == a.buf && bound_buffers[i].second == a.base_offset) {
-                bound_index = i;
+        for (int j = 0; j < int(bound_buffers.size()); ++j) {
+            if (bound_buffers[j].first == a.buf && bound_buffers[j].second == a.base_offset) {
+                bound_index = j;
                 break;
             }
         }
