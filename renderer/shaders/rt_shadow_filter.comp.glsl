@@ -1,4 +1,5 @@
 #version 430 core
+#extension GL_EXT_control_flow_attributes : enable
 
 #include "_cs_common.glsl"
 #include "rt_shadow_filter_interface.h"
@@ -52,39 +53,46 @@ shared float g_shared_depth[16][16];
 shared uint g_shared_normals_xy[16][16];
 shared uint g_shared_normals_zw[16][16];
 
-void LoadWithOffset(ivec2 did, ivec2 offset, out /* fp16 */ vec3 normals, out /* fp16 */ vec2 input_, out float depth) {
+void LoadWithOffset(ivec2 did, const ivec2 offset, out /* fp16 */ vec3 normals, out /* fp16 */ vec2 input_, out float depth) {
     did += offset;
 
-    ivec2 p = clamp(did, ivec2(0, 0), ivec2(g_params.img_size) - ivec2(1));
+    const ivec2 p = clamp(did, ivec2(0, 0), ivec2(g_params.img_size) - ivec2(1));
     normals = UnpackNormalAndRoughness(texelFetch(g_norm_tex, p, 0).x).xyz;
     input_ = texelFetch(g_input_tex, p, 0).xy;
     depth = texelFetch(g_depth_tex, p, 0).x;
+    if (depth > 0.0 && depth < 1.0)
+    {
+        depth = LinearizeDepth(depth, g_shrd_data.clip_info);
+    }
+    else
+    {
+        depth = 0.0;
+    }
 }
 
-/* fp16 */ vec2 LoadInputFromSharedMemory(ivec2 idx) {
+/* fp16 */ vec2 LoadInputFromSharedMemory(const ivec2 idx) {
     return unpackHalf2x16(g_shared_input[idx.y][idx.x]);
 }
 
-float LoadDepthFromSharedMemory(ivec2 idx) {
+float LoadDepthFromSharedMemory(const ivec2 idx) {
     return g_shared_depth[idx.y][idx.x];
 }
 
-/* fp16 */ vec3 LoadNormalsFromSharedMemory(ivec2 idx) {
+/* fp16 */ vec3 LoadNormalsFromSharedMemory(const ivec2 idx) {
     vec3 normals;
     normals.xy = unpackHalf2x16(g_shared_normals_xy[idx.y][idx.x]);
     normals.z = unpackHalf2x16(g_shared_normals_zw[idx.y][idx.x]).x;
     return normals;
 }
 
-float FetchFilteredVarianceFromSharedMemory(ivec2 pos) {
-    const int k = 1;
-    float variance = 0.0;
+float FetchFilteredVarianceFromSharedMemory(const ivec2 pos) {
     const float kernel[2][2] = {
         { 1.0 / 4.0, 1.0 / 8.0  },
         { 1.0 / 8.0, 1.0 / 16.0 }
     };
-    for (int y = -k; y <= k; ++y) {
-        for (int x = -k; x <= k; ++x) {
+    float variance = 0.0;
+    [[unroll]] for (int y = -1; y <= 1; ++y) {
+        [[unroll]] for (int x = -1; x <= 1; ++x) {
             const float w = kernel[abs(x)][abs(y)];
             variance += w * LoadInputFromSharedMemory(pos + ivec2(x, y)).y;
         }
@@ -92,7 +100,7 @@ float FetchFilteredVarianceFromSharedMemory(ivec2 pos) {
     return variance;
 }
 
-void StoreInSharedMemory(ivec2 idx, /* fp16 */ vec3 normals, /* fp16 */ vec2 input_, float depth) {
+void StoreInSharedMemory(const ivec2 idx, const /* fp16 */ vec3 normals, const /* fp16 */ vec2 input_, const float depth) {
     g_shared_input[idx.y][idx.x] = packHalf2x16(input_);
     g_shared_depth[idx.y][idx.x] = depth;
     g_shared_normals_xy[idx.y][idx.x] = packHalf2x16(normals.xy);
@@ -141,29 +149,29 @@ void InitializeSharedMemory(ivec2 did, ivec2 gtid) {
     StoreWithOffset(gtid, offset_3, normals_3, input_3, depth_3); // C
 }
 
-bool IsShadowReceiver(uvec2 p) {
-    float depth = texelFetch(g_depth_tex, ivec2(p), 0).x;
+bool IsShadowReceiver(const uvec2 p) {
+    const float depth = texelFetch(g_depth_tex, ivec2(p), 0).x;
     return (depth > 0.0) && (depth < 1.0);
 }
 
-float GetShadowSimilarity(float x1, float x2, float sigma) {
+float GetShadowSimilarity(const float x1, const float x2, const float sigma) {
     return exp(-abs(x1 - x2) / sigma);
 }
 
-float GetDepthSimilarity(float center_depth, float neighbor_depth, float sigma) {
+float GetDepthSimilarity(const float center_depth, const float neighbor_depth, const float sigma) {
     return exp(-abs(center_depth - neighbor_depth) * center_depth * sigma);
 }
 
-float GetNormalSimilarity(vec3 x1, vec3 x2) {
+float GetNormalSimilarity(const vec3 x1, const vec3 x2) {
     return pow(clamp(dot(x1, x2), 0.0, 1.0), 32.0);
 }
 
 const float DepthSimilaritySigma = 1024.0;
 
-void DenoiseFromSharedMemory(uvec2 did, uvec2 gtid, inout float weight_sum, inout vec2 shadow_sum, float depth, uint stepsize) {
+void DenoiseFromSharedMemory(const uvec2 did, const uvec2 gtid, inout float weight_sum, inout vec2 shadow_sum, const float depth, const uint stepsize) {
     // Load our center sample
-    vec2 shadow_center = LoadInputFromSharedMemory(ivec2(gtid));
-    vec3 normal_center = LoadNormalsFromSharedMemory(ivec2(gtid));
+    const vec2 shadow_center = LoadInputFromSharedMemory(ivec2(gtid));
+    const vec3 normal_center = LoadNormalsFromSharedMemory(ivec2(gtid));
 
     weight_sum = 1.0;
     shadow_sum = shadow_center;
@@ -173,24 +181,19 @@ void DenoiseFromSharedMemory(uvec2 did, uvec2 gtid, inout float weight_sum, inou
     const float depth_center = LinearizeDepth(depth, g_shrd_data.clip_info);
 
     // Iterate filter kernel
-    const int k = 1;
     const float kernel[3] = { 1.0, 2.0 / 3.0, 1.0 / 6.0 };
 
-    for (int y = -k; y <= k; ++y) {
-        for (int x = -k; x <= k; ++x) {
-            // Should we process this sample?
+    [[unroll]] for (int y = -1; y <= 1; ++y) {
+        [[unroll]] for (int x = -1; x <= 1; ++x) {
             const ivec2 _step = ivec2(x, y) * int(stepsize);
             const ivec2 gtid_idx = ivec2(gtid) + _step;
-            const ivec2 did_idx = ivec2(did) + _step;
 
-            float depth_neigh = LoadDepthFromSharedMemory(gtid_idx);
-            vec3 normal_neigh = LoadNormalsFromSharedMemory(gtid_idx);
-            vec2 shadow_neigh = LoadInputFromSharedMemory(gtid_idx);
+            const float depth_neigh = LoadDepthFromSharedMemory(gtid_idx);
+            const vec3 normal_neigh = LoadNormalsFromSharedMemory(gtid_idx);
+            const vec2 shadow_neigh = LoadInputFromSharedMemory(gtid_idx);
 
-            float sky_pixel_multiplier = ((x == 0 && y == 0) || depth_neigh >= 1.0 || depth_neigh <= 0.0) ? 0.0 : 1.0; // Zero weight for sky pixels
-
-            // Fetch our filtering values
-            depth_neigh = LinearizeDepth(depth_neigh, g_shrd_data.clip_info);
+            // This also skips center
+            const float sky_pixel_multiplier = ((x == 0 && y == 0) || depth_neigh == 0.0) ? 0.0 : 1.0;
 
             // Evaluate the edge-stopping function
             float w = kernel[abs(x)] * kernel[abs(y)];  // kernel weight
@@ -219,8 +222,8 @@ vec2 ApplyFilterWithPrecache(uvec2 did, uvec2 gtid, uint stepsize) {
         DenoiseFromSharedMemory(did, gtid, weight_sum, shadow_sum, depth, stepsize);
     }
 
-    float mean = shadow_sum.x / weight_sum;
-    float variance = shadow_sum.y / (weight_sum * weight_sum);
+    const float mean = shadow_sum.x / weight_sum;
+    const float variance = shadow_sum.y / (weight_sum * weight_sum);
     return vec2(mean, variance);
 }
 
@@ -231,21 +234,20 @@ void ReadTileMetaData(uvec2 gid, out bool is_cleared, out bool all_in_light) {
     all_in_light = (meta_data & TILE_META_DATA_LIGHT_MASK) != 0u;
 }
 
-vec2 FilterSoftShadowsPass(uvec2 gid, uvec2 gtid, uvec2 did, out bool bWriteResults, uint pass, uint stepsize) {
+vec2 FilterSoftShadowsPass(uvec2 gid, uvec2 gtid, uvec2 did, out bool write_results, uint pass, uint stepsize) {
     bool is_cleared, all_in_light;
     ReadTileMetaData(gid, is_cleared, all_in_light);
 
-    bWriteResults = false;
+    write_results = false;
     vec2 results = vec2(0.0);
-    // [branch]
-    if (is_cleared) {
+    [[dont_flatten]] if (is_cleared) {
         if (pass != 1 || true) {
             results.x = all_in_light ? 1.0 : 0.0;
-            bWriteResults = true;
+            write_results = true;
         }
     } else {
         results = ApplyFilterWithPrecache(did, gtid, stepsize);
-        bWriteResults = true;
+        write_results = true;
     }
 
     return results;
@@ -254,35 +256,33 @@ vec2 FilterSoftShadowsPass(uvec2 gid, uvec2 gtid, uvec2 did, out bool bWriteResu
 layout (local_size_x = GRP_SIZE_X, local_size_y = GRP_SIZE_Y, local_size_z = 1) in;
 
 void main() {
-    uvec2 group_id = gl_WorkGroupID.xy;
-    uvec2 group_thread_id = gl_LocalInvocationID.xy;
-    uvec2 dispatch_thread_id = gl_GlobalInvocationID.xy;
+    const uvec2 group_id = gl_WorkGroupID.xy;
+    const uvec2 group_thread_id = gl_LocalInvocationID.xy;
+    const uvec2 dispatch_thread_id = gl_GlobalInvocationID.xy;
 
+    bool write_output = false;
 #if defined(PASS_0)
     const uint PASS_INDEX = 0u;
     const uint STEP_SIZE = 1u;
 
-    bool bWriteOutput = false;
-    vec2 results = FilterSoftShadowsPass(group_id, group_thread_id, dispatch_thread_id, bWriteOutput, PASS_INDEX, STEP_SIZE);
+    vec2 results = FilterSoftShadowsPass(group_id, group_thread_id, dispatch_thread_id, write_output, PASS_INDEX, STEP_SIZE);
 #elif defined(PASS_1)
     const uint PASS_INDEX = 1u;
     const uint STEP_SIZE = 2u;
 
-    bool bWriteOutput = false;
-    vec2 results = FilterSoftShadowsPass(group_id, group_thread_id, dispatch_thread_id, bWriteOutput, PASS_INDEX, STEP_SIZE);
+    vec2 results = FilterSoftShadowsPass(group_id, group_thread_id, dispatch_thread_id, write_output, PASS_INDEX, STEP_SIZE);
 #else
     const uint PASS_INDEX = 2u;
     const uint STEP_SIZE = 4u;
 
-    bool bWriteOutput = false;
-    vec2 results = FilterSoftShadowsPass(group_id, group_thread_id, dispatch_thread_id, bWriteOutput, PASS_INDEX, STEP_SIZE);
+    vec2 results = FilterSoftShadowsPass(group_id, group_thread_id, dispatch_thread_id, write_output, PASS_INDEX, STEP_SIZE);
 
     // Recover some of the contrast lost during denoising
     const float shadow_remap = max(1.2 - results.y, 1.0);
     const float mean = pow(abs(results.x), shadow_remap);
 #endif
 
-    if (bWriteOutput) {
+    if (write_output) {
 #if defined(PASS_0) || defined(PASS_1)
         imageStore(g_out_result_img, ivec2(dispatch_thread_id), vec4(results, 0.0, 0.0));
 #else

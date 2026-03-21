@@ -44,7 +44,7 @@ layout(binding = OUT_MOMENTS_IMG_SLOT, r11f_g11f_b10f) uniform restrict image2D 
 
 shared int g_false_count;
 
-bool ThreadGroupAllTrue(bool val) {
+bool ThreadGroupAllTrue(const bool val) {
 #ifndef NO_SUBGROUP
     if (gl_NumSubgroups == 1) {
         return subgroupAll(val);
@@ -62,27 +62,27 @@ bool ThreadGroupAllTrue(bool val) {
     }
 }
 
-bool IsShadowReceiver(uvec2 p) {
-    float depth = texelFetch(g_depth_tex, ivec2(p), 0).x;
+bool IsShadowReceiver(const uvec2 p) {
+    const float depth = texelFetch(g_depth_tex, ivec2(p), 0).x;
     return (depth > 0.0) && (depth < 1.0);
 }
 
-void WriteTileMetaData(uvec2 gid, uvec2 gtid, bool is_cleared, bool all_in_light) {
+void WriteTileMetaData(const uvec2 gid, const uvec2 gtid, const bool is_cleared, const bool all_in_light) {
     if (all(equal(gtid, uvec2(0)))) {
-        uint light_mask = all_in_light ? TILE_META_DATA_LIGHT_MASK : 0u;
-        uint clear_mask = is_cleared ? TILE_META_DATA_CLEAR_MASK : 0;
-        uint mask = light_mask | clear_mask;
+        const uint light_mask = all_in_light ? TILE_META_DATA_LIGHT_MASK : 0u;
+        const uint clear_mask = is_cleared ? TILE_META_DATA_CLEAR_MASK : 0;
+        const uint mask = light_mask | clear_mask;
 
-        uint tile_size_x = (g_params.img_size.x + 7) / 8;
+        const uint tile_size_x = (g_params.img_size.x + 7) / 8;
         g_tile_metadata[gid.y * tile_size_x + gid.x] = mask;
     }
 }
 
-void ClearTargets(uvec2 did, uvec2 gtid, uvec2 gid, float shadow_value, bool is_shadow_receiver, bool all_in_light) {
+void ClearTargets(const uvec2 did, const uvec2 gtid, const uvec2 gid, const float shadow_value, const bool is_shadow_receiver, const bool all_in_light) {
     WriteTileMetaData(gid, gtid, true, all_in_light);
     imageStore(g_reproj_results_img, ivec2(did), vec4(shadow_value, shadow_value, shadow_value, 0.0)); // mean, variance
 
-    float temporal_sample_count = is_shadow_receiver ? 1 : 0;
+    const float temporal_sample_count = is_shadow_receiver ? 1 : 0;
     imageStore(g_out_moments_img, ivec2(did), vec4(shadow_value, 0.0, temporal_sample_count, 0.0)); // mean, variance, temporal sample count
 }
 
@@ -108,7 +108,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ********************************************************************/
 
-void SearchSpatialRegion(uvec2 gid, out bool all_in_light, out bool all_in_shadow) {
+void SearchSpatialRegion(const uvec2 gid, out bool all_in_light, out bool all_in_shadow) {
     // The spatial passes can reach a total region of 1+2+4 = 7x7 around each block.
     // The masks are 8x4, so we need a larger vertical stride
 
@@ -123,7 +123,7 @@ void SearchSpatialRegion(uvec2 gid, out bool all_in_light, out bool all_in_shado
     // xx xx xx
 
     // All of this should result in scalar ops
-    uvec2 base_tile = GetTileIndexFromPixelPosition(gid * ivec2(8, 8));
+    const uvec2 base_tile = GetTileIndexFromPixelPosition(gid * ivec2(8, 8));
 
     // Load the entire region of masks in a scalar fashion
     uint combined_or_mask = 0;
@@ -148,9 +148,9 @@ void SearchSpatialRegion(uvec2 gid, out bool all_in_light, out bool all_in_shado
     all_in_shadow = (combined_or_mask == 0u);
 }
 
-bool IsDisoccluded(uvec2 did, float depth, vec3 velocity) {
-    vec2 texel_size = g_params.inv_img_size;
-    vec2 uv = (vec2(did) + vec2(0.5)) * texel_size;
+bool IsDisoccluded(const uvec2 did, const float depth, const vec3 velocity) {
+    const vec2 texel_size = g_params.inv_img_size;
+    const vec2 uv = (vec2(did) + vec2(0.5)) * texel_size;
 
     const vec4 point_cs = vec4(2.0 * uv - 1.0, depth, 1.0);
     const vec2 previous_uv = uv - velocity.xy;
@@ -158,7 +158,7 @@ bool IsDisoccluded(uvec2 did, float depth, vec3 velocity) {
     bool is_disoccluded = true;
     if (all(greaterThan(previous_uv, vec2(0.0))) && all(lessThan(previous_uv, vec2(1.0)))) {
         // Read the center values
-        vec3 normal = UnpackNormalAndRoughness(texelFetch(g_norm_tex, ivec2(did), 0).x).xyz;
+        const vec3 normal = UnpackNormalAndRoughness(texelFetch(g_norm_tex, ivec2(did), 0).x).xyz;
 
         // How aligned with the view vector? (the more Z aligned, the higher the depth errors)
         const vec3 point_ws = TransformFromClipSpace(g_shrd_data.world_from_clip, point_cs);
@@ -167,10 +167,10 @@ bool IsDisoccluded(uvec2 did, float depth, vec3 velocity) {
         z_alignment = pow(z_alignment, 8);
 
         // Calculate the depth difference
-        float linear_depth = LinearizeDepth(depth, g_shrd_data.clip_info) - velocity.z;
+        const float linear_depth = LinearizeDepth(depth, g_shrd_data.clip_info) - velocity.z;
 
-        float previous_depth = LinearizeDepth(textureLod(g_prev_depth_tex, previous_uv, 0.0).x, g_shrd_data.clip_info);
-        float depth_difference = abs(previous_depth - linear_depth) / linear_depth;
+        const float previous_depth = LinearizeDepth(textureLod(g_prev_depth_tex, previous_uv, 0.0).x, g_shrd_data.clip_info);
+        const float depth_difference = abs(previous_depth - linear_depth) / linear_depth;
 
         // Resolve into the disocclusion mask
         const float depth_tolerance = mix(1e-2, 1e-1, z_alignment);
@@ -180,19 +180,19 @@ bool IsDisoccluded(uvec2 did, float depth, vec3 velocity) {
     return is_disoccluded;
 }
 
-bool IsDisoccluded2x2(uvec2 did, float depth, vec3 velocity) {
-    vec2 texel_size = g_params.inv_img_size;
-    vec2 uv = (vec2(did) + vec2(0.5)) * texel_size;
+bool IsDisoccluded2x2(const uvec2 did, const float depth, const vec3 velocity) {
+    const vec2 texel_size = g_params.inv_img_size;
+    const vec2 uv = (vec2(did) + vec2(0.5)) * texel_size;
 
     const vec4 point_cs = vec4(2.0 * uv - 1.0, depth, 1.0);
 
-    vec2 previous_uv = uv - velocity.xy;
-    vec2 previous_uv_base = (floor(previous_uv * g_params.img_size - vec2(0.5)) + vec2(0.5)) * g_params.inv_img_size;
+    const vec2 previous_uv = uv - velocity.xy;
+    const vec2 previous_uv_base = (floor(previous_uv * g_params.img_size - vec2(0.5)) + vec2(0.5)) * g_params.inv_img_size;
 
     bool is_disoccluded = true;
     if (all(greaterThan(previous_uv, vec2(0.0))) && all(lessThan(previous_uv, vec2(1.0)))) {
         // Read the center values
-        vec3 normal = UnpackNormalAndRoughness(texelFetch(g_norm_tex, ivec2(did), 0).x).xyz;
+        const vec3 normal = UnpackNormalAndRoughness(texelFetch(g_norm_tex, ivec2(did), 0).x).xyz;
 
         // How aligned with the view vector? (the more Z aligned, the higher the depth errors)
         const vec3 point_ws = TransformFromClipSpace(g_shrd_data.world_from_clip, point_cs);
@@ -201,19 +201,19 @@ bool IsDisoccluded2x2(uvec2 did, float depth, vec3 velocity) {
         z_alignment = pow(z_alignment, 8);
 
         // Calculate the depth difference
-        float linear_depth = LinearizeDepth(depth, g_shrd_data.clip_info) - velocity.z;
+        const float linear_depth = LinearizeDepth(depth, g_shrd_data.clip_info) - velocity.z;
 
-        float previous_depth00 = LinearizeDepth(textureLodOffset(g_prev_depth_tex, previous_uv_base, 0.0, ivec2(+0, +0)).x, g_shrd_data.clip_info);
-        float previous_depth01 = LinearizeDepth(textureLodOffset(g_prev_depth_tex, previous_uv_base, 0.0, ivec2(+1, +0)).x, g_shrd_data.clip_info);
-        float previous_depth10 = LinearizeDepth(textureLodOffset(g_prev_depth_tex, previous_uv_base, 0.0, ivec2(+0, +1)).x, g_shrd_data.clip_info);
-        float previous_depth11 = LinearizeDepth(textureLodOffset(g_prev_depth_tex, previous_uv_base, 0.0, ivec2(+1, +1)).x, g_shrd_data.clip_info);
-        float depth_difference00 = abs(previous_depth00 - linear_depth) / linear_depth;
-        float depth_difference01 = abs(previous_depth01 - linear_depth) / linear_depth;
-        float depth_difference10 = abs(previous_depth10 - linear_depth) / linear_depth;
-        float depth_difference11 = abs(previous_depth11 - linear_depth) / linear_depth;
+        const float previous_depth00 = LinearizeDepth(textureLodOffset(g_prev_depth_tex, previous_uv_base, 0.0, ivec2(+0, +0)).x, g_shrd_data.clip_info);
+        const float previous_depth01 = LinearizeDepth(textureLodOffset(g_prev_depth_tex, previous_uv_base, 0.0, ivec2(+1, +0)).x, g_shrd_data.clip_info);
+        const float previous_depth10 = LinearizeDepth(textureLodOffset(g_prev_depth_tex, previous_uv_base, 0.0, ivec2(+0, +1)).x, g_shrd_data.clip_info);
+        const float previous_depth11 = LinearizeDepth(textureLodOffset(g_prev_depth_tex, previous_uv_base, 0.0, ivec2(+1, +1)).x, g_shrd_data.clip_info);
+        const float depth_difference00 = abs(previous_depth00 - linear_depth) / linear_depth;
+        const float depth_difference01 = abs(previous_depth01 - linear_depth) / linear_depth;
+        const float depth_difference10 = abs(previous_depth10 - linear_depth) / linear_depth;
+        const float depth_difference11 = abs(previous_depth11 - linear_depth) / linear_depth;
 
         // Resolve into the disocclusion mask
-        const float depth_tolerance = mix(1e-2, 1e-2, z_alignment);
+        const float depth_tolerance = mix(1e-2, 1e-1, z_alignment);
         is_disoccluded = (depth_difference00 >= depth_tolerance) ||
                          (depth_difference01 >= depth_tolerance) ||
                          (depth_difference10 >= depth_tolerance) ||
@@ -223,7 +223,7 @@ bool IsDisoccluded2x2(uvec2 did, float depth, vec3 velocity) {
     return is_disoccluded;
 }
 
-vec3 GetClosestVelocity(uvec2 did, float depth) {
+vec3 GetClosestVelocity(const uvec2 did, const float depth) {
     vec3 closest_velocity = texelFetch(g_velocity_tex, ivec2(did), 0).xyz;
     closest_velocity.xy *= g_params.inv_img_size;
     float closest_depth = depth;
@@ -268,7 +268,7 @@ vec3 GetClosestVelocity(uvec2 did, float depth) {
 }
 
 #define KERNEL_RADIUS 8
-float KernelWeight(float i) {
+float KernelWeight(const float i) {
 #define KERNEL_WEIGHT(i) (exp(-3.0 * float(i * i) / ((KERNEL_RADIUS + 1.0) * (KERNEL_RADIUS + 1.0))))
 
     // Statically initialize kernel_weights_sum
@@ -283,27 +283,27 @@ float KernelWeight(float i) {
     return KERNEL_WEIGHT(i) * inv_kernel_weights_sum;
 }
 
-void AccumulateMoments(float value, float weight, inout float moments) {
+void AccumulateMoments(const float value, const float weight, inout float moments) {
     // We get value from the horizontal neighborhood calculations. Thus, it's both mean and variance due to using one sample per pixel
     moments += value * weight;
 }
 
 // The horizontal part of a 17x17 local neighborhood kernel
-float HorizontalNeighborhood(ivec2 did) {
-    ivec2 base_did = did;
+float HorizontalNeighborhood(const ivec2 did) {
+    const ivec2 base_did = did;
 
     // Prevent vertical out of bounds access
     if ((base_did.y < 0) || (base_did.y >= g_params.img_size.y)) return 0;
 
-    uvec2 tile_index = GetTileIndexFromPixelPosition(base_did);
-    int linear_tile_index = int(LinearTileIndex(tile_index, g_params.img_size.x));
+    const uvec2 tile_index = GetTileIndexFromPixelPosition(base_did);
+    const int linear_tile_index = int(LinearTileIndex(tile_index, g_params.img_size.x));
 
-    int left_tile_index = linear_tile_index - 1;
-    int center_tile_index = linear_tile_index;
-    int right_tile_index = linear_tile_index + 1;
+    const int left_tile_index = linear_tile_index - 1;
+    const int center_tile_index = linear_tile_index;
+    const int right_tile_index = linear_tile_index + 1;
 
-    bool is_first_tile_in_row = tile_index.x == 0;
-    bool is_last_tile_in_row = tile_index.x == (((g_params.img_size.x + 7) / 8) - 1);
+    const bool is_first_tile_in_row = tile_index.x == 0;
+    const bool is_last_tile_in_row = tile_index.x == (((g_params.img_size.x + 7) / 8) - 1);
 
     uint left_tile = 0;
     if (!is_first_tile_in_row) left_tile = g_ray_hits[left_tile_index];
@@ -314,10 +314,10 @@ float HorizontalNeighborhood(ivec2 did) {
     // Construct a single uint with the lowest 17bits containing the horizontal part of the local neighborhood.
 
     // First extract the 8 bits of our row in each of the neighboring tiles
-    uint row_base_index = (did.y % 4) * 8;
-    uint left = (left_tile >> row_base_index) & 0xFF;
-    uint center = (center_tile >> row_base_index) & 0xFF;
-    uint right = (right_tile >> row_base_index) & 0xFF;
+    const uint row_base_index = (did.y % 4) * 8;
+    const uint left = (left_tile >> row_base_index) & 0xFF;
+    const uint center = (center_tile >> row_base_index) & 0xFF;
+    const uint right = (right_tile >> row_base_index) & 0xFF;
 
     // Combine them into a single mask containting [left, center, right] from least significant to most significant bit
     uint neighborhood = left | (center << 8) | (right << 16);
@@ -351,7 +351,7 @@ float HorizontalNeighborhood(ivec2 did) {
 
 shared float g_neighborhood[8][24];
 
-float ComputeLocalNeighborhood(ivec2 did, ivec2 gtid) {
+float ComputeLocalNeighborhood(const ivec2 did, const ivec2 gtid) {
     float local_neighborhood = 0;
 
     float upper = HorizontalNeighborhood(ivec2(did.x, did.y - 8));
@@ -372,9 +372,9 @@ float ComputeLocalNeighborhood(ivec2 did, ivec2 gtid) {
 
     // Then read the neighboring values.
     for (int i = 1; i < KERNEL_RADIUS; ++i) {
-        float upper_value = g_neighborhood[gtid.x][8 + gtid.y - i];
-        float lower_value = g_neighborhood[gtid.x][8 + gtid.y + i];
-        float weight = KernelWeight(i);
+        const float upper_value = g_neighborhood[gtid.x][8 + gtid.y - i];
+        const float lower_value = g_neighborhood[gtid.x][8 + gtid.y + i];
+        const float weight = KernelWeight(i);
         AccumulateMoments(upper_value, weight, local_neighborhood);
         AccumulateMoments(lower_value, weight, local_neighborhood);
     }
@@ -382,11 +382,11 @@ float ComputeLocalNeighborhood(ivec2 did, ivec2 gtid) {
     return local_neighborhood;
 }
 
-void TileClassification(uint group_index, uvec2 gid) {
-    uvec2 gtid = RemapLane8x8(group_index);
-    uvec2 did = gid * 8 + gtid;
+void TileClassification(const uint group_index, const uvec2 gid) {
+    const uvec2 gtid = RemapLane8x8(group_index);
+    const uvec2 did = gid * 8 + gtid;
 
-    bool is_shadow_receiver = IsShadowReceiver(did);
+    const bool is_shadow_receiver = IsShadowReceiver(did);
 
     bool skip = ThreadGroupAllTrue(!is_shadow_receiver);
     if (skip) {
@@ -399,9 +399,9 @@ void TileClassification(uint group_index, uvec2 gid) {
     SearchSpatialRegion(gid, all_in_light, all_in_shadow);
     float shadow_value = all_in_light ? 1 : 0; // Either all_in_light or all_in_shadow must be true, otherwise we would not skip the tile.
 
-    bool can_skip = all_in_light || all_in_shadow;
+    const bool can_skip = all_in_light || all_in_shadow;
     // We have to append the entire tile if there is a single lane that we can't skip
-    bool skip_tile = ThreadGroupAllTrue(can_skip);
+    const bool skip_tile = ThreadGroupAllTrue(can_skip);
     if (skip_tile) {
         // We have to set all resources of the tile we skipped to sensible values as neighboring active denoiser tiles might want to read them.
         ClearTargets(did, gtid, gid, shadow_value, is_shadow_receiver, all_in_light);
@@ -410,45 +410,45 @@ void TileClassification(uint group_index, uvec2 gid) {
 
     WriteTileMetaData(gid, gtid, false, false);
 
-    float depth = texelFetch(g_depth_tex, ivec2(did), 0).x;
-    vec3 velocity = GetClosestVelocity(did.xy, depth); // Must happen before we deactivate lanes
+    const float depth = texelFetch(g_depth_tex, ivec2(did), 0).x;
+    const vec3 velocity = GetClosestVelocity(did.xy, depth); // Must happen before we deactivate lanes
 
-    float local_neighborhood = ComputeLocalNeighborhood(ivec2(did), ivec2(gtid));
+    const float local_neighborhood = ComputeLocalNeighborhood(ivec2(did), ivec2(gtid));
 
-    vec2 uv = (vec2(did.xy) + vec2(0.5)) * g_params.inv_img_size;
-    vec2 history_uv = uv - velocity.xy;
+    const vec2 uv = (vec2(did.xy) + vec2(0.5)) * g_params.inv_img_size;
+    const vec2 history_uv = uv - velocity.xy;
 
-    uvec2 tile_index = GetTileIndexFromPixelPosition(did);
-    uint linear_tile_index = LinearTileIndex(tile_index, g_params.img_size.x);
+    const uvec2 tile_index = GetTileIndexFromPixelPosition(did);
+    const uint linear_tile_index = LinearTileIndex(tile_index, g_params.img_size.x);
 
-    uint shadow_tile = g_ray_hits[linear_tile_index];
+    const uint shadow_tile = g_ray_hits[linear_tile_index];
 
     vec3 moments_current = vec3(0.0);
     float variance = 0;
     float shadow_clamped = 0;
 
     if (is_shadow_receiver) { // do not process sky pixels
-        bool hit_light = (shadow_tile & GetBitMaskFromPixelPosition(did)) != 0u;
-        float shadow_current = hit_light ? 1.0 : 0.0;
+        const bool hit_light = (shadow_tile & GetBitMaskFromPixelPosition(did)) != 0u;
+        const float shadow_current = hit_light ? 1.0 : 0.0;
 
         // TODO: replace this with bilinear weights
-        bool is_disoccluded = IsDisoccluded2x2(did, depth, velocity);
+        const bool is_disoccluded = IsDisoccluded2x2(did, depth, velocity);
         { // Perform moments and variance calculations
-            vec3 previous_moments = is_disoccluded ? vec3(0.0, 0.0, 0.0) // Can't trust previous moments on disocclusion
-                                                   : textureLod(g_prev_moments_tex, history_uv, 0.0).xyz;
+            const vec3 previous_moments = is_disoccluded ? vec3(0.0, 0.0, 0.0) // Can't trust previous moments on disocclusion
+                                                        : textureLod(g_prev_moments_tex, history_uv, 0.0).xyz;
 
-            float old_m = previous_moments.x;
-            float old_s = previous_moments.y;
-            float sample_count = previous_moments.z + 1.0;
-            float new_m = old_m + (shadow_current - old_m) / sample_count;
-            float new_s = old_s + (shadow_current - old_m) * (shadow_current - new_m);
+            const float old_m = previous_moments.x;
+            const float old_s = previous_moments.y;
+            const float sample_count = previous_moments.z + 1.0;
+            const float new_m = old_m + (shadow_current - old_m) / sample_count;
+            const float new_s = old_s + (shadow_current - old_m) * (shadow_current - new_m);
 
             variance = (sample_count > 1.0 ? new_s / (sample_count - 1.0) : 1.0);
             moments_current = vec3(new_m, new_s, sample_count);
         }
 
         { // Retrieve local neighborhood and reproject
-            float mean = local_neighborhood;
+            const float mean = local_neighborhood;
             float spatial_variance = local_neighborhood;
 
             spatial_variance = max(spatial_variance - mean * mean, 0.0);
@@ -468,13 +468,13 @@ void TileClassification(uint group_index, uvec2 gid) {
 
             // Reduce history weighting
             const float sigma = 20.0;
-            float temporal_discontinuity = (shadow_previous - mean) / max(0.5 * std_deviation, 0.001);
-            float sample_counter_damper = exp(-temporal_discontinuity * temporal_discontinuity / sigma);
+            const float temporal_discontinuity = (shadow_previous - mean) / max(0.5 * std_deviation, 0.001);
+            const float sample_counter_damper = exp(-temporal_discontinuity * temporal_discontinuity / sigma);
             moments_current.z *= sample_counter_damper;
 
             // Boost variance on first frames
             if (moments_current.z < 16.0) {
-                float variance_boost = max(16.0 - moments_current.z, 1.0);
+                const float variance_boost = max(16.0 - moments_current.z, 1.0);
                 variance = max(variance, spatial_variance);
                 variance *= variance_boost;
             }
@@ -482,11 +482,11 @@ void TileClassification(uint group_index, uvec2 gid) {
 
         // Perform the temporal blend
 #if 1 // original code
-        float history_weight = sqrt(max(8.0 - moments_current.z, 0.0) / 8.0);
+        const float history_weight = sqrt(max(8.0 - moments_current.z, 0.0) / 8.0);
         shadow_clamped = mix(shadow_clamped, shadow_current, mix(0.05, 1.0, history_weight));
 #else // linear accumulation
-        float accumulation_speed = 1.0 / max(moments_current.z, 1.0);
-        float weight = (1.0 - accumulation_speed);
+        const float accumulation_speed = 1.0 / max(moments_current.z, 1.0);
+        const float weight = (1.0 - accumulation_speed);
         shadow_clamped = mix(shadow_current, shadow_clamped, weight);
 #endif
     }

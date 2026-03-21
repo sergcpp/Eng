@@ -61,7 +61,7 @@ void test_sparse_storage() {
         require(new_storage.empty());
     }
 
-    { // Simple storage
+    { // Dual storage
         struct DataMain {
             int light;
         };
