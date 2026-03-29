@@ -65,7 +65,7 @@ void Eng::ExRTGI::Execute_SWRT(const FgContext &fg) {
     const Ren::BufferHandle ray_counter_buf = fg.AccessRWBuffer(args_->ray_counter);
     const Ren::BufferHandle out_ray_hits_buf = fg.AccessRWBuffer(args_->out_ray_hits_buf);
 
-    Ren::SmallVector<Ren::Binding, 24> bindings = {
+    const Ren::Binding bindings[] = {
         {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
         {Ren::eBindTarget::BindlessDescriptors, BIND_BINDLESS_TEX, bindless_tex_->rt_inline_textures},
         {Ren::eBindTarget::TexSampled, RTGI::DEPTH_TEX_SLOT, {depth_tex, 1}},

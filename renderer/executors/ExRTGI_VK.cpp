@@ -30,19 +30,18 @@ void Eng::ExRTGI::Execute_HWRT(const FgContext &fg) {
 
     VkCommandBuffer cmd_buf = api.draw_cmd_buf[api.backend_frame];
 
-    Ren::SmallVector<Ren::Binding, 24> bindings = {
-        {Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
-        {Ren::eBindTarget::TexSampled, RTGI::DEPTH_TEX_SLOT, {depth_tex, 1}},
-        {Ren::eBindTarget::TexSampled, RTGI::NORM_TEX_SLOT, normal_tex},
-        {Ren::eBindTarget::TexSampled, RTGI::NOISE_TEX_SLOT, noise_tex},
-        {Ren::eBindTarget::SBufRW, RTGI::RAY_COUNTER_SLOT, ray_counter_buf},
-        {Ren::eBindTarget::SBufRO, RTGI::RAY_LIST_SLOT, ray_list_buf},
-        {Ren::eBindTarget::AccStruct, RTGI::TLAS_SLOT, args_->tlas},
-        {Ren::eBindTarget::SBufRO, RTGI::GEO_DATA_BUF_SLOT, geo_data_buf},
-        {Ren::eBindTarget::SBufRO, RTGI::MATERIAL_BUF_SLOT, materials_buf},
-        {Ren::eBindTarget::SBufRO, RTGI::VTX_BUF1_SLOT, vtx_buf1},
-        {Ren::eBindTarget::SBufRO, RTGI::NDX_BUF_SLOT, ndx_buf},
-        {Ren::eBindTarget::SBufRW, RTGI::OUT_RAY_HITS_BUF_SLOT, out_ray_hits_buf}};
+    const Ren::Binding bindings[] = {{Ren::eBindTarget::UBuf, BIND_UB_SHARED_DATA_BUF, unif_sh_data_buf},
+                                     {Ren::eBindTarget::TexSampled, RTGI::DEPTH_TEX_SLOT, {depth_tex, 1}},
+                                     {Ren::eBindTarget::TexSampled, RTGI::NORM_TEX_SLOT, normal_tex},
+                                     {Ren::eBindTarget::TexSampled, RTGI::NOISE_TEX_SLOT, noise_tex},
+                                     {Ren::eBindTarget::SBufRW, RTGI::RAY_COUNTER_SLOT, ray_counter_buf},
+                                     {Ren::eBindTarget::SBufRO, RTGI::RAY_LIST_SLOT, ray_list_buf},
+                                     {Ren::eBindTarget::AccStruct, RTGI::TLAS_SLOT, args_->tlas},
+                                     {Ren::eBindTarget::SBufRO, RTGI::GEO_DATA_BUF_SLOT, geo_data_buf},
+                                     {Ren::eBindTarget::SBufRO, RTGI::MATERIAL_BUF_SLOT, materials_buf},
+                                     {Ren::eBindTarget::SBufRO, RTGI::VTX_BUF1_SLOT, vtx_buf1},
+                                     {Ren::eBindTarget::SBufRO, RTGI::NDX_BUF_SLOT, ndx_buf},
+                                     {Ren::eBindTarget::SBufRW, RTGI::OUT_RAY_HITS_BUF_SLOT, out_ray_hits_buf}};
 
     const Ren::PipelineMain &pi = storages.pipelines.Get(pi_rt_gi_).first;
     const Ren::ProgramMain &pr = storages.programs.Get(pi.prog).first;
