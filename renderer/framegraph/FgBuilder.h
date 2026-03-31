@@ -102,8 +102,8 @@ struct FgAllocRes {
     Ren::String name;
     bool external = false;
     int alias_of = -1; // used in case of simple resource-to-resource aliasing
-    uint32_t history_of = 0xffffffff;
-    mutable uint32_t history_index = 0xffffffff;
+    uint16_t history_of = 0xffff;
+    mutable uint16_t history_index = 0xffff;
 
     Ren::Bitmask<Ren::eStage> used_in_stages, aliased_in_stages;
     Ren::SmallVector<fg_node_slot_t, 32> written_in_nodes;
@@ -142,9 +142,9 @@ class FgContext {
     mutable Ren::RastState rast_state_;
 
     Ren::SparseDualStorage<FgAllocBufMain, FgAllocBufCold> buffers_;
-    Ren::HashMap32<Ren::String, uint32_t> name_to_buffer_;
+    Ren::HashMap32<Ren::String, uint16_t> name_to_buffer_;
     Ren::SparseDualStorage<FgAllocImgMain, FgAllocImgCold> images_;
-    Ren::HashMap32<Ren::String, uint32_t> name_to_image_;
+    Ren::HashMap32<Ren::String, uint16_t> name_to_image_;
 
     std::unique_ptr<FramebufferPool> framebuffers_;
 
@@ -189,14 +189,14 @@ class FgBuilder : public FgContext {
     void CheckResourceStates(FgNode &node);
 
     FgBufRWHandle FindBuffer(const Ren::String &name) {
-        const uint32_t *index = name_to_buffer_.Find(name);
+        const uint16_t *index = name_to_buffer_.Find(name);
         if (!index) {
             return {};
         }
         return FgBufRWHandle{*index, buffers_.GetGeneration(*index)};
     }
     FgImgRWHandle FindImage(const Ren::String &name) {
-        const uint32_t *index = name_to_image_.Find(name);
+        const uint16_t *index = name_to_image_.Find(name);
         if (!index) {
             return {};
         }
@@ -260,9 +260,9 @@ class FgBuilder : public FgContext {
     void GetResourceFrameLifetime(const FgAllocImgCold &i, uint16_t out_lifetime[2][2]) const;
 
     const Ren::SparseDualStorage<FgAllocBufMain, FgAllocBufCold> &buffers() const { return buffers_; }
-    const Ren::HashMap32<Ren::String, uint32_t> &name_to_buffer() const { return name_to_buffer_; }
+    const Ren::HashMap32<Ren::String, uint16_t> &name_to_buffer() const { return name_to_buffer_; }
     const Ren::SparseDualStorage<FgAllocImgMain, FgAllocImgCold> &images() const { return images_; }
-    const Ren::HashMap32<Ren::String, uint32_t> &name_to_image() const { return name_to_image_; }
+    const Ren::HashMap32<Ren::String, uint16_t> &name_to_image() const { return name_to_image_; }
 
     template <typename T, class... Args> T *AllocTempData(Args &&...args) {
         char *mem = alloc_.allocate(sizeof(T) + alignof(T));

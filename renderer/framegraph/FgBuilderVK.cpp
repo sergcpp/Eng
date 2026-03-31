@@ -145,13 +145,13 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
         }
 
         Ren::ImgParams &p = fgimg_cold.desc;
-        if (fgimg_cold.history_index != 0xffffffff) {
+        if (fgimg_cold.history_index != 0xffff) {
             // combine usage flags
             FgAllocImgCold &hist_img = images_.GetUnsafe(fgimg_cold.history_index).second;
             p.usage |= hist_img.desc.usage;
             hist_img.desc.usage = p.usage;
         }
-        if (fgimg_cold.history_of != 0xffffffff) {
+        if (fgimg_cold.history_of != 0xffff) {
             // combine usage flags
             FgAllocImgCold &hist_img = images_.GetUnsafe(fgimg_cold.history_of).second;
             p.usage |= hist_img.desc.usage;
@@ -383,7 +383,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
             FgNode *node = reordered_nodes_[i];
             for (const FgResource &res : node->input_) {
                 if (res.type == eFgResType::Buffer) {
-                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(Ren::Handle<FgAllocBufMain>{res.opaque_handle});
+                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(FgBufROHandle{res.opaque_handle});
                     if (fgbuf_cold.external) {
                         continue;
                     }
@@ -393,14 +393,14 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                         // this is dedicated allocation
                         continue;
                     }
-                    assert(buffer_to_resource[res.opaque_handle >> 32] != -1);
-                    const resource_t &r = all_resources[buffer_to_resource[res.opaque_handle >> 32]];
+                    assert(buffer_to_resource[res.opaque_handle.index] != -1);
+                    const resource_t &r = all_resources[buffer_to_resource[res.opaque_handle.index]];
                     if (r.lifetime[j][1] == i + 1 &&
                         (i != int(reordered_nodes_.size()) - 1 || r.lifetime[!j][0] != 0)) {
                         deactivated_regions.push_back(region_t{alloc.offset, alloc.block, res});
                     }
                 } else if (res.type == eFgResType::Image) {
-                    const auto &[fgimg_main, fgimg_cold] = images_.Get(Ren::Handle<FgAllocImgMain>{res.opaque_handle});
+                    const auto &[fgimg_main, fgimg_cold] = images_.Get(FgImgROHandle{res.opaque_handle});
                     if (fgimg_cold.external) {
                         continue;
                     }
@@ -410,8 +410,8 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                         // this is dedicated allocation
                         continue;
                     }
-                    assert(image_to_resource[res.opaque_handle >> 32] != -1);
-                    const resource_t &r = all_resources[image_to_resource[res.opaque_handle >> 32]];
+                    assert(image_to_resource[res.opaque_handle.index] != -1);
+                    const resource_t &r = all_resources[image_to_resource[res.opaque_handle.index]];
                     if (r.lifetime[j][1] == i + 1 &&
                         (i != int(reordered_nodes_.size()) - 1 || r.lifetime[!j][0] != 0)) {
                         deactivated_regions.push_back(region_t{alloc.offset, alloc.block, res});
@@ -423,39 +423,36 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                 const Ren::MemAllocation *this_alloc = nullptr;
                 bool deactivate = false;
                 if (res.type == eFgResType::Buffer) {
-                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(Ren::Handle<FgAllocBufMain>{res.opaque_handle});
+                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(FgBufRWHandle{res.opaque_handle});
                     this_res = &fgbuf_cold;
 
-                    buffers_.SetGeneration(uint32_t(res.opaque_handle >> 32),
-                                           uint32_t(res.opaque_handle & 0xffffffffu) + 1);
+                    buffers_.SetGeneration(res.opaque_handle.index, res.opaque_handle.generation + 1);
                     if (fgbuf_main.handle) {
                         const auto &[buf_main, buf_cold] = ctx_.buffers().Get(fgbuf_main.handle);
                         this_alloc = &buf_cold.alloc;
-                        if (buffer_to_resource[res.opaque_handle >> 32] != -1) {
-                            const resource_t &r = all_resources[buffer_to_resource[res.opaque_handle >> 32]];
+                        if (buffer_to_resource[res.opaque_handle.index] != -1) {
+                            const resource_t &r = all_resources[buffer_to_resource[res.opaque_handle.index]];
                             deactivate = (r.lifetime[j][1] == i + 1 &&
                                           (i != int(reordered_nodes_.size()) - 1 || r.lifetime[!j][0] != 0));
                         }
                     }
-                } else /*if (res.type == eFgResType::Image)*/ {
-                    assert(res.type == eFgResType::Image);
-                    const auto &[fgimg_main, fgimg_cold] = images_.Get(Ren::Handle<FgAllocImgMain>{res.opaque_handle});
+                } else if (res.type == eFgResType::Image) {
+                    const auto &[fgimg_main, fgimg_cold] = images_.Get(FgImgRWHandle{res.opaque_handle});
                     this_res = &fgimg_cold;
 
-                    images_.SetGeneration(uint32_t(res.opaque_handle >> 32),
-                                          uint32_t(res.opaque_handle & 0xffffffffu) + 1);
+                    images_.SetGeneration(res.opaque_handle.index, res.opaque_handle.generation + 1);
                     if (fgimg_main.handle_to_own) {
                         const auto &[img_main, img_cold] = ctx_.images().Get(fgimg_main.handle_to_own);
                         this_alloc = &img_cold.alloc;
-                        if (image_to_resource[res.opaque_handle >> 32] != -1) {
-                            const resource_t &r = all_resources[image_to_resource[res.opaque_handle >> 32]];
+                        if (image_to_resource[res.opaque_handle.index] != -1) {
+                            const resource_t &r = all_resources[image_to_resource[res.opaque_handle.index]];
                             deactivate = (r.lifetime[j][1] == i + 1 &&
                                           (i != int(reordered_nodes_.size()) - 1 || r.lifetime[!j][0] != 0));
                         }
                     }
                 }
 
-                if (this_res->external) {
+                if (!this_res || this_res->external) {
                     continue;
                 }
                 assert(this_alloc);
@@ -467,7 +464,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                 if (this_res->lifetime.first_used_node() == i) { // Resource activation
                     // Remove from deactivated regions
                     for (auto it = begin(deactivated_regions); it != end(deactivated_regions);) {
-                        if (it->res.type == res.type && it->res.index == (res.opaque_handle >> 32)) {
+                        if (it->res.type == res.type && it->res.index == res.opaque_handle.index) {
                             it = deactivated_regions.erase(it);
                         } else {
                             ++it;
@@ -475,7 +472,7 @@ bool Eng::FgBuilder::AllocateNeededResources_MemHeaps() {
                     }
                     // Find overlapping regions
                     for (auto it = begin(deactivated_regions); it != end(deactivated_regions);) {
-                        assert(it->res.type != res.type || it->res.index != (res.opaque_handle >> 32));
+                        assert(it->res.type != res.type || it->res.index != res.opaque_handle.index);
                         FgAllocRes *other_res = nullptr;
                         if (it->res.type == eFgResType::Buffer) {
                             const auto &[fgbuf_main, fgbuf_cold] = buffers_.GetUnsafe(it->res.index);
@@ -560,7 +557,7 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
         // Swap history images
         for (auto it = std::begin(name_to_image_); it != std::end(name_to_image_); ++it) {
             const auto &[fgimg_main, fgimg_cold] = images_.GetUnsafe(it->val);
-            if (fgimg_cold.history_index != 0xffffffff) {
+            if (fgimg_cold.history_index != 0xffff) {
                 const auto &[hist_main, hist_cold] = images_.GetUnsafe(fgimg_cold.history_index);
                 if (hist_main.handle_to_use) {
                     assert(hist_cold.lifetime.is_used());
@@ -609,21 +606,19 @@ void Eng::FgBuilder::ClearResources_MemHeaps() {
 
             for (const FgResource &res : node->output_) {
                 if (res.type == eFgResType::Buffer) {
-                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(Ren::Handle<FgAllocBufMain>{res.opaque_handle});
+                    const auto &[fgbuf_main, fgbuf_cold] = buffers_.Get(FgBufROHandle{res.opaque_handle});
                     if (!fgbuf_cold.external) {
                         bufs_to_clear.push_back(fgbuf_main.handle);
                         HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
                     }
-                    buffers_.SetGeneration(uint32_t(res.opaque_handle >> 32),
-                                           uint32_t(res.opaque_handle & 0xffffffffu) + 1);
+                    buffers_.SetGeneration(res.opaque_handle.index, res.opaque_handle.generation + 1);
                 } else if (res.type == eFgResType::Image) {
-                    const auto &[fgimg_main, fgimg_cold] = images_.Get(Ren::Handle<FgAllocImgMain>{res.opaque_handle});
+                    const auto &[fgimg_main, fgimg_cold] = images_.Get(FgImgROHandle{res.opaque_handle});
                     if (!fgimg_cold.external) {
                         imgs_to_clear.push_back(fgimg_main.handle_to_use);
                         HandleResourceTransition(res, res_transitions, src_stages, dst_stages);
                     }
-                    images_.SetGeneration(uint32_t(res.opaque_handle >> 32),
-                                          uint32_t(res.opaque_handle & 0xffffffffu) + 1);
+                    images_.SetGeneration(res.opaque_handle.index, res.opaque_handle.generation + 1);
                 }
             }
             TransitionResourceStates(ctx_.api(), ctx_.storages(), cmd_buf, Ren::AllStages, Ren::AllStages,

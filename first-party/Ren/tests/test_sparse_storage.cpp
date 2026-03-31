@@ -17,10 +17,10 @@ void test_sparse_storage() {
         SparseStorage<DataMain> new_storage;
         require(new_storage.empty());
 
-        const Handle<DataMain> handle0 = new_storage.Emplace(0);
-        const Handle<DataMain> handle1 = new_storage.Emplace(1);
-        const Handle<DataMain> handle2 = new_storage.Emplace(2);
-        const Handle<DataMain> handle3 = new_storage.Emplace(3);
+        const Handle<DataMain, RWTag> handle0 = new_storage.Emplace(0);
+        const Handle<DataMain, RWTag> handle1 = new_storage.Emplace(1);
+        const Handle<DataMain, RWTag> handle2 = new_storage.Emplace(2);
+        const Handle<DataMain, RWTag> handle3 = new_storage.Emplace(3);
 
         require(new_storage.size() == 4);
 
@@ -29,10 +29,12 @@ void test_sparse_storage() {
         require(handle2.index == 2 && handle2.generation == 0);
         require(handle3.index == 3 && handle3.generation == 0);
 
-        const DataMain &data0 = new_storage.Get(handle0);
-        const DataMain &data1 = new_storage.Get(handle1);
-        const DataMain &data2 = new_storage.Get(handle2);
-        const DataMain &data3 = new_storage.Get(handle3);
+        const Handle<void> opaque_handle{handle0};
+
+        [[maybe_unused]] const DataMain &data0 = new_storage.Get(handle0);
+        [[maybe_unused]] const DataMain &data1 = new_storage.Get(handle1);
+        [[maybe_unused]] const DataMain &data2 = new_storage.Get(handle2);
+        [[maybe_unused]] const DataMain &data3 = new_storage.Get(handle3);
 
         new_storage.Erase(handle0);
         new_storage.Erase(handle1);
@@ -41,10 +43,10 @@ void test_sparse_storage() {
 
         require(new_storage.empty());
 
-        const Handle<DataMain> handle4 = new_storage.Emplace(4);
-        const Handle<DataMain> handle5 = new_storage.Emplace(5);
-        const Handle<DataMain> handle6 = new_storage.Emplace(6);
-        const Handle<DataMain> handle7 = new_storage.Emplace(7 );
+        const Handle<DataMain, RWTag> handle4 = new_storage.Emplace(4);
+        const Handle<DataMain, RWTag> handle5 = new_storage.Emplace(5);
+        const Handle<DataMain, RWTag> handle6 = new_storage.Emplace(6);
+        const Handle<DataMain, RWTag> handle7 = new_storage.Emplace(7);
 
         require(new_storage.size() == 4);
 

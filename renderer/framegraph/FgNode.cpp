@@ -2,14 +2,14 @@
 
 #include "FgBuilder.h"
 
-Eng::FgResource *Eng::FgNode::FindUsageOf(const eFgResType type, const uint32_t index) {
+Eng::FgResource *Eng::FgNode::FindUsageOf(const eFgResType type, const uint16_t index) {
     for (FgResource &r : input_) {
-        if (r.type == type && (r.opaque_handle >> 32) == index) {
+        if (r.type == type && r.opaque_handle.index == index) {
             return &r;
         }
     }
     for (FgResource &r : output_) {
-        if (r.type == type && (r.opaque_handle >> 32) == index) {
+        if (r.type == type && r.opaque_handle.index == index) {
             return &r;
         }
     }

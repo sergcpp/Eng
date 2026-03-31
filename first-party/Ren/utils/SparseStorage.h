@@ -8,17 +8,19 @@
 #include "SparseArray.h"
 
 namespace Ren {
-template <typename T, int Tag = 0> struct Handle {
-    uint32_t index = 0xffffffff;
-    uint32_t generation = 0;
+static const int RWTag = 0;
+static const int ROTag = 1;
 
-    Handle() = default;
+template <typename T, int Tag = RWTag> struct Handle {
+    uint32_t index : 24;
+    uint32_t generation : 8;
+
+    Handle() : index(0x00ffffffu), generation(0u) {}
     Handle(const uint32_t _index, const uint32_t _generation) : index(_index), generation(_generation) {}
-    explicit Handle(const uint64_t _opaque)
-        : index(uint32_t(_opaque >> 32)), generation(uint32_t(_opaque & 0xffffffff)) {}
+    explicit Handle(const Handle<void> &_opaque) : index(_opaque.index), generation(_opaque.generation) {}
 
-    explicit operator bool() const { return index != 0xffffffff; }
-    explicit operator uint64_t() const { return (uint64_t(index) << 32) | generation; }
+    explicit operator bool() const { return index != 0xffffffu; }
+    explicit operator uint32_t() const { return (index << 8) | generation; }
 
     bool operator==(const Handle &rhs) const { return index == rhs.index && generation == rhs.generation; }
     bool operator!=(const Handle &rhs) const { return index != rhs.index || generation != rhs.generation; }
@@ -42,18 +44,15 @@ template <typename T, int Tag = 0> struct Handle {
     template <int HigherTag, typename = std::enable_if_t<(HigherTag > Tag)>> operator Handle<T, HigherTag>() const {
         return Handle<T, HigherTag>{index, generation};
     }
+
+    explicit operator Handle<void>() const { return Handle<void>{index, generation}; }
 };
-
-static const uint64_t InvalidHandle = 0xffffffff00000000u;
-
-static const int RWTag = 0;
-static const int ROTag = 1;
 
 template <typename T, int Alignment = alignof(T), typename Allocator = aligned_allocator<uint64_t, Alignment>>
 class SparseStorage : Allocator {
   protected:
     uint64_t *ctrl_;
-    uint32_t *generation_;
+    uint8_t *generation_;
     T *data_;
     uint32_t capacity_, size_;
     uint32_t first_free_;
@@ -65,7 +64,7 @@ class SparseStorage : Allocator {
         return word_count * sizeof(uint64_t);
     }
 
-    static size_t generation_size(const uint32_t cap) { return cap * sizeof(uint32_t); }
+    static size_t generation_size(const uint32_t cap) { return cap * sizeof(uint8_t); }
 
     static size_t mem_size(const uint32_t cap) {
         size_t mem_size = ctrl_size(cap);
@@ -183,8 +182,8 @@ class SparseStorage : Allocator {
 
     bool empty() const { return size_ == 0; }
 
-    uint32_t *generation() { return generation_; }
-    const uint32_t *generation() const { return generation_; }
+    uint8_t *generation() { return generation_; }
+    const uint8_t *generation() const { return generation_; }
 
     T *data() { return data_; }
     const T *data() const { return data_; }
@@ -206,7 +205,7 @@ class SparseStorage : Allocator {
         }
 
         uint64_t *old_ctrl = ctrl_;
-        uint32_t *old_generation = generation_;
+        uint8_t *old_generation = generation_;
         T *old_data = data_;
         const uint32_t old_word_count = (capacity_ + 63) / 64;
         const uint32_t new_word_count = (new_capacity + 63) / 64;
@@ -222,18 +221,18 @@ class SparseStorage : Allocator {
         assert(total_mem == mem_size(new_capacity));
 
         ctrl_ = this->allocate(total_mem);
-        generation_ = reinterpret_cast<uint32_t *>(uintptr_t(ctrl_) + generation_start);
+        generation_ = reinterpret_cast<uint8_t *>(uintptr_t(ctrl_) + generation_start);
         data_ = reinterpret_cast<T *>(uintptr_t(ctrl_) + data_start);
         assert(uintptr_t(data_) % alignof(T) == 0);
 
         // copy old control and generation
         if (old_ctrl) {
             memcpy(ctrl_, old_ctrl, old_word_count * sizeof(uint64_t));
-            memcpy(generation_, old_generation, capacity_ * sizeof(uint32_t));
+            memcpy(generation_, old_generation, capacity_ * sizeof(uint8_t));
         }
         // fill rest with zeroes
         memset(ctrl_ + old_word_count, 0, (new_word_count - old_word_count) * sizeof(uint64_t));
-        memset(generation_ + capacity_, 0, (new_capacity - capacity_) * sizeof(uint32_t));
+        memset(generation_ + capacity_, 0, (new_capacity - capacity_) * sizeof(uint8_t));
 
         // move old data
         for (uint32_t i = 0; i < capacity_; ++i) {
@@ -249,7 +248,8 @@ class SparseStorage : Allocator {
         this->deallocate(old_ctrl, mem_size(capacity_));
 
         for (uint32_t i = capacity_; i < new_capacity - 1; i++) {
-            const uint32_t next_free = i + 1;
+            const uint32_t next_free = (i + 1);
+            assert(next_free < 0xffffffu);
             memcpy(data_ + i, &next_free, sizeof(uint32_t));
         }
 
@@ -360,7 +360,7 @@ class SparseStorage : Allocator {
         return generation_[index];
     }
 
-    void SetGeneration(const uint32_t index, const uint32_t generation) const {
+    void SetGeneration(const uint32_t index, const uint8_t generation) const {
         assert((ctrl_[index / 64] & (1ull << (index % 64))) && "Invalid index!");
         generation_[index] = generation;
     }
@@ -476,8 +476,8 @@ class SparseStorage : Allocator {
     const_iterator end() const { return cend(); }
     const_iterator cend() const { return const_iterator(this, capacity_); }
 
-    iterator iter_at(uint32_t i) { return iterator(this, i); }
-    const_iterator citer_at(uint32_t i) const { return const_iterator(this, i); }
+    iterator iter_at(const uint32_t i) { return iterator(this, i); }
+    const_iterator citer_at(const uint32_t i) const { return const_iterator(this, i); }
 
     iterator Erase(iterator it) {
         const uint32_t next_index = NextOccupied(it.index());
@@ -518,7 +518,7 @@ template <typename T, typename U, int Alignment = _max_value<alignof(T), alignof
 class SparseDualStorage : Allocator {
   protected:
     uint64_t *ctrl_;
-    uint32_t *generation_;
+    uint8_t *generation_;
     T *data_main_;
     U *data_cold_;
     uint32_t capacity_, size_;
@@ -531,7 +531,7 @@ class SparseDualStorage : Allocator {
         return word_count * sizeof(uint64_t);
     }
 
-    static size_t generation_size(const uint32_t cap) { return cap * sizeof(uint32_t); }
+    static size_t generation_size(const uint32_t cap) { return cap * sizeof(uint8_t); }
 
     static size_t mem_size(const uint32_t cap) {
         size_t mem_size = ctrl_size(cap);
@@ -660,8 +660,8 @@ class SparseDualStorage : Allocator {
 
     bool empty() const { return size_ == 0; }
 
-    uint32_t *generation() { return generation_; }
-    const uint32_t *generation() const { return generation_; }
+    uint8_t *generation() { return generation_; }
+    const uint8_t *generation() const { return generation_; }
 
     T *data_main() { return data_main_; }
     const T *data_main() const { return data_main_; }
@@ -686,7 +686,7 @@ class SparseDualStorage : Allocator {
         }
 
         uint64_t *old_ctrl = ctrl_;
-        uint32_t *old_generation = generation_;
+        uint8_t *old_generation = generation_;
         T *old_data_main = data_main_;
         U *old_data_cold = data_cold_;
         const uint32_t old_word_count = (capacity_ + 63) / 64;
@@ -708,7 +708,7 @@ class SparseDualStorage : Allocator {
         assert(total_mem == mem_size(new_capacity));
 
         ctrl_ = this->allocate(total_mem);
-        generation_ = reinterpret_cast<uint32_t *>(uintptr_t(ctrl_) + generation_start);
+        generation_ = reinterpret_cast<uint8_t *>(uintptr_t(ctrl_) + generation_start);
         data_main_ = reinterpret_cast<T *>(uintptr_t(ctrl_) + data_main_start);
         data_cold_ = reinterpret_cast<U *>(uintptr_t(ctrl_) + data_cold_start);
         assert(uintptr_t(data_main_) % alignof(T) == 0);
@@ -717,11 +717,11 @@ class SparseDualStorage : Allocator {
         // copy old control and generation
         if (old_ctrl) {
             memcpy(ctrl_, old_ctrl, old_word_count * sizeof(uint64_t));
-            memcpy(generation_, old_generation, capacity_ * sizeof(uint32_t));
+            memcpy(generation_, old_generation, capacity_ * sizeof(uint8_t));
         }
         // fill rest with zeroes
         memset(ctrl_ + old_word_count, 0, (new_word_count - old_word_count) * sizeof(uint64_t));
-        memset(generation_ + capacity_, 0, (new_capacity - capacity_) * sizeof(uint32_t));
+        memset(generation_ + capacity_, 0, (new_capacity - capacity_) * sizeof(uint8_t));
 
         // move old data
         for (uint32_t i = 0; i < capacity_; ++i) {
@@ -740,6 +740,7 @@ class SparseDualStorage : Allocator {
 
         for (uint32_t i = capacity_; i < new_capacity - 1; i++) {
             const uint32_t next_free = i + 1;
+            assert(next_free < 0xffffffu);
             memcpy(data_main_ + i, &next_free, sizeof(uint32_t));
         }
 
@@ -848,12 +849,12 @@ class SparseDualStorage : Allocator {
 
     bool IsOccupied(const uint32_t index) { return (ctrl_[index / 64] & (1ull << (index % 64))) != 0; }
 
-    uint32_t GetGeneration(const uint32_t index) const {
+    uint8_t GetGeneration(const uint32_t index) const {
         assert((ctrl_[index / 64] & (1ull << (index % 64))) && "Invalid index!");
         return generation_[index];
     }
 
-    void SetGeneration(const uint32_t index, const uint32_t generation) const {
+    void SetGeneration(const uint32_t index, const uint8_t generation) const {
         assert((ctrl_[index / 64] & (1ull << (index % 64))) && "Invalid index!");
         generation_[index] = generation;
     }

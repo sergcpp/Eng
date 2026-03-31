@@ -18,7 +18,7 @@ struct ImageRegionCold {
     ImgParams params;
 };
 
-using ImageRegionHandle = Handle<ImageRegionMain>;
+using ImageRegionHandle = Handle<ImageRegionMain, 0>;
 
 bool ImageRegion_Init(ImageRegionMain &reg_main, ImageRegionCold &reg_cold, String name, Span<const uint8_t> data,
                       const ImgParams &p, CommandBuffer cmd_buf, ImageAtlasArray *atlas, ILog *log);

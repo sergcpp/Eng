@@ -127,7 +127,7 @@ class Context {
     SparseStorage<RenderPass> &render_passes() { return render_passes_; }
     SparseDualStorage<BufferMain, BufferCold> &buffers() { return buffers_; }
     SparseDualStorage<ImageMain, ImageCold> &images() { return images_; }
-    SparseStorage<Sampler, 8> &samplers() { return samplers_; }
+    SparseStorage<Sampler> &samplers() { return samplers_; }
     SparseDualStorage<FramebufferMain, FramebufferCold> &framebuffers() { return framebuffers_; }
     SparseDualStorage<AccStructMain, AccStructCold> &acc_structs() { return acc_structs_; }
     SparseDualStorage<MaterialMain, MaterialCold> &materials() { return materials_; }
@@ -148,7 +148,9 @@ class Context {
     const SparseDualStorage<MaterialMain, MaterialCold> &materials() const { return materials_; }
     const SparseDualStorage<MeshMain, MeshCold> &meshes() const { return meshes_; }
     const SparseDualStorage<AnimSeqMain, AnimSeqCold> &anims() const { return anims_; }
-    const SparseDualStorage<ImageRegionMain, ImageRegionCold> &image_regions() const { return image_regions_; }
+    const SparseDualStorage<ImageRegionMain, ImageRegionCold> &image_regions() const {
+        return image_regions_;
+    }
 
     const StoragesRef &storages() const { return storages_; }
 

@@ -23,11 +23,11 @@ struct FgResource {
     eFgResType type = eFgResType::Undefined;
     Ren::eResState desired_state = Ren::eResState::Undefined;
     Ren::Bitmask<Ren::eStage> stages;
-    uint64_t opaque_handle = Ren::InvalidHandle;
+    Ren::Handle<void> opaque_handle;
     FgResource *next_use = nullptr;
 
     FgResource() = default;
-    FgResource(const eFgResType _type, const Ren::eResState _desired_state, const uint64_t _opaque_handle,
+    FgResource(const eFgResType _type, const Ren::eResState _desired_state, const Ren::Handle<void> _opaque_handle,
                const Ren::Bitmask<Ren::eStage> _stages)
         : type(_type), desired_state(_desired_state), stages(_stages), opaque_handle(_opaque_handle) {}
 
@@ -37,22 +37,25 @@ struct FgResource {
         if (lhs.type < rhs.type) {
             return true;
         } else if (lhs.type == rhs.type) {
-            return (lhs.opaque_handle >> 32) < (rhs.opaque_handle >> 32);
+            // NOTE: Generation is intentionally ignored
+            return lhs.opaque_handle.index < rhs.opaque_handle.index;
         }
         return false;
     }
 };
-static_assert(sizeof(FgResource) == 24);
+static_assert(sizeof(FgResource) == 16);
 
 struct FgResRef {
     eFgResType type = eFgResType::Undefined;
-    uint8_t _pad[3] = {};
-    uint32_t index = 0xffffffff;
+    uint8_t _pad[1] = {};
+    uint16_t index = 0xffffu;
 
     operator bool() const { return type != eFgResType::Undefined; }
 
     FgResRef() = default;
-    FgResRef(const FgResource &res) : type(res.type), index(res.opaque_handle >> 32) {}
+    FgResRef(const FgResource &res) : type(res.type), index(res.opaque_handle.index) {
+        assert(res.opaque_handle.index < 0xffffu);
+    }
 
     bool operator<(const FgResRef rhs) const {
         if (type < rhs.type) {
@@ -63,5 +66,5 @@ struct FgResRef {
         return false;
     }
 };
-static_assert(sizeof(FgResRef) == 8);
+static_assert(sizeof(FgResRef) == 4);
 } // namespace Eng

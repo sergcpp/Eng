@@ -6,8 +6,8 @@ Gui::ButtonImage::ButtonImage(const Ren::SparseDualStorage<Ren::ImageRegionMain,
                               const Ren::ImageRegionHandle tex_pressed, const Vec2f uvs_pressed[2], const Vec2f &pos,
                               const Vec2f &size, const BaseElement *parent)
     : ButtonBase(pos, size, parent), image_normal_{storage, tex_normal, Vec2f{-1}, Vec2f{2}, this},
-      image_focused_{storage, tex_focused, Vec2f{-1}, Vec2f{2}, this},
-      image_pressed_{storage, tex_pressed, Vec2f{-1}, Vec2f{2}, this} {
+      image_focused_{storage, tex_focused, Vec2f{-1}, Vec2f{2}, this}, image_pressed_{storage, tex_pressed, Vec2f{-1},
+                                                                                      Vec2f{2}, this} {
     image_normal_.set_uvs(uvs_normal);
     image_focused_.set_uvs(uvs_focused);
     image_pressed_.set_uvs(uvs_pressed);

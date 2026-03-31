@@ -473,7 +473,7 @@ struct rt_obj_instance_t {
     uint32_t geo_count;
     Ren::AccStructROHandle blas;
 };
-static_assert(sizeof(rt_obj_instance_t) == 64 + 24);
+static_assert(sizeof(rt_obj_instance_t) == 64 + 20);
 
 struct BindlessTextureData {
 #if defined(REN_VK_BACKEND)
