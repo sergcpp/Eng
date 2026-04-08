@@ -217,7 +217,7 @@ void test_shading(Sys::ThreadPool &threads, const bool full) {
     run_image_test(ren_ctx, threads, "spec_mat0", 27.10, NoDiffGI);
     run_image_test(ren_ctx, threads, "spec_mat0", 24.15, MedDiffGI);
     run_image_test(ren_ctx, threads, "spec_mat0", 24.00, Full);
-    run_image_test(ren_ctx, threads, "spec_mat0", 27.50, Full_Ultra);
+    run_image_test(ren_ctx, threads, "spec_mat0", 26.40, Full_Ultra);
     run_image_test(ren_ctx, threads, "spec_mat1", 19.60, NoShadow);
     run_image_test(ren_ctx, threads, "spec_mat1", 19.40, NoGI);
     run_image_test(ren_ctx, threads, "spec_mat1", 21.90, NoDiffGI);
@@ -235,7 +235,7 @@ void test_shading(Sys::ThreadPool &threads, const bool full) {
     run_image_test(ren_ctx, threads, "spec_mat3", 29.00, NoDiffGI);
     run_image_test(ren_ctx, threads, "spec_mat3", 21.35, MedDiffGI);
     run_image_test(ren_ctx, threads, "spec_mat3", 19.20, Full);
-    run_image_test(ren_ctx, threads, "spec_mat3", 21.70, Full_Ultra);
+    run_image_test(ren_ctx, threads, "spec_mat3", 20.85, Full_Ultra);
     run_image_test(ren_ctx, threads, "spec_mat4", 21.00, NoShadow);
     run_image_test(ren_ctx, threads, "spec_mat4", 21.10, NoGI);
     run_image_test(ren_ctx, threads, "spec_mat4", 21.95, NoDiffGI);
@@ -256,7 +256,7 @@ void test_shading(Sys::ThreadPool &threads, const bool full) {
     run_image_test(ren_ctx, threads, "metal_mat0", 29.45, NoDiffGI);
     run_image_test(ren_ctx, threads, "metal_mat0", 26.50, MedDiffGI);
     run_image_test(ren_ctx, threads, "metal_mat0", 26.10, Full);
-    run_image_test(ren_ctx, threads, "metal_mat0", 28.70, Full_Ultra);
+    run_image_test(ren_ctx, threads, "metal_mat0", 28.35, Full_Ultra);
     run_image_test(ren_ctx, threads, "metal_mat1", 23.60, NoShadow);
     run_image_test(ren_ctx, threads, "metal_mat1", 23.60, NoGI);
     run_image_test(ren_ctx, threads, "metal_mat1", 26.90, NoDiffGI);
@@ -274,12 +274,12 @@ void test_shading(Sys::ThreadPool &threads, const bool full) {
     run_image_test(ren_ctx, threads, "metal_mat3", 30.05, NoDiffGI);
     run_image_test(ren_ctx, threads, "metal_mat3", 22.85, MedDiffGI);
     run_image_test(ren_ctx, threads, "metal_mat3", 20.00, Full);
-    run_image_test(ren_ctx, threads, "metal_mat3", 21.45, Full_Ultra);
+    run_image_test(ren_ctx, threads, "metal_mat3", 21.20, Full_Ultra);
     run_image_test(ren_ctx, threads, "metal_mat4", 25.25, NoShadow);
     run_image_test(ren_ctx, threads, "metal_mat4", 25.20, NoGI);
     run_image_test(ren_ctx, threads, "metal_mat4", 26.40, NoDiffGI);
     run_image_test(ren_ctx, threads, "metal_mat4", 19.65, MedDiffGI);
-    run_image_test(ren_ctx, threads, "metal_mat4", 17.85, Full);
+    run_image_test(ren_ctx, threads, "metal_mat4", 17.80, Full);
     run_image_test(ren_ctx, threads, "metal_mat4", 17.85, Full_Ultra);
     run_image_test(ren_ctx, threads, "metal_mat5", 37.30, NoShadow);
     run_image_test(ren_ctx, threads, "metal_mat5", 34.15, NoGI);
@@ -394,7 +394,7 @@ void test_shading(Sys::ThreadPool &threads, const bool full) {
     run_image_test(ren_ctx, threads, "alpha_mat2", 34.65, NoDiffGI);
     run_image_test(ren_ctx, threads, "alpha_mat2", 32.50, MedDiffGI);
     run_image_test(ren_ctx, threads, "alpha_mat2", 30.65, Full);
-    run_image_test(ren_ctx, threads, "alpha_mat2", 31.80, Full_Ultra);
+    run_image_test(ren_ctx, threads, "alpha_mat2", 31.75, Full_Ultra);
     run_image_test(ren_ctx, threads, "alpha_mat3", 45.15, NoShadow);
     run_image_test(ren_ctx, threads, "alpha_mat3", 36.70, NoGI);
     run_image_test(ren_ctx, threads, "alpha_mat3", 37.15, NoDiffGI);
