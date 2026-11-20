@@ -136,7 +136,7 @@ void test_tcp_socket() {
                 char buffer[256];
                 const int bytes_read = server.Receive(buffer, sizeof(buffer));
                 if (bytes_read > 0) {
-                    echoed = bytes_read == sizeof(packet) && strcmp(buffer, packet) == 0 &&
+                    echoed = bytes_read == sizeof(packet) && memcmp(buffer, packet, sizeof(packet)) == 0 &&
                              server.Send(packet, sizeof(packet));
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -151,7 +151,7 @@ void test_tcp_socket() {
             char buffer[256];
             const int bytes_read = client.Receive(buffer, sizeof(buffer));
             if (bytes_read > 0) {
-                client_received = bytes_read == sizeof(packet) && strcmp(buffer, packet) == 0;
+                client_received = bytes_read == sizeof(packet) && memcmp(buffer, packet, sizeof(packet)) == 0;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }

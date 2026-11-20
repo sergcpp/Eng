@@ -1,7 +1,9 @@
 #include "test_common.h"
 
+#include <chrono>
 #include <cstring>
 #include <thread>
+#include <vector>
 
 #include "../ReliableUDPConnection.h"
 
@@ -756,6 +758,59 @@ void test_reliable_udp_connection() {
 
         require(client.connected());
         require(server.connected());
+    }
+    { // max-size payload must fit and round-trip, oversized must be rejected
+        const int server_port = 30000;
+        const int client_port = 30001;
+        const int protocol_id = 0x11112222;
+        const int max_payload = MAX_PACKET_SIZE - 12 - 4; // reliable header + base CRC header
+
+        ReliableUDPConnection client(protocol_id, 10.0f);
+        ReliableUDPConnection server(protocol_id, 10.0f);
+
+        require_nothrow(client.Start(client_port));
+        require_nothrow(server.Start(server_port));
+
+        client.Connect(Address(127, 0, 0, 1, server_port));
+        server.Listen();
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while ((!client.connected() || !server.connected()) && std::chrono::steady_clock::now() < deadline) {
+            static unsigned char handshake[] = "h";
+            client.SendPacket(handshake, sizeof(handshake));
+            server.SendPacket(handshake, sizeof(handshake));
+            // the connection state advances inside ReceivePacket, so it must be drained
+            unsigned char sink[64];
+            while (client.ReceivePacket(sink, sizeof(sink)) > 0) {
+            }
+            while (server.ReceivePacket(sink, sizeof(sink)) > 0) {
+            }
+            client.Update(0.01f);
+            server.Update(0.01f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        require(client.connected());
+        require(server.connected());
+
+        std::vector<unsigned char> big((size_t) max_payload, 0x5A);
+        require(client.SendPacket(big.data(), max_payload));
+        require(!client.SendPacket(big.data(), max_payload + 1));
+
+        bool got = false;
+        std::vector<unsigned char> rcv((size_t) max_payload);
+        for (int i = 0; i < 200 && !got; ++i) {
+            server.Update(0.01f);
+            const int bytes_read = server.ReceivePacket(rcv.data(), max_payload);
+            if (bytes_read == max_payload) {
+                got = memcmp(rcv.data(), big.data(), (size_t) max_payload) == 0;
+            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+        }
+        require(got);
+
+        client.Stop();
+        server.Stop();
     }
 
     printf("OK\n");

@@ -15,6 +15,7 @@
 void test_address();
 void test_bitmsg();
 void test_compress();
+void test_hash();
 void test_hton();
 void test_http();
 void test_packet_queue();
@@ -25,6 +26,7 @@ void test_tcp_socket();
 void test_udp_connection();
 void test_udp_socket();
 void test_var();
+void test_ws_connection();
 // no test_types(): its TEST_BE define changes Net::le_* type definitions and would ODR-clash with this binary
 
 bool g_stop_on_fail = false;
@@ -53,6 +55,7 @@ int main() {
 
     test_address();
     test_compress();
+    test_hash();
     test_hton();
     test_http();
     test_packet_queue();
@@ -64,6 +67,7 @@ int main() {
     test_udp_connection();
     test_udp_socket();
     test_tcp_socket();
+    test_ws_connection();
 
     return g_failures ? 1 : 0;
 }

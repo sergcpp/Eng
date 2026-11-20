@@ -11,6 +11,7 @@ set(SRC_FILES main.cpp test_address.cpp
                        test_bitmsg.cpp
                        test_common.h
                        test_compress.cpp
+                       test_hash.cpp
                        test_hton.cpp
                        test_http.cpp
                        test_packet_queue.cpp
@@ -20,7 +21,8 @@ set(SRC_FILES main.cpp test_address.cpp
                        test_tcp_socket.cpp
                        test_udp_connection.cpp
                        test_udp_socket.cpp
-                       test_var.cpp)
+                       test_var.cpp
+                       test_ws_connection.cpp)
 
 # test_types.cpp: compiled by no target, TEST_BE redefines Net::le_* (ODR clash); see the file header
 add_executable(test_Net ${SRC_FILES})

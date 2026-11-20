@@ -74,6 +74,9 @@ void Net::UDPConnection::Update(float dt_s) {
 bool Net::UDPConnection::SendPacket(const unsigned char data[], int size) {
     assert(running_);
     assert(MAX_PACKET_SIZE >= size + 4);
+    if (size < 0 || size + 4 > MAX_PACKET_SIZE) {
+        return false;
+    }
     if (address_.address() == 0) {
         return false;
     }
@@ -101,6 +104,9 @@ int Net::UDPConnection::ReceivePacket(unsigned char data[], int size) {
     assert(running_);
 
     assert(size + 4 <= MAX_PACKET_SIZE);
+    if (size < 0 || size + 4 > MAX_PACKET_SIZE) {
+        return 0;
+    }
     unsigned char packet[MAX_PACKET_SIZE];
     int bytes_read = socket_.Receive(sender, packet, size + 4);
     if (bytes_read <= 4) {
