@@ -387,22 +387,14 @@ void test_reliable_udp_connection() {
                 require(rcv_packet == sent_packet);
             }
 
-            int ack_count = 0;
-            unsigned int *acks = NULL;
-            client.reliability_system().GetAcks(&acks, ack_count);
-            require((ack_count == 0 || (ack_count != 0 && acks)));
-            for (int i = 0; i < ack_count; ++i) {
-                unsigned int ack = acks[i];
+            for (const unsigned int ack : client.reliability_system().GetAcks()) {
                 if (ack < packet_count) {
                     require(!clientAckedPackets[ack]);
                     clientAckedPackets[ack] = true;
                 }
             }
 
-            server.reliability_system().GetAcks(&acks, ack_count);
-            require((ack_count == 0 || (ack_count != 0 && acks)));
-            for (int i = 0; i < ack_count; ++i) {
-                unsigned int ack = acks[i];
+            for (const unsigned int ack : server.reliability_system().GetAcks()) {
                 if (ack < packet_count) {
                     require(!serverAckedPackets[ack]);
                     serverAckedPackets[ack] = true;
@@ -478,12 +470,7 @@ void test_reliable_udp_connection() {
                     }
                 }
 
-                int ack_count = 0;
-                unsigned int *acks = NULL;
-                client.reliability_system().GetAcks(&acks, ack_count);
-                require((ack_count == 0 || (ack_count != 0 && acks)));
-                for (int j = 0; j < ack_count; ++j) {
-                    const unsigned int ack = acks[j];
+                for (const unsigned int ack : client.reliability_system().GetAcks()) {
                     if (ack < packet_count) {
                         require(!clientAckedPackets[ack]);
                         clientAckedPackets[ack] = true;
@@ -507,12 +494,7 @@ void test_reliable_udp_connection() {
                 }
             }
 
-            int ack_count = 0;
-            unsigned int *acks = NULL;
-            server.reliability_system().GetAcks(&acks, ack_count);
-            require((ack_count == 0 || (ack_count != 0 && acks)));
-            for (int i = 0; i < ack_count; ++i) {
-                unsigned int ack = acks[i];
+            for (const unsigned int ack : server.reliability_system().GetAcks()) {
                 if (ack < packet_count) {
                     require(!serverAckedPackets[ack]);
                     serverAckedPackets[ack] = true;
@@ -593,12 +575,7 @@ void test_reliable_udp_connection() {
                     }
                 }
 
-                int ack_count = 0;
-                unsigned int *acks = NULL;
-                client.reliability_system().GetAcks(&acks, ack_count);
-                require((ack_count == 0 || (ack_count != 0 && acks)));
-                for (int j = 0; j < ack_count; ++j) {
-                    const unsigned int ack = acks[j];
+                for (const unsigned int ack : client.reliability_system().GetAcks()) {
                     if (ack < packet_count) {
                         require(!clientAckedPackets[ack]);
                         require((ack & 1) == 0);
@@ -623,12 +600,7 @@ void test_reliable_udp_connection() {
                 }
             }
 
-            int ack_count = 0;
-            unsigned int *acks = NULL;
-            server.reliability_system().GetAcks(&acks, ack_count);
-            require((ack_count == 0 || (ack_count != 0 && acks)));
-            for (int i = 0; i < ack_count; ++i) {
-                unsigned int ack = acks[i];
+            for (const unsigned int ack : server.reliability_system().GetAcks()) {
                 if (ack < packet_count) {
                     require(!serverAckedPackets[ack]);
                     require((ack & 1) == 0);
@@ -724,20 +696,12 @@ void test_reliable_udp_connection() {
                 }
             }
 
-            int ack_count = 0;
-            unsigned int *acks = NULL;
-            client.reliability_system().GetAcks(&acks, ack_count);
-            require((ack_count == 0 || (ack_count != 0 && acks)));
-            for (int i = 0; i < ack_count; ++i) {
-                unsigned int ack = acks[i];
+            for (const unsigned int ack : client.reliability_system().GetAcks()) {
                 require(ack <= max_sequence);
                 clientAckCount[ack] += 1;
             }
 
-            server.reliability_system().GetAcks(&acks, ack_count);
-            require((ack_count == 0 || (ack_count != 0 && acks)));
-            for (int i = 0; i < ack_count; ++i) {
-                unsigned int ack = acks[i];
+            for (const unsigned int ack : server.reliability_system().GetAcks()) {
                 require(ack <= max_sequence);
                 serverAckCount[ack]++;
             }

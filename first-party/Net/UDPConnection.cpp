@@ -113,6 +113,10 @@ int Net::UDPConnection::ReceivePacket(unsigned char data[], int size) {
         return 0;
     }
 
+    // wire format: 4-byte big-endian CRC32 over the whole packet, where the CRC field
+    // itself is replaced by the protocol id before hashing; the receiver restores the
+    // protocol id, re-computes and compares - so the id check and the integrity check
+    // are one operation (and a wrong protocol id simply fails the CRC)
     { // check protocol id hashsum
         uint32_t crc = (((unsigned int)packet[0] << 24u) | ((unsigned int)packet[1] << 16u) |
                         ((unsigned int)packet[2] << 8u) | ((unsigned int)packet[3]));

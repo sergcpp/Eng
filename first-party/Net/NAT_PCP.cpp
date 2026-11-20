@@ -1,6 +1,7 @@
 #include "NAT_PCP.h"
 
 #include <algorithm>
+#include <random>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -18,10 +19,12 @@ bool Net::GenPCPNonce(void *buf, int len) {
     if (len < 12)
         return false;
 
+    // PCP wants a fresh unpredictable nonce per request
+    static thread_local std::mt19937 gen{std::random_device{}()};
     auto *p = (int32_t *)buf;
-    p[0] = rand(); // NOLINT
-    p[1] = rand(); // NOLINT
-    p[2] = rand(); // NOLINT
+    p[0] = int32_t(gen());
+    p[1] = int32_t(gen());
+    p[2] = int32_t(gen());
 
     return true;
 }

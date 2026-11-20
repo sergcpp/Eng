@@ -9,6 +9,8 @@
 
 #endif
 
+#include <random>
+
 #include "HTTPRequest.h"
 #include "HTTPResponse.h"
 #include "Socket.h"
@@ -185,7 +187,8 @@ bool Net::WsConnection::Send(const void *data, int size) {
 
     uint32_t mask = 0;
     if (should_mask_) {
-        mask = uint32_t(rand()); // NOLINT
+        static thread_local std::mt19937 gen{std::random_device{}()};
+        mask = gen();
         *(uint32_t *)payload = mask;
         payload += 4;
     }

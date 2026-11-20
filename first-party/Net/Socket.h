@@ -62,12 +62,16 @@ namespace Net {
 
         TCPSocket &operator=(TCPSocket &&rhs) noexcept;
 
+        // moves the connection accepted by Accept() into the returned socket;
+        // rhs is left as a fresh listener (its handle_ stays open for Accept again)
         static TCPSocket PassClientConnection(TCPSocket &rhs) {
             TCPSocket ret;
             ret.handle_ = INVALID_SOCK;
             ret.connection_ = rhs.connection_;
             ret.remote_addr_ = rhs.remote_addr_;
-            rhs.Listen();
+            ret.local_addr_ = rhs.local_addr_;
+            rhs.connection_ = INVALID_SOCK;
+            rhs.remote_addr_ = Address();
             return ret;
         }
 

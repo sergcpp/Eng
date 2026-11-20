@@ -53,7 +53,12 @@ extern unsigned int g_android_local_ip_address;
 #endif
 
 namespace {
-    std::weak_ptr<Net::SocketContext> shrd_context;
+    // function-local static: thread-safe init (C++11) and the context outlives every
+    // socket, so WSACleanup can never run while another thread still uses sockets
+    std::shared_ptr<Net::SocketContext> shared_context() {
+        static std::shared_ptr<Net::SocketContext> ctx = std::make_shared<Net::SocketContext>();
+        return ctx;
+    }
 
     // POSIX raises SIGPIPE when writing to a broken connection; suppress it so the
     // send calls just report EPIPE (macOS uses SO_NOSIGPIPE on the socket instead)
@@ -67,34 +72,38 @@ namespace {
 
     unsigned int GetLocalAddr() {
         unsigned int local_addr = 0;
-#ifndef __ANDROID__
-        char hostname[256];
-        if (gethostname(hostname, sizeof(hostname)) != -1) {
-            struct hostent *phe = gethostbyname(hostname);
-            int i = 0;
-            while (phe != nullptr && phe->h_addr_list[i] != nullptr) {
-                struct in_addr addr;    // NOLINT
-                memcpy(&addr, phe->h_addr_list[i++], sizeof(struct in_addr));
-                local_addr = ntohl(addr.s_addr);
-                auto a = (unsigned char) (local_addr >> 24u);
-                if (a == 192 || a == 10 || a == 172) {
-                    break;
-                }
-            }
-        }
-#else
+#ifdef __ANDROID__
         local_addr = ntohl(g_android_local_ip_address);
+#else
+        // a UDP connect() sends no traffic: it only makes the kernel pick the source
+        // address for that route, which getsockname then reports - this replaces the
+        // gethostbyname() guess (unreliable and not thread-safe)
+        const Net::SocketHandle probe = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (Net::sock_is_open(probe)) {
+            sockaddr_in dst; // NOLINT
+            memset(&dst, 0, sizeof(dst));
+            dst.sin_family = AF_INET;
+            dst.sin_port = htons(53);
+            dst.sin_addr.s_addr = inet_addr("8.8.8.8");
+            sockaddr_in src; // NOLINT
+            socklen_t src_len = sizeof(src);
+            if (::connect(probe, (const sockaddr *) &dst, sizeof(dst)) == 0 &&
+                getsockname(probe, (sockaddr *) &src, &src_len) == 0) {
+                local_addr = ntohl(src.sin_addr.s_addr);
+            }
+    #ifdef _WIN32
+            closesocket(probe);
+    #else
+            close(probe);
+    #endif
+        }
 #endif
         return local_addr;
     }
 }
 
 Net::UDPSocket::UDPSocket() {
-    if (shrd_context.expired()) {
-        shrd_context = context_ = std::make_shared<SocketContext>();
-    } else {
-        context_ = shrd_context.lock();
-    }
+    context_ = shared_context();
 }
 
 Net::UDPSocket::~UDPSocket() {
@@ -134,7 +143,7 @@ void Net::UDPSocket::Open(const Address &bind_addr, unsigned short port, bool re
     if (getsockname(handle_, (struct sockaddr *) &sin, &addrlen) == 0 &&
         sin.sin_family == AF_INET &&
         addrlen == sizeof(sin)) {
-        // for the INADDR_ANY bind the historic gethostbyname() guess still fills the address
+        // for an INADDR_ANY bind the default-route probe fills in the real address
         const unsigned int bound_addr = ntohl(sin.sin_addr.s_addr);
         const unsigned int local_addr = bound_addr != 0 ? bound_addr : GetLocalAddr();
         local_addr_ = Address(local_addr, ntohs(sin.sin_port));
@@ -240,11 +249,7 @@ bool Net::UDPSocket::SetBlocking(bool is_blocking) const {
 }
 
 Net::TCPSocket::TCPSocket() {
-    if (shrd_context.expired()) {
-        shrd_context = context_ = std::make_shared<SocketContext>();
-    } else {
-        context_ = shrd_context.lock();
-    }
+    context_ = shared_context();
 }
 
 Net::TCPSocket::TCPSocket(TCPSocket &&rhs) noexcept
@@ -306,7 +311,7 @@ void Net::TCPSocket::Open(const Address &bind_addr, unsigned short port, bool re
     if (getsockname(handle_, (struct sockaddr *) &sin, &addrlen) == 0 &&
         sin.sin_family == AF_INET &&
         addrlen == sizeof(sin)) {
-        // for the INADDR_ANY bind the historic gethostbyname() guess still fills the address
+        // for an INADDR_ANY bind the default-route probe fills in the real address
         const unsigned int bound_addr = ntohl(sin.sin_addr.s_addr);
         const unsigned int local_addr = bound_addr != 0 ? bound_addr : GetLocalAddr();
         local_addr_ = Address(local_addr, ntohs(sin.sin_port));
