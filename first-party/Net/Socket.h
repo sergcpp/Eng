@@ -26,6 +26,9 @@ namespace Net {
 
         void Open(unsigned short port, bool reuse_addr = true);
 
+        // bind an explicit interface (Address' own port field is ignored); IPC use must pass 127.0.0.1
+        void Open(const Address &bind_addr, unsigned short port, bool reuse_addr = true);
+
         void Close();
 
         bool Send(const Address &destination, const void *data, int size) const;
@@ -35,6 +38,8 @@ namespace Net {
 
         bool JoinMulticast(const Address &addr);
         bool DropMulticast(const Address &addr);
+        bool JoinMulticast(const Address &group, const Address &interface_addr);
+        bool DropMulticast(const Address &group, const Address &interface_addr);
 
         bool SetBlocking(bool is_blocking) const;
     };
@@ -42,7 +47,7 @@ namespace Net {
     class TCPSocket {
         std::shared_ptr<SocketContext> context_;
         SocketHandle handle_ = INVALID_SOCK, connection_ = INVALID_SOCK;
-        Address remote_addr_;
+        Address remote_addr_, local_addr_;
         int last_error_ = 0;
     public:
         TCPSocket();
@@ -70,11 +75,16 @@ namespace Net {
 
         [[nodiscard]] bool connected() const { return sock_is_open(connection_); }
 
+        [[nodiscard]] Address local_addr() const { return local_addr_; }
+
         [[nodiscard]] Address remote_addr() const { return remote_addr_; }
 
         [[nodiscard]] int last_error() const { return last_error_; }
 
         void Open(unsigned short port, bool reuse_addr = true);
+
+        // bind an explicit interface (Address' own port field is ignored); IPC use must pass 127.0.0.1
+        void Open(const Address &bind_addr, unsigned short port, bool reuse_addr = true);
 
         void Close();
 

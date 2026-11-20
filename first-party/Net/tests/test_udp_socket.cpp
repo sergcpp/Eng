@@ -21,6 +21,12 @@ void test_udp_socket() {
         require(socket.local_addr().port() == 30000);
         require(socket.IsOpen());
     }
+    { // an explicit bind address is reported back, not the gethostbyname() guess
+        UDPSocket s;
+        require_nothrow(s.Open(Address(127, 0, 0, 1, 0), 0));
+        require(s.local_addr().a() == 127);
+        require(s.local_addr().port() != 0);
+    }
     { // UDPSocket same port fail
         UDPSocket a, b;
         require_nothrow(a.Open(30000, false));

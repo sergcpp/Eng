@@ -20,6 +20,12 @@ void test_tcp_socket() {
         require_nothrow(socket.Open(30000));
         require(socket.IsOpen());
     }
+    { // TCPSocket bind address and ephemeral port
+        TCPSocket s;
+        require_nothrow(s.Open(Address(127, 0, 0, 1, 0), 0));
+        require(s.local_addr().a() == 127);
+        require(s.local_addr().port() != 0);
+    }
     { // TCPSocket same port fail
         TCPSocket a, b;
         require_nothrow(a.Open(30000, false));

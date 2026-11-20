@@ -90,6 +90,10 @@ Net::UDPSocket::~UDPSocket() {
 }
 
 void Net::UDPSocket::Open(unsigned short port, bool reuse_addr) {
+    Open(Address(), port, reuse_addr);
+}
+
+void Net::UDPSocket::Open(const Address &bind_addr, unsigned short port, bool reuse_addr) {
     handle_ = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (!sock_is_open(handle_)) {
         handle_ = INVALID_SOCK;
@@ -104,7 +108,7 @@ void Net::UDPSocket::Open(unsigned short port, bool reuse_addr) {
     sockaddr_in address;    // NOLINT
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_addr.s_addr = htonl(bind_addr.address());
 
     address.sin_port = htons(port);
 
@@ -113,13 +117,14 @@ void Net::UDPSocket::Open(unsigned short port, bool reuse_addr) {
         throw std::runtime_error("Cannot bind socket.");
     }
 
-    unsigned int local_addr = GetLocalAddr();
-
     struct sockaddr_in sin; // NOLINT
     socklen_t addrlen = sizeof(sin);
     if (getsockname(handle_, (struct sockaddr *) &sin, &addrlen) == 0 &&
         sin.sin_family == AF_INET &&
         addrlen == sizeof(sin)) {
+        // for the INADDR_ANY bind the historic gethostbyname() guess still fills the address
+        const unsigned int bound_addr = ntohl(sin.sin_addr.s_addr);
+        const unsigned int local_addr = bound_addr != 0 ? bound_addr : GetLocalAddr();
         local_addr_ = Address(local_addr, ntohs(sin.sin_port));
     }
 
@@ -189,16 +194,32 @@ int Net::UDPSocket::Receive(Address &sender, void *data, const int size) const {
 }
 
 bool Net::UDPSocket::JoinMulticast(const Address &addr) {
-    struct ip_mreq mreq;    // NOLINT
-    mreq.imr_interface.s_addr = htonl(local_addr_.address());
-    mreq.imr_multiaddr.s_addr = htonl(addr.address());
-    return setsockopt(handle_, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char *) &mreq, sizeof(mreq)) == 0;
+    return JoinMulticast(addr, local_addr_);
 }
 
 bool Net::UDPSocket::DropMulticast(const Address &addr) {
+    return DropMulticast(addr, local_addr_);
+}
+
+bool Net::UDPSocket::JoinMulticast(const Address &group, const Address &interface_addr) {
+    if (!sock_is_open(handle_)) {
+        return false;
+    }
+
     struct ip_mreq mreq;    // NOLINT
-    mreq.imr_interface.s_addr = htonl(local_addr_.address());
-    mreq.imr_multiaddr.s_addr = htonl(addr.address());
+    mreq.imr_interface.s_addr = htonl(interface_addr.address());
+    mreq.imr_multiaddr.s_addr = htonl(group.address());
+    return setsockopt(handle_, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char *) &mreq, sizeof(mreq)) == 0;
+}
+
+bool Net::UDPSocket::DropMulticast(const Address &group, const Address &interface_addr) {
+    if (!sock_is_open(handle_)) {
+        return false;
+    }
+
+    struct ip_mreq mreq;    // NOLINT
+    mreq.imr_interface.s_addr = htonl(interface_addr.address());
+    mreq.imr_multiaddr.s_addr = htonl(group.address());
     return setsockopt(handle_, IPPROTO_IP, IP_DROP_MEMBERSHIP, (const char *) &mreq, sizeof(mreq)) == 0;
 }
 
@@ -216,10 +237,11 @@ Net::TCPSocket::TCPSocket() {
 
 Net::TCPSocket::TCPSocket(TCPSocket &&rhs) noexcept
         : context_(std::move(rhs.context_)), handle_(rhs.handle_), connection_(rhs.connection_),
-          remote_addr_(rhs.remote_addr_) {
+          remote_addr_(rhs.remote_addr_), local_addr_(rhs.local_addr_) {
     rhs.handle_ = INVALID_SOCK;
     rhs.connection_ = INVALID_SOCK;
     rhs.remote_addr_ = Address();
+    rhs.local_addr_ = Address();
 }
 
 Net::TCPSocket::~TCPSocket() {
@@ -232,14 +254,20 @@ Net::TCPSocket &Net::TCPSocket::operator=(TCPSocket &&rhs) noexcept {
     handle_ = rhs.handle_;
     connection_ = rhs.connection_;
     remote_addr_ = rhs.remote_addr_;
+    local_addr_ = rhs.local_addr_;
 
     rhs.handle_ = INVALID_SOCK;
     rhs.connection_ = INVALID_SOCK;
     rhs.remote_addr_ = Address();
+    rhs.local_addr_ = Address();
     return *this;
 }
 
 void Net::TCPSocket::Open(unsigned short port, bool reuse_addr) {
+    Open(Address(), port, reuse_addr);
+}
+
+void Net::TCPSocket::Open(const Address &bind_addr, unsigned short port, bool reuse_addr) {
     handle_ = socket(AF_INET, SOCK_STREAM, 0);
     if (!sock_is_open(handle_)) {
         handle_ = INVALID_SOCK;
@@ -253,12 +281,23 @@ void Net::TCPSocket::Open(unsigned short port, bool reuse_addr) {
 
     sockaddr_in address;    // NOLINT
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_addr.s_addr = htonl(bind_addr.address());
     address.sin_port = htons(port);
 
     if (::bind(handle_, (const sockaddr *) &address, sizeof(sockaddr_in)) < 0) {
         Close();
         throw std::runtime_error("Cannot bind socket.");
+    }
+
+    struct sockaddr_in sin; // NOLINT
+    socklen_t addrlen = sizeof(sin);
+    if (getsockname(handle_, (struct sockaddr *) &sin, &addrlen) == 0 &&
+        sin.sin_family == AF_INET &&
+        addrlen == sizeof(sin)) {
+        // for the INADDR_ANY bind the historic gethostbyname() guess still fills the address
+        const unsigned int bound_addr = ntohl(sin.sin_addr.s_addr);
+        const unsigned int local_addr = bound_addr != 0 ? bound_addr : GetLocalAddr();
+        local_addr_ = Address(local_addr, ntohs(sin.sin_port));
     }
 
     SetBlocking(false);
