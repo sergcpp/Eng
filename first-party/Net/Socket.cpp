@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -53,6 +54,16 @@ extern unsigned int g_android_local_ip_address;
 
 namespace {
     std::weak_ptr<Net::SocketContext> shrd_context;
+
+    // POSIX raises SIGPIPE when writing to a broken connection; suppress it so the
+    // send calls just report EPIPE (macOS uses SO_NOSIGPIPE on the socket instead)
+    constexpr int send_flags() {
+#if defined(_WIN32) || defined(__APPLE__)
+        return 0;
+#else
+        return MSG_NOSIGNAL;
+#endif
+    }
 
     unsigned int GetLocalAddr() {
         unsigned int local_addr = 0;
@@ -351,6 +362,9 @@ bool Net::TCPSocket::Accept(bool is_blocking) {
 
     int one = 1;
     setsockopt(connection_, IPPROTO_TCP, TCP_NODELAY, (const char *) &one, sizeof(one));
+#ifdef __APPLE__
+    setsockopt(connection_, SOL_SOCKET, SO_NOSIGPIPE, (const char *) &one, sizeof(one));
+#endif
 
     Net::SetBlocking(connection_, is_blocking);
 
@@ -403,6 +417,9 @@ bool Net::TCPSocket::Connect(const Address &dest, int timeout_ms) {
 
     int one = 1;
     setsockopt(handle_, IPPROTO_TCP, TCP_NODELAY, (const char *) &one, sizeof(one));
+#ifdef __APPLE__
+    setsockopt(handle_, SOL_SOCKET, SO_NOSIGPIPE, (const char *) &one, sizeof(one));
+#endif
 
     SetBlocking(false);
     last_error_ = 0;
@@ -418,12 +435,61 @@ bool Net::TCPSocket::Send(const void *data, int size) {
         return false;
     }
 
-    const int sent_bytes = int(send(dst, (char *) data, (size_t) size, 0));
-    if (sent_bytes != size) {
-        last_error_ = last_socket_error();
+    const char *ptr = (const char *) data;
+    int remaining = size;
+    while (remaining > 0) {
+        const int sent_bytes = int(send(dst, ptr, (size_t) remaining, send_flags()));
+        if (sent_bytes <= 0) {
+            last_error_ = last_socket_error();
+            return false;
+        }
+        ptr += sent_bytes;
+        remaining -= sent_bytes;
+    }
+
+    last_error_ = 0;
+    return true;
+}
+
+bool Net::TCPSocket::SendAll(const void *data, size_t size, int timeout_ms) {
+    const SocketHandle dst = sock_is_open(connection_) ? connection_ : handle_;
+    if (!sock_is_open(dst)) {
         return false;
     }
 
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    const char *ptr = (const char *) data;
+    size_t remaining = size;
+    while (remaining > 0) {
+        const int sent_bytes = int(send(dst, ptr, int(remaining), send_flags()));
+        if (sent_bytes > 0) {
+            ptr += sent_bytes;
+            remaining -= (size_t) sent_bytes;
+            continue;
+        }
+        // Windows reports a full non-blocking send buffer as 0 + WSAEWOULDBLOCK
+        const int err = last_socket_error();
+        if (err != 0 && !sock_would_block(err) && err != intr_error()) {
+            last_error_ = err;
+            return false;
+        }
+        int wait_ms = -1;
+        if (timeout_ms >= 0) {
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()).count();
+            if (left <= 0) {
+                last_error_ = would_block_error();
+                return false;
+            }
+            wait_ms = int(left);
+        }
+        if (!WaitWritable(wait_ms)) {
+            last_error_ = would_block_error();
+            return false;
+        }
+    }
+
+    last_error_ = 0;
     return true;
 }
 
@@ -451,6 +517,54 @@ int Net::TCPSocket::Receive(void *data, int size) {
     return received_bytes;
 }
 
+bool Net::TCPSocket::RecvExactly(void *data, size_t size, int timeout_ms) {
+    assert(data);
+
+    const SocketHandle src = sock_is_open(connection_) ? connection_ : handle_;
+    if (!sock_is_open(src)) {
+        last_error_ = 0;
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    char *ptr = (char *) data;
+    size_t remaining = size;
+    while (remaining > 0) {
+        const int received_bytes = int(recv(src, ptr, int(remaining), 0));
+        if (received_bytes > 0) {
+            ptr += received_bytes;
+            remaining -= (size_t) received_bytes;
+            continue;
+        }
+        if (received_bytes == 0) {
+            last_error_ = 0; // peer closed before size bytes arrived
+            return false;
+        }
+        const int err = last_socket_error();
+        if (!sock_would_block(err) && err != intr_error()) {
+            last_error_ = err;
+            return false;
+        }
+        int wait_ms = -1;
+        if (timeout_ms >= 0) {
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()).count();
+            if (left <= 0) {
+                last_error_ = would_block_error();
+                return false;
+            }
+            wait_ms = int(left);
+        }
+        if (!WaitReadable(wait_ms)) {
+            last_error_ = would_block_error();
+            return false;
+        }
+    }
+
+    last_error_ = 0;
+    return true;
+}
+
 bool Net::TCPSocket::SetBlocking(bool is_blocking) {
     const SocketHandle sock = sock_is_open(connection_) ? connection_ : handle_;
     return Net::SetBlocking(sock, is_blocking);
@@ -468,10 +582,14 @@ bool Net::TCPSocket::WaitReadable(int timeout_ms) {
     FD_SET(sock, &read_set);
 
     timeval tv;   // NOLINT
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    timeval *timeout = nullptr;
+    if (timeout_ms >= 0) {
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        timeout = &tv;
+    }
 
-    const int ready = select(int(sock) + 1, &read_set, nullptr, nullptr, &tv);
+    const int ready = select(int(sock) + 1, &read_set, nullptr, nullptr, timeout);
     if (ready <= 0) {
         last_error_ = ready < 0 ? last_socket_error() : 0;
         return false;
@@ -491,15 +609,38 @@ bool Net::TCPSocket::WaitWritable(int timeout_ms) {
     FD_SET(sock, &write_set);
 
     timeval tv;   // NOLINT
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    timeval *timeout = nullptr;
+    if (timeout_ms >= 0) {
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        timeout = &tv;
+    }
 
-    const int ready = select(int(sock) + 1, nullptr, &write_set, nullptr, &tv);
+    const int ready = select(int(sock) + 1, nullptr, &write_set, nullptr, timeout);
     if (ready <= 0) {
         last_error_ = ready < 0 ? last_socket_error() : 0;
         return false;
     }
     return true;
+}
+
+void Net::TCPSocket::Shutdown(bool how_read, bool how_write) {
+    const SocketHandle sock = sock_is_open(connection_) ? connection_ : handle_;
+    if (!sock_is_open(sock) || (!how_read && !how_write)) {
+        return;
+    }
+
+    int how;
+#ifdef _WIN32
+    how = how_read && how_write ? SD_BOTH : (how_read ? SD_RECEIVE : SD_SEND);
+#else
+    how = how_read && how_write ? SHUT_RDWR : (how_read ? SHUT_RD : SHUT_WR);
+#endif
+    if (shutdown(sock, how) != 0) {
+        last_error_ = last_socket_error();
+    } else {
+        last_error_ = 0;
+    }
 }
 
 bool Net::SetBlocking(SocketHandle sock, bool is_blocking) {

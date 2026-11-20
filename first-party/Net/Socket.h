@@ -102,15 +102,29 @@ namespace Net {
         // 0 waits for the OS connect timeout; returns false when the connection failed
         bool Connect(const Address &dest, int timeout_ms = 0);
 
+        // loops over partial writes; on a non-blocking socket it can still fail with part
+        // of the data already sent - use SendAll when the whole block must arrive
         bool Send(const void *data, int size);
+
+        // blocks until every byte is queued, waiting for send-buffer space up to
+        // timeout_ms (-1 = forever); false on error or timeout
+        bool SendAll(const void *data, size_t size, int timeout_ms = -1);
 
         // >0 bytes read; 0 = peer closed the connection; -1 = no data pending (would-block); -2 = error, see last_error()
         int Receive(void *data, int size);
 
+        // reads exactly size bytes; false if the peer closed first or timeout_ms elapsed
+        bool RecvExactly(void *data, size_t size, int timeout_ms);
+
         bool SetBlocking(bool is_blocking);
 
+        // negative timeout waits forever
         bool WaitReadable(int timeout_ms);
         bool WaitWritable(int timeout_ms);
+
+        // half-close: makes the peer see an orderly close (Receive() == 0) before the
+        // socket is destroyed, so a crash stays distinguishable from a deliberate finish
+        void Shutdown(bool how_read = true, bool how_write = true);
     };
 
     bool SetBlocking(SocketHandle sock, bool is_blocking);
