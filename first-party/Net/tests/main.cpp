@@ -1,10 +1,12 @@
 
 #include <cstdio>
 
-#include <atomic>
+#include <stdexcept>
 
 #include "../Net.h"
 #include "../InterprocessLock.h"
+
+#include "test_common.h"
 
 void test_address();
 void test_bitmsg();
@@ -16,33 +18,39 @@ void test_pcp();
 void test_pmp();
 void test_reliable_udp_connection();
 void test_tcp_socket();
-void test_types();
 void test_udp_connection();
 void test_udp_socket();
 void test_var();
+// no test_types(): its TEST_BE define changes Net::le_* type definitions and would ODR-clash with this binary
 
 bool g_stop_on_fail = false;
-std::atomic_bool g_tests_success{true};
+std::atomic_int g_failures{};
 
 int main() {
     printf("Net Version: %s\n", Net::Version());
     puts(" ---------------");
 
-    // Ensure only single instance is running
-    Net::InterprocessLock _("test_Net lock");
+    // Ensure only single instance is running; failing to take the lock (Global\ namespace privileges,
+    // abandoned mutex) must not kill the run by itself
+    try {
+        static Net::InterprocessLock _("test_Net lock");
+    } catch (const std::exception &e) {
+        printf("warning: no single-instance lock: %s\n", e.what());
+    }
 
     test_address();
     test_compress();
     test_hton();
     test_http();
     test_packet_queue();
-    test_types();
     test_var();
     test_bitmsg();
-    //test_pcp();
-    //test_pmp();
-    //test_reliable_udp_connection();
-    //test_tcp_socket();
-    //test_udp_connection();
-    //test_udp_socket();
+    test_pcp();
+    test_pmp();
+    test_reliable_udp_connection();
+    test_udp_connection();
+    //test_udp_socket(); // to enable after D3/D8 fixes: Receive conflates peer close and would-block, loop is unbounded
+    //test_tcp_socket(); // to enable after D4-D7 fixes: Connect always reports success, no partial-send loop, wait stub empty
+
+    return g_failures ? 1 : 0;
 }

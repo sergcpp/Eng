@@ -181,7 +181,9 @@ void test_pcp() {
                                      req.nonce());
 
                 size = resp.Write(recv_buf, sizeof(recv_buf));
-                pcp_server.Send(s1.local_addr(), &resp, size);
+                // answer the recvfrom sender with the serialized bytes: s1.local_addr() is the LAN IP,
+                // which the local firewall drops, and PCPResponse is not a wire type
+                pcp_server.Send(sender, recv_buf, size);
             }
 
             s1.Update(16);

@@ -130,9 +130,6 @@ void Net::UDPSocket::Open(unsigned short port, bool reuse_addr) {
         local_addr_ = Address(local_addr, ntohs(sin.sin_port));
     }
 
-    printf("\n%i.%i.%i.%i:%i\n", local_addr_.a(), local_addr_.b(), local_addr_.c(), local_addr_.d(),
-           local_addr_.port());
-
     SetBlocking(false);
 }
 

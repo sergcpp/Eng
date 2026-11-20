@@ -46,7 +46,6 @@ void Net::UDPConnection::Listen() {
 }
 
 void Net::UDPConnection::Connect(const Address &address) {
-    printf("client connecting to %d.%d.%d.%d:%d\n", address.a(), address.b(), address.c(), address.d(), address.port());
     bool conn = connected();
     ClearData();
     if (conn) {
@@ -62,12 +61,10 @@ void Net::UDPConnection::Update(float dt_s) {
     timeout_acc_ += dt_s;
     if (timeout_acc_ > timeout_s_) {
         if (state_ == eState::Connecting) {
-            printf("connect timed out\n");
             ClearData();
             state_ = eState::ConnectFailed;
             OnDisconnect();
         } else if (state_ == eState::Connected) {
-            printf("connection timed out\n");
             ClearData();
             OnDisconnect();
         }
