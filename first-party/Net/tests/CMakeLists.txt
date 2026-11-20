@@ -17,6 +17,7 @@ set(SRC_FILES main.cpp test_address.cpp
                        test_packet_queue.cpp
                        test_pcp.cpp
                        test_pmp.cpp
+                       test_msg_channel.cpp
                        test_reliable_udp_connection.cpp
                        test_tcp_socket.cpp
                        test_udp_connection.cpp

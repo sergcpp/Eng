@@ -34,6 +34,8 @@ set(SOURCE_FILES    Address.h
                     NAT_PCP.cpp
                     NAT_PMP.h
                     NAT_PMP.cpp
+                    MsgChannel.h
+                    MsgChannel.cpp
                     Net.h
                     Net.cpp
                     PacketQueue.h

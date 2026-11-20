@@ -21,6 +21,7 @@ void test_http();
 void test_packet_queue();
 void test_pcp();
 void test_pmp();
+void test_msg_channel();
 void test_reliable_udp_connection();
 void test_tcp_socket();
 void test_udp_connection();
@@ -63,6 +64,7 @@ int main() {
     test_bitmsg();
     test_pcp();
     test_pmp();
+    test_msg_channel();
     test_reliable_udp_connection();
     test_udp_connection();
     test_udp_socket();
