@@ -49,7 +49,7 @@ int main() {
     test_pmp();
     test_reliable_udp_connection();
     test_udp_connection();
-    //test_udp_socket(); // to enable after D3/D8 fixes: Receive conflates peer close and would-block, loop is unbounded
+    test_udp_socket();
     //test_tcp_socket(); // to enable after D4-D7 fixes: Connect always reports success, no partial-send loop, wait stub empty
 
     return g_failures ? 1 : 0;

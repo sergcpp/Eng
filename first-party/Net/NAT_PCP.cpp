@@ -361,7 +361,7 @@ void Net::PCPSession::Update(unsigned int dt_ms) {
 
         Address sender;
         int rcv_size = sock_.Receive(sender, buf, sizeof(buf));
-        if (rcv_size && sender == pcp_server_) {
+        if (rcv_size > 0 && sender == pcp_server_) {
             PCPResponse resp;
             if (!resp.Read(buf, rcv_size)) {
                 return;

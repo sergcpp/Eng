@@ -150,13 +150,13 @@ void test_pcp() {
         require(fake_pcp_srv.Receive(sender, buf, sizeof(buf)));
 
         ses.Update(16);
-        require(!fake_pcp_srv.Receive(sender, buf, sizeof(buf)));
+        require(fake_pcp_srv.Receive(sender, buf, sizeof(buf)) == -1);
 
         ses.Update(4000);
         require(fake_pcp_srv.Receive(sender, buf, sizeof(buf)));
 
         ses.Update(16);
-        require(!fake_pcp_srv.Receive(sender, buf, sizeof(buf)));
+        require(fake_pcp_srv.Receive(sender, buf, sizeof(buf)) == -1);
     }
     {
         char recv_buf[128];

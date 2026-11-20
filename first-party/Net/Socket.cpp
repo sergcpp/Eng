@@ -26,13 +26,6 @@
 
 #endif
 
-#ifdef _WIN32
-typedef int socklen_t;
-//#define errno WSAGetLastError()
-#else
-#define WSAEWOULDBLOCK 0
-#endif
-
 class Net::SocketContext {
 public:
     SocketContext() {   // NOLINT
@@ -84,7 +77,7 @@ namespace {
     }
 }
 
-Net::UDPSocket::UDPSocket() : handle_(0) {
+Net::UDPSocket::UDPSocket() {
     if (shrd_context.expired()) {
         shrd_context = context_ = std::make_shared<SocketContext>();
     } else {
@@ -98,8 +91,8 @@ Net::UDPSocket::~UDPSocket() {
 
 void Net::UDPSocket::Open(unsigned short port, bool reuse_addr) {
     handle_ = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (handle_ < 0) {
-        handle_ = 0;
+    if (!sock_is_open(handle_)) {
+        handle_ = INVALID_SOCK;
         throw std::runtime_error("Cannot create socket.");
     }
 
@@ -134,13 +127,13 @@ void Net::UDPSocket::Open(unsigned short port, bool reuse_addr) {
 }
 
 void Net::UDPSocket::Close() {
-    if (handle_ != 0) {
+    if (sock_is_open(handle_)) {
 #ifdef _WIN32
         closesocket(handle_);
 #else
         close(handle_);
 #endif
-        handle_ = 0;
+        handle_ = INVALID_SOCK;
     }
 }
 
@@ -148,7 +141,7 @@ bool Net::UDPSocket::Send(const Address &destination, const void *data, int size
     assert(data);
     assert(size > 0);
 
-    if (handle_ == 0) {
+    if (!sock_is_open(handle_)) {
         return false;
     }
 
@@ -158,16 +151,21 @@ bool Net::UDPSocket::Send(const Address &destination, const void *data, int size
     address.sin_port = htons((unsigned short) destination.port());
 
     const int sent_bytes = int(sendto(handle_, (const char *) data, size, 0, (sockaddr *) &address, sizeof(sockaddr_in)));
+    if (sent_bytes != size) {
+        last_error_ = last_socket_error();
+        return false;
+    }
 
-    return sent_bytes == size;
+    return true;
 }
 
 int Net::UDPSocket::Receive(Address &sender, void *data, const int size) const {
     assert(data);
     assert(size > 0);
 
-    if (handle_ == 0) {
-        return 0;
+    if (!sock_is_open(handle_)) {
+        last_error_ = 0;
+        return -1;
     }
 
     sockaddr_in from;   // NOLINT
@@ -175,9 +173,12 @@ int Net::UDPSocket::Receive(Address &sender, void *data, const int size) const {
 
     const int received_bytes = int(recvfrom(handle_, (char *) data, size, 0, (sockaddr *) &from, &from_len));
 
-    if (received_bytes <= 0) {
-        return 0;
+    if (received_bytes < 0) {
+        last_error_ = last_socket_error();
+        return sock_would_block(last_error_) || last_error_ == intr_error() ? -1 : -2;
     }
+
+    last_error_ = 0;
 
     unsigned int address = ntohl(from.sin_addr.s_addr);
     unsigned short port = ntohs(from.sin_port);
@@ -205,7 +206,7 @@ bool Net::UDPSocket::SetBlocking(bool is_blocking) const {
     return Net::SetBlocking(handle_, is_blocking);
 }
 
-Net::TCPSocket::TCPSocket() : handle_(0), connection_(0) {
+Net::TCPSocket::TCPSocket() {
     if (shrd_context.expired()) {
         shrd_context = context_ = std::make_shared<SocketContext>();
     } else {
@@ -216,8 +217,8 @@ Net::TCPSocket::TCPSocket() : handle_(0), connection_(0) {
 Net::TCPSocket::TCPSocket(TCPSocket &&rhs) noexcept
         : context_(std::move(rhs.context_)), handle_(rhs.handle_), connection_(rhs.connection_),
           remote_addr_(rhs.remote_addr_) {
-    rhs.handle_ = 0;
-    rhs.connection_ = 0;
+    rhs.handle_ = INVALID_SOCK;
+    rhs.connection_ = INVALID_SOCK;
     rhs.remote_addr_ = Address();
 }
 
@@ -232,16 +233,16 @@ Net::TCPSocket &Net::TCPSocket::operator=(TCPSocket &&rhs) noexcept {
     connection_ = rhs.connection_;
     remote_addr_ = rhs.remote_addr_;
 
-    rhs.handle_ = 0;
-    rhs.connection_ = 0;
+    rhs.handle_ = INVALID_SOCK;
+    rhs.connection_ = INVALID_SOCK;
     rhs.remote_addr_ = Address();
     return *this;
 }
 
 void Net::TCPSocket::Open(unsigned short port, bool reuse_addr) {
     handle_ = socket(AF_INET, SOCK_STREAM, 0);
-    if (handle_ < 0) {
-        handle_ = 0;
+    if (!sock_is_open(handle_)) {
+        handle_ = INVALID_SOCK;
         throw std::runtime_error("Cannot create socket.");
     }
 
@@ -264,37 +265,37 @@ void Net::TCPSocket::Open(unsigned short port, bool reuse_addr) {
 }
 
 void Net::TCPSocket::Close() {
-    if (handle_ != 0) {
+    if (sock_is_open(handle_)) {
 #ifdef _WIN32
         closesocket(handle_);
 #else
         close(handle_);
 #endif
-        handle_ = 0;
+        handle_ = INVALID_SOCK;
     }
 }
 
 void Net::TCPSocket::CloseClient() {
-    if (connection_ != 0) {
+    if (sock_is_open(connection_)) {
 #ifdef _WIN32
         closesocket(connection_);
 #else
         close(connection_);
 #endif
-        connection_ = 0;
+        connection_ = INVALID_SOCK;
     }
 }
 
 bool Net::TCPSocket::Listen() {
-    if (handle_ == 0) {
+    if (!sock_is_open(handle_)) {
         return false;
     }
-    connection_ = 0;
+    connection_ = INVALID_SOCK;
     return listen(handle_, 1024) == 0;
 }
 
 bool Net::TCPSocket::Accept(bool is_blocking) {
-    if (handle_ == 0) {
+    if (!sock_is_open(handle_)) {
         return false;
     }
 
@@ -302,8 +303,9 @@ bool Net::TCPSocket::Accept(bool is_blocking) {
     socklen_t from_len = sizeof(from);
 
     connection_ = accept(handle_, (struct sockaddr *) &from, &from_len);
-    if (connection_ < 0) {
-        connection_ = 0;
+    if (!sock_is_open(connection_)) {
+        last_error_ = last_socket_error();
+        connection_ = INVALID_SOCK;
         return false;
     }
 
@@ -317,7 +319,7 @@ bool Net::TCPSocket::Accept(bool is_blocking) {
 }
 
 bool Net::TCPSocket::Connect(const Address &dest) {
-    if (handle_ == 0) {
+    if (!sock_is_open(handle_)) {
         return false;
     }
 
@@ -328,7 +330,7 @@ bool Net::TCPSocket::Connect(const Address &dest) {
 
     [[maybe_unused]] int res = connect(handle_, (struct sockaddr *)&address, sizeof(sockaddr_in));
 
-    connection_ = 0;
+    connection_ = INVALID_SOCK;
     return true;
 }
 
@@ -336,45 +338,41 @@ bool Net::TCPSocket::Send(const void *data, int size) {
     assert(data);
     assert(size > 0);
 
-    uint64_t dst = connection_ ? connection_ : handle_;
-    if (dst == 0) {
+    const SocketHandle dst = sock_is_open(connection_) ? connection_ : handle_;
+    if (!sock_is_open(dst)) {
         return false;
     }
 
-#ifndef __unix__
-    int ret = send(dst, (char *)data, size, MSG_PEEK);
-    if ((ret < 0 && errno == EWOULDBLOCK) || ret < size) {
-        WaitClientComplete(100);
+    const int sent_bytes = int(send(dst, (char *) data, (size_t) size, 0));
+    if (sent_bytes != size) {
+        last_error_ = last_socket_error();
+        return false;
     }
-#endif
 
-    int sent_bytes = int(send(dst, (char *) data, (size_t) size, 0));
-
-    return sent_bytes == size;
+    return true;
 }
 
 int Net::TCPSocket::Receive(void *data, int size) {
     assert(data);
     assert(size > 0);
 
-    uint64_t src = connection_ ? connection_ : handle_;
-    if (src == 0) {
-        return 0;
+    const SocketHandle src = sock_is_open(connection_) ? connection_ : handle_;
+    if (!sock_is_open(src)) {
+        last_error_ = 0;
+        return -2;
     }
-#ifndef __unix__
-    int ret = recv(src, (char *)data, size, MSG_PEEK);
-    if ((ret < 0 && errno == EWOULDBLOCK) || ret < size) {
-        WaitClientComplete(100);
-    }
-#endif
 
     const int received_bytes = int(recv(src, (char *) data, (size_t) size, 0));
 
-    if (received_bytes <= 0) {
-        //printf("Error recv %d - %s\n", errno, strerror(errno));
-        return 0;
+    if (received_bytes == 0) {
+        return 0; // orderly peer shutdown
+    }
+    if (received_bytes < 0) {
+        last_error_ = last_socket_error();
+        return sock_would_block(last_error_) || last_error_ == intr_error() ? -1 : -2;
     }
 
+    last_error_ = 0;
     return received_bytes;
 }
 
@@ -407,7 +405,7 @@ void Net::TCPSocket::WaitClientComplete(int t_ms) {
     }*/
 }
 
-bool Net::SetBlocking(uint64_t sock, bool is_blocking) {
+bool Net::SetBlocking(SocketHandle sock, bool is_blocking) {
     bool ret = true;
 #ifdef _WIN32
     /// @note windows sockets are created in blocking mode by default
