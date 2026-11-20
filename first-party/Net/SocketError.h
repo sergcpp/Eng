@@ -43,6 +43,15 @@ namespace Net {
 #endif
     }
 
+    // non-blocking connect reports "pending" as WSAEWOULDBLOCK on Windows, EINPROGRESS on POSIX
+    inline constexpr int in_progress_error() {
+#ifdef _WIN32
+        return WSAEINPROGRESS;
+#else
+        return EINPROGRESS;
+#endif
+    }
+
     // EWOULDBLOCK and EAGAIN are the same value on all supported POSIX platforms
     inline bool sock_would_block(int err) {
         return err == would_block_error();

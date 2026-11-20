@@ -75,6 +75,10 @@ namespace Net {
 
         [[nodiscard]] bool connected() const { return sock_is_open(connection_); }
 
+        [[nodiscard]] SocketHandle socket_handle() const { return handle_; }
+
+        [[nodiscard]] SocketHandle connection_handle() const { return connection_; }
+
         [[nodiscard]] Address local_addr() const { return local_addr_; }
 
         [[nodiscard]] Address remote_addr() const { return remote_addr_; }
@@ -94,7 +98,9 @@ namespace Net {
 
         bool Accept(bool is_blocking = false);
 
-        bool Connect(const Address &dest);
+        // with a timeout_ms > 0 a non-blocking connect is verified within the timeout;
+        // 0 waits for the OS connect timeout; returns false when the connection failed
+        bool Connect(const Address &dest, int timeout_ms = 0);
 
         bool Send(const void *data, int size);
 
@@ -103,7 +109,8 @@ namespace Net {
 
         bool SetBlocking(bool is_blocking);
 
-        void WaitClientComplete(int t_ms);
+        bool WaitReadable(int timeout_ms);
+        bool WaitWritable(int timeout_ms);
     };
 
     bool SetBlocking(SocketHandle sock, bool is_blocking);

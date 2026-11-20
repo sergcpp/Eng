@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 
@@ -348,6 +349,9 @@ bool Net::TCPSocket::Accept(bool is_blocking) {
         return false;
     }
 
+    int one = 1;
+    setsockopt(connection_, IPPROTO_TCP, TCP_NODELAY, (const char *) &one, sizeof(one));
+
     Net::SetBlocking(connection_, is_blocking);
 
     unsigned int address = ntohl(from.sin_addr.s_addr);
@@ -357,8 +361,9 @@ bool Net::TCPSocket::Accept(bool is_blocking) {
     return true;
 }
 
-bool Net::TCPSocket::Connect(const Address &dest) {
+bool Net::TCPSocket::Connect(const Address &dest, int timeout_ms) {
     if (!sock_is_open(handle_)) {
+        last_error_ = 0;
         return false;
     }
 
@@ -367,9 +372,40 @@ bool Net::TCPSocket::Connect(const Address &dest) {
     address.sin_addr.s_addr = htonl(dest.address());
     address.sin_port = htons((unsigned short) dest.port());
 
-    [[maybe_unused]] int res = connect(handle_, (struct sockaddr *)&address, sizeof(sockaddr_in));
+    if (timeout_ms > 0) {
+        SetBlocking(false);
+        if (connect(handle_, (struct sockaddr *) &address, sizeof(sockaddr_in)) < 0) {
+            const int err = last_socket_error();
+            if (err != would_block_error() && err != in_progress_error()) {
+                last_error_ = err;
+                return false;
+            }
+        }
+        if (!WaitWritable(timeout_ms)) {
+            const int err = last_socket_error();
+            last_error_ = err != 0 ? err : intr_error();
+            return false;
+        }
+    } else {
+        SetBlocking(true);
+        if (connect(handle_, (struct sockaddr *) &address, sizeof(sockaddr_in)) < 0) {
+            last_error_ = last_socket_error();
+            return false;
+        }
+    }
 
-    connection_ = INVALID_SOCK;
+    int err = 0;
+    socklen_t len = sizeof(err);
+    if (getsockopt(handle_, SOL_SOCKET, SO_ERROR, (char *) &err, &len) != 0 || err != 0) {
+        last_error_ = err != 0 ? err : last_socket_error();
+        return false;
+    }
+
+    int one = 1;
+    setsockopt(handle_, IPPROTO_TCP, TCP_NODELAY, (const char *) &one, sizeof(one));
+
+    SetBlocking(false);
+    last_error_ = 0;
     return true;
 }
 
@@ -416,32 +452,54 @@ int Net::TCPSocket::Receive(void *data, int size) {
 }
 
 bool Net::TCPSocket::SetBlocking(bool is_blocking) {
-    return Net::SetBlocking(handle_, is_blocking);
+    const SocketHandle sock = sock_is_open(connection_) ? connection_ : handle_;
+    return Net::SetBlocking(sock, is_blocking);
 }
 
-void Net::TCPSocket::WaitClientComplete(int t_ms) {
-    /*int valopt;
-    fd_set myset;
-    struct timeval tv;
-    socklen_t lon;
+bool Net::TCPSocket::WaitReadable(int timeout_ms) {
+    const SocketHandle sock = sock_is_open(connection_) ? connection_ : handle_;
+    if (!sock_is_open(sock)) {
+        last_error_ = 0;
+        return false;
+    }
 
-    int ss = connection_ ? connection_ : handle_;
+    fd_set read_set;
+    FD_ZERO(&read_set);
+    FD_SET(sock, &read_set);
 
-    tv.tv_sec = 0;
-    tv.tv_usec = 1000 * t_ms;
-    FD_ZERO(&myset);
-    FD_SET(ss, &myset);
-    if (select(ss + 1, NULL, &myset, NULL, &tv) > 0) {
-        lon = sizeof(int);
-        getsockopt(ss, SOL_SOCKET, SO_ERROR, (char *)(&valopt), &lon);
-        if (valopt) {
-            printf("Error in connection() %d - %s\n", valopt, strerror(valopt));
-            return;
-        }
-    } else {
-        printf("Timeout or error()\n");
-        return;
-    }*/
+    timeval tv;   // NOLINT
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+    const int ready = select(int(sock) + 1, &read_set, nullptr, nullptr, &tv);
+    if (ready <= 0) {
+        last_error_ = ready < 0 ? last_socket_error() : 0;
+        return false;
+    }
+    return true;
+}
+
+bool Net::TCPSocket::WaitWritable(int timeout_ms) {
+    const SocketHandle sock = sock_is_open(connection_) ? connection_ : handle_;
+    if (!sock_is_open(sock)) {
+        last_error_ = 0;
+        return false;
+    }
+
+    fd_set write_set;
+    FD_ZERO(&write_set);
+    FD_SET(sock, &write_set);
+
+    timeval tv;   // NOLINT
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+    const int ready = select(int(sock) + 1, nullptr, &write_set, nullptr, &tv);
+    if (ready <= 0) {
+        last_error_ = ready < 0 ? last_socket_error() : 0;
+        return false;
+    }
+    return true;
 }
 
 bool Net::SetBlocking(SocketHandle sock, bool is_blocking) {

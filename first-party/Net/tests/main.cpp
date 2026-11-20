@@ -1,7 +1,11 @@
 
 #include <cstdio>
+#include <cstdlib>
 
+#include <atomic>
+#include <chrono>
 #include <stdexcept>
+#include <thread>
 
 #include "../Net.h"
 #include "../InterprocessLock.h"
@@ -38,6 +42,15 @@ int main() {
         printf("warning: no single-instance lock: %s\n", e.what());
     }
 
+    // hard deadline: a hung blocking call must fail the run, not stall CI forever
+    std::thread watchdog([] {
+        std::this_thread::sleep_for(std::chrono::minutes(5));
+        fflush(stdout);
+        fputs("FATAL: test_Net exceeded 5 minutes, aborting\n", stderr);
+        std::_Exit(2);
+    });
+    watchdog.detach();
+
     test_address();
     test_compress();
     test_hton();
@@ -50,7 +63,7 @@ int main() {
     test_reliable_udp_connection();
     test_udp_connection();
     test_udp_socket();
-    //test_tcp_socket(); // to enable after D4-D7 fixes: Connect always reports success, no partial-send loop, wait stub empty
+    test_tcp_socket();
 
     return g_failures ? 1 : 0;
 }
