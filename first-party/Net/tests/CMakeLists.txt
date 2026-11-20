@@ -14,6 +14,7 @@ set(SRC_FILES main.cpp test_address.cpp
                        test_hash.cpp
                        test_hton.cpp
                        test_http.cpp
+                       test_interprocess_lock.cpp
                        test_packet_queue.cpp
                        test_pcp.cpp
                        test_pmp.cpp

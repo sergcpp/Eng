@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <stdexcept>
 #include <thread>
 
@@ -18,6 +19,7 @@ void test_compress();
 void test_hash();
 void test_hton();
 void test_http();
+void test_interprocess_lock();
 void test_packet_queue();
 void test_pcp();
 void test_pmp();
@@ -33,12 +35,22 @@ void test_ws_connection();
 bool g_stop_on_fail = false;
 std::atomic_int g_failures{};
 
-int main() {
+int main(int argc, char **argv) {
+    // helper mode for test_interprocess_lock: take the lock, hold it, report via exit code
+    if (argc > 1 && std::strcmp(argv[1], "--lock-hold") == 0) {
+        const Net::InterprocessLock _("test_Net lock hold", Net::InterprocessLock::try_to_lock_t{});
+        if (!_.locked()) {
+            return 3;
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return 0;
+    }
+
     printf("Net Version: %s\n", Net::Version());
     puts(" ---------------");
 
-    // Ensure only single instance is running; failing to take the lock (Global\ namespace privileges,
-    // abandoned mutex) must not kill the run by itself
+    // Ensure only single instance is running; failing to take the lock (abandoned mutex,
+    // permission problems) must not kill the run by itself
     try {
         static Net::InterprocessLock _("test_Net lock");
     } catch (const std::exception &e) {
@@ -59,6 +71,7 @@ int main() {
     test_hash();
     test_hton();
     test_http();
+    test_interprocess_lock();
     test_packet_queue();
     test_var();
     test_bitmsg();
