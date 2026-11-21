@@ -18,7 +18,7 @@
 #include <ws2ipdef.h>
 #include <ws2tcpip.h>
 #else
-#include <dirent.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <netinet/tcp.h>
@@ -420,13 +420,17 @@ void test_tcp_socket() {
         DWORD before = 0, after = 0;
         require(GetProcessHandleCount(GetCurrentProcess(), &before) != 0);
 #else
+        // no /proc on macOS: probe the descriptor table instead, bounded by RLIMIT_NOFILE
         auto open_fds = []() {
             int count = 0;
-            if (DIR *dir = opendir("/proc/self/fd")) {
-                while (readdir(dir) != nullptr) {
+            long limit = sysconf(_SC_OPEN_MAX); // -1 when the limit is unlimited
+            if (limit <= 0 || limit > 8192) {
+                limit = 8192;
+            }
+            for (int fd = 0; fd < int(limit); ++fd) {
+                if (::fcntl(fd, F_GETFD) != -1) {
                     ++count;
                 }
-                closedir(dir);
             }
             return count;
         };

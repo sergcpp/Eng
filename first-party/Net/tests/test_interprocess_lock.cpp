@@ -1,6 +1,7 @@
 #include "test_common.h"
 
 #include <chrono>
+#include <cstring>
 #include <string>
 #include <thread>
 
@@ -15,6 +16,10 @@
 #endif
 #include <Windows.h>
 #else
+#ifdef __APPLE__
+#include <cstdint>
+#include <mach-o/dyld.h>
+#endif
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -49,7 +54,12 @@ namespace {
         p.process = pi.hProcess;
 #else
         char exe[4096];
+#ifdef __APPLE__
+        uint32_t exe_size = sizeof(exe);
+        const ssize_t n = _NSGetExecutablePath(exe, &exe_size) == 0 ? ssize_t(strlen(exe)) : -1;
+#else
         const ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+#endif
         if (n <= 0) {
             return p;
         }
