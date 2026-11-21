@@ -6,7 +6,7 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #endif
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
 
 #include <arpa/inet.h>
 
