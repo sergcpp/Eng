@@ -145,6 +145,46 @@ jobs:
           cmake-args: "-DCMAKE_UNITY_BUILD=ON"
           config: "RelWithDebInfo"
           bin-dir: "linux-x86_64"
+  build-linux-x86_64-asan:
+    runs-on: [ linux, builder ]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Workflows
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - name: Re-initialize repository
+        uses: ./.github/actions/checkout
+      - name: Compile the code
+        uses: ./.github/actions/build-linux
+        with:
+          cmake-args: "-DCMAKE_UNITY_BUILD=ON"
+          config: "Asan"
+          bin-dir: "linux-x86_64-asan"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-x86_64-asan
+          path: linux-x86_64-asan/
+  build-linux-x86_64-tsan:
+    runs-on: [ linux, builder ]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Workflows
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - name: Re-initialize repository
+        uses: ./.github/actions/checkout
+      - name: Compile the code
+        uses: ./.github/actions/build-linux
+        with:
+          cmake-args: "-DCMAKE_UNITY_BUILD=ON"
+          config: "Tsan"
   # build-macos-universal-rel:
   #   runs-on: [ macos, builder ]
   #   defaults:
@@ -219,10 +259,11 @@ jobs:
         uses: ./.github/actions/test-asan
         with:
           bin-dir: "windows-x86_64-asan"
+          exe: "test_Net-asan.exe"
   test-linux-x86_64:
     runs-on: [ linux, x86_64 ]
     needs:
-      - build-linux-x86_64-rel
+      - build-linux-x86_64-asan
     steps:
       - name: Checkout Workflows
         uses: actions/checkout@v4
@@ -231,9 +272,10 @@ jobs:
       - name: Re-initialize repository
         uses: ./.github/actions/checkout
       - name: Run Tests
-        uses: ./.github/actions/test
+        uses: ./.github/actions/test-asan
         with:
-          bin-dir: "linux-x86_64"
+          bin-dir: "linux-x86_64-asan"
+          exe: "test_Net-asan"
   # test-macos-arm64:
   #   runs-on: [ macos, arm64 ]
   #   needs:
