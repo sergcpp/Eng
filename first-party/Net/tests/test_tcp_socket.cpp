@@ -1,15 +1,26 @@
 #include "test_common.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <thread>
 #include <vector>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 #include <winsock2.h>
 #include <ws2ipdef.h>
 #include <ws2tcpip.h>
 #else
+#include <dirent.h>
+#include <unistd.h>
+
 #include <netinet/tcp.h>
 #endif
 
@@ -290,6 +301,156 @@ void test_tcp_socket() {
         }
         require(send_failed);
         require(client.last_error() != 0);
+    }
+    { // a connect to an address that never answers is bounded by the timeout
+      // argument, not by the OS connect timeout
+        TCPSocket s;
+        require_nothrow(s.Open(Address(127, 0, 0, 1, 0), 0));
+        const auto t0 = std::chrono::steady_clock::now();
+        const bool connected = s.Connect(Address(10, 255, 255, 1, 9), 300);
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - t0).count();
+        require(!connected);
+        require(!s.connected());
+        require(elapsed < 1500); // the OS default is far longer; the wait must be ours
+    }
+    { // WaitWritable on an established connection is granted without waiting
+        TCPSocket server, client;
+        require_nothrow(server.Open(Address(127, 0, 0, 1, 0), 0));
+        require(server.Listen());
+        require_nothrow(client.Open(Address(127, 0, 0, 1, 0), 0));
+
+        std::thread thr([&]() {
+            for (int i = 0; i < 100 && !server.Accept(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        });
+        require(client.Connect(Address(127, 0, 0, 1, server.local_addr().port()), 2000));
+        thr.join();
+        require(client.IsOpen()); // connected() only reports an accepted connection
+
+        const auto t0 = std::chrono::steady_clock::now();
+        require(client.WaitWritable(2000));
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - t0).count();
+        require(elapsed < 100); // send space is available: no reason to wait
+    }
+    { // SetBlocking applies to the accepted connection, not only to the listener
+        TCPSocket server, client;
+        require_nothrow(server.Open(Address(127, 0, 0, 1, 0), 0));
+        require(server.Listen());
+        require_nothrow(client.Open(Address(127, 0, 0, 1, 0), 0));
+
+        std::atomic<bool> accepted{false};
+        std::thread accept_thr([&]() {
+            for (int i = 0; i < 100 && !server.Accept(false); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            accepted = server.connected();
+        });
+        require(client.Connect(Address(127, 0, 0, 1, server.local_addr().port()), 2000));
+        for (int i = 0; i < 100 && !accepted; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        accept_thr.join();
+        require(accepted); // accept happens first: it decides the connection's mode
+
+        TCPSocket conn = TCPSocket::PassClientConnection(server);
+        require(conn.connected());
+
+        char buf[8];
+        require(conn.Receive(buf, sizeof(buf)) == -1); // still non-blocking here
+
+        require(conn.SetBlocking(true));
+        std::atomic<bool> sent{false};
+        std::thread thr([&]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            sent = client.Send("abc", 3);
+        });
+        const auto t0 = std::chrono::steady_clock::now();
+        const int got = conn.Receive(buf, sizeof(buf));
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - t0).count();
+        thr.join();
+        require(sent);
+        require(got == 3); // the call waited for the delayed send instead of failing
+        require(elapsed >= 100);
+        require(memcmp(buf, "abc", 3) == 0);
+    }
+    { // PassClientConnection hands over the connection exactly once: destroying the
+      // moved-to socket leaves the listener intact and usable
+        TCPSocket server, client;
+        require_nothrow(server.Open(Address(127, 0, 0, 1, 0), 0));
+        require(server.Listen());
+        require_nothrow(client.Open(Address(127, 0, 0, 1, 0), 0));
+
+        std::thread thr([&]() {
+            for (int i = 0; i < 100 && !server.Accept(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        });
+        require(client.Connect(Address(127, 0, 0, 1, server.local_addr().port()), 2000));
+        thr.join();
+
+        TCPSocket conn = TCPSocket::PassClientConnection(server);
+        require(conn.connected());
+        require(!server.connected()); // the listener no longer references that handle
+
+        const char msg[] = "hello";
+        require(conn.Send(msg, sizeof(msg)));
+        char echo[sizeof(msg)];
+        require(client.RecvExactly(echo, sizeof(echo), 2000));
+        require(memcmp(echo, msg, sizeof(msg)) == 0);
+
+        conn.CloseClient(); // exactly one closesocket for the connection handle
+
+        TCPSocket client2;
+        require_nothrow(client2.Open(Address(127, 0, 0, 1, 0), 0));
+        std::thread thr2([&]() {
+            for (int i = 0; i < 100 && !server.Accept(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        });
+        require(client2.Connect(Address(127, 0, 0, 1, server.local_addr().port()), 2000));
+        thr2.join();
+        require(server.connected()); // the same listener accepted the next client
+    }
+    { // open/close cycles must not leak socket handles
+#ifdef _WIN32
+        DWORD before = 0, after = 0;
+        require(GetProcessHandleCount(GetCurrentProcess(), &before) != 0);
+#else
+        auto open_fds = []() {
+            int count = 0;
+            if (DIR *dir = opendir("/proc/self/fd")) {
+                while (readdir(dir) != nullptr) {
+                    ++count;
+                }
+                closedir(dir);
+            }
+            return count;
+        };
+        const int before = open_fds();
+#endif
+
+        for (int i = 0; i < 2000; ++i) {
+            TCPSocket s;
+            require_nothrow(s.Open(Address(127, 0, 0, 1, 0), 0));
+            s.Close();
+        }
+        for (int i = 0; i < 200; ++i) {
+            TCPSocket moved;
+            require_nothrow(moved.Open(Address(127, 0, 0, 1, 0), 0));
+            TCPSocket target;
+            target = std::move(moved); // the moved-from socket must not close twice
+        }
+
+#ifdef _WIN32
+        require(GetProcessHandleCount(GetCurrentProcess(), &after) != 0);
+        require(after <= before + 8); // creation and destruction stay in balance
+#else
+        require(open_fds() <= before + 8);
+#endif
     }
 
     printf("OK\n");
